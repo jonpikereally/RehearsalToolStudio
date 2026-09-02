@@ -708,7 +708,8 @@ group('ableton set import');
       },
       {
         title: 'Not Synced', raw: 'Not Synced', startBar: 2000, endBar: 2100,
-        bpm: null, key: null, durationText: null, tags: [],
+        // No tempo in the locator's name; the automation has it at 85 here.
+        bpm: null, startBpm: 85, key: null, durationText: null, tags: [],
         sections: [], chords: [], lyrics: [], tempoChanges: [],
         stems: [{ name: 'Bass 1', path: 'Stems/missing_bass.wav' }],
       },
@@ -725,6 +726,8 @@ group('ableton set import');
   check('every song in the set is imported, audio or not', res.songs.length === 2, String(res.songs.length));
   check('a song with no audio is reported', res.missing.join() === 'Not Synced', res.missing.join());
   check('and keeps its place with nothing to play', res.songs[1].title === 'Not Synced' && res.songs[1].variants.length === 0);
+  check('a song the locator gives no tempo plays at the tempo in force there, not the set tempo',
+    res.songs[1].bpm === 85, String(res.songs[1].bpm));
   check('its files are claimed so the folder scan skips them', res.claimedPaths.size === 2);
 
   const song = res.songs[0];

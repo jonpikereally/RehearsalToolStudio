@@ -238,7 +238,10 @@ export function songsFromProject(
 
       // The set is the authority on timing, so these are refreshed each scan
       // rather than preserved — editing them in Ableton is the way to change them.
-      bpm: alsSong.bpm ?? prev?.bpm ?? project.tempo,
+      // The tempo Live actually plays the song at is the automation's, where
+      // there is any; a locator's "136BPM" is a label, and the set tempo is
+      // only what is left when nothing else says.
+      bpm: alsSong.startBpm ?? alsSong.bpm ?? prev?.bpm ?? project.tempo,
       tempoUnset: false,
       tempoMap: alsSong.tempoChanges.length ? alsSong.tempoChanges : undefined,
       timeSigNum: project.timeSigNum,
