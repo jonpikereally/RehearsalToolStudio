@@ -18,6 +18,22 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
   const { settings, saveSettings, localStatus } = useStore();
 
   const [stats, setStats] = useState<CacheStats | null>(null);
+  /*
+   * The output device's rate, which is what the engine runs at. Read from a
+   * context of its own and closed again: the player's is made on the first
+   * tap, and may not exist yet.
+   */
+  const [sampleRate, setSampleRate] = useState<number | null>(null);
+  useEffect(() => {
+    try {
+      const Ctor: typeof AudioContext = (window as any).AudioContext ?? (window as any).webkitAudioContext;
+      const ctx = new Ctor();
+      setSampleRate(ctx.sampleRate);
+      void ctx.close();
+    } catch {
+      setSampleRate(null);
+    }
+  }, []);
   const [tidied, setTidied] = useState<string | null>(null);
 
   /** Whether the duplicate-tidying below has anything to talk about. */
@@ -100,6 +116,17 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
             onChange={(e) => saveSettings({ keepAwake: e.target.checked })}
             style={{ width: 24, height: 24 }}
           />
+        </div>
+
+        <div className="field">
+          <label>
+            Audio engine
+            <span className="hint">
+              The rate of the Mac's output device, which the audio engine runs at. Every file is
+              resampled to it as it is decoded — a 44.1 kHz stem plays fine at 48.
+            </span>
+          </label>
+          <span className="code">{sampleRate ? `${sampleRate.toLocaleString()} Hz` : 'unknown'}</span>
         </div>
       </SettingsSection>
 
