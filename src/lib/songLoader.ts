@@ -243,6 +243,7 @@ export async function loadSong(
           sourceStartSec: clip.sourceStartSec / clipTempo,
           fadeInSec: clip.fadeInSec,
           fadeOutSec: clip.fadeOutSec,
+          gain: clip.gain,
         });
       }
       const durationSec = Math.max(...placements.map((p) => p.endSec));
@@ -304,7 +305,15 @@ export async function loadSong(
      */
     const role =
       variant.role === 'stem' ? 'stem' : isReferenceName(variant.name) ? 'reference' : 'mix';
+    /*
+     * Where the fader and pan start: where you left them on this device, or
+     * failing that where the set has them — the track's fader times its
+     * groups', which is what Live plays.
+     */
     const saved = settingFor(savedMix, variant.id);
+    const touched = variant.id in savedMix;
+    const level = touched ? saved.level : (variant.gain ?? saved.level);
+    const pan = touched ? saved.pan : (variant.pan ?? saved.pan);
     /*
      * No special casing for the reference any more: beside stems it is silent
      * until SWITCH brings it in, which the engine enforces, so its fader is
@@ -314,9 +323,9 @@ export async function loadSong(
     configs.set(variant.id, {
       buffer,
       role,
-      level: saved.level,
+      level,
       muted: saved.muted,
-      pan: saved.pan,
+      pan,
       /*
        * Bars, not seconds, come out of the set — so they follow the tempo map
        * and any stretch applied here, and a part still drops out on the right

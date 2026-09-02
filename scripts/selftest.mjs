@@ -3350,5 +3350,71 @@ group('a plan for one song');
   check('a group with nothing in it writes nothing', partsFor(song, { print: [], combine: [{ name: 'band', stems: ['Nope'] }] }).length === 0);
 }
 
+/* ---------------------------- the mix, as the set has it ---------------------------- */
+
+group('the mix, as the set has it');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { mixOf, songsFromProject } = await import('../src/lib/alsImport.ts');
+  const mixer = (gain, pan) =>
+    `<Mixer><Volume><LomId Value="0" /><Manual Value="${gain}" /></Volume><Pan><LomId Value="0" /><Manual Value="${pan}" /></Pan></Mixer>`;
+  const audio = (id, group, name, gain, pan, clipGain = 1) => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      ${mixer(gain, pan)}
+      <AudioClip Id="1" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="64" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleVolume Value="${clipGain}" />
+        <SampleRef><FileRef><RelativePath Value="Stems/${name}.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <MainTrack><Mixer><TimeSignature><LomId Value="0" /><Manual Value="201" /><AutomationTarget Id="10"><LockEnvelope Value="0" /></AutomationTarget></TimeSignature></Mixer></MainTrack>
+    <AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="10" /></EnvelopeTarget>
+      <Automation><Events>
+        <EnumEvent Id="1" Time="-63072000" Value="201" />
+        <EnumEvent Id="2" Time="96" Value="199" />
+        <EnumEvent Id="3" Time="104" Value="201" />
+        <EnumEvent Id="4" Time="256" Value="200" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="128" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="3"><Time Value="256" /><Name Value="Waltz" /></Locator>
+    <Locator Id="4"><Time Value="304" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" />${mixer(0.5, 0)}</GroupTrack>
+    <GroupTrack Id="11"><TrackGroupId Value="10" /><EffectiveName Value="REF" />${mixer(0.8, 0.5)}</GroupTrack>
+    ${audio(12, 11, 'Ref Master', 1, 0.25)}
+    ${audio(13, 10, 'Bass', 1.5, -1, 0.5)}
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Waltz" />${mixer(1, 0)}</GroupTrack>
+    ${audio(21, 20, 'Drums', 1, 0)}
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const [yellow, waltz] = p.songs;
+  const ref = yellow.stems.find((s) => s.name === 'Ref Master');
+  const bass = yellow.stems.find((s) => s.name === 'Bass');
+  check('a track\'s fader is multiplied by every group above it', Math.abs(ref.gain - 0.4) < 1e-9, String(ref.gain));
+  check('and its pan has theirs added', Math.abs(ref.pan - 0.75) < 1e-9, String(ref.pan));
+  check('a pan cannot go past hard left', bass.pan === -1);
+  check('a clip\'s own gain is read', bass.clips[0].gain === 0.5);
+  check('the song group\'s fader counts', Math.abs(bass.gain - 0.75) < 1e-9, String(bass.gain));
+  check('a 2/4 bar inside the song is a caveat, in bars',
+    yellow.caveats.length === 2 && /2\/4 at bar 25/.test(yellow.caveats[0]) && /4\/4 at bar 27/.test(yellow.caveats[1]),
+    JSON.stringify(yellow.caveats));
+  check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
+    `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
+  check('and its length in bars follows', Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, String(waltz.endBar - waltz.startBar));
+
+  const asVariant = mixOf(bass, bass.clips);
+  check('the part carries fader times clip gain, and the pan', Math.abs(asVariant.gain - 0.375) < 1e-9 && asVariant.pan === -1, JSON.stringify(asVariant));
+  check('unity and centre are left unsaid', JSON.stringify(mixOf({ gain: 1, pan: 0 }, [])) === '{}');
+
+  const files = ['Ref Master', 'Bass', 'Drums'].map((n) => ({ path: `/Stems/${n}.wav`, name: `${n}.wav`, rev: 'r', size: 1 }));
+  const imported = songsFromProject(p, '/Set.als', files, new Map()).songs;
+  check('the song keeps its own signature and caveats',
+    imported[1].timeSigNum === 3 && imported[0].caveats?.length === 2 && imported[1].caveats === undefined);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

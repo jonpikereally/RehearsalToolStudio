@@ -283,7 +283,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             if (opts.shift && ((clip.semitones ?? 0) !== 0 || Math.abs(speed - 1) > 1e-6)) {
               buffer = await opts.shift(buffer, clip.semitones ?? 0, speed);
             }
-            placements.push(placementOf(clip, buffer, bpm, project, speed));
+            placements.push(placementOf(clip, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
         }
         if (!placements.length) continue;
@@ -291,7 +291,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         // One clip playing its file from the top for the whole song already is
         // the part; rendering would copy it for nothing.
         report('rendering', 0);
-        const flat = part.combined || needsRender(placements, durationSec)
+        // A part below or above unity has to be rendered to come out at its level.
+        const flat = part.combined || needsRender(placements, durationSec) || placements.some((p) => (p.gain ?? 1) !== 1)
           ? await renderTrack(placements, durationSec, placements[0].buffer.sampleRate,
               Math.min(2, Math.max(...placements.map((p) => p.buffer.numberOfChannels))))
           : placements[0].buffer;
@@ -410,9 +411,11 @@ function placementOf(
   bpm: number,
   project: AlsProject,
   speed = 1,
+  gain = 1,
 ): ClipPlacement {
   return {
     buffer,
+    gain,
     startSec: barToSeconds(clip.startBar, bpm, project),
     endSec: barToSeconds(clip.endBar, bpm, project),
     // A stretched file's seconds are shorter by the same factor.

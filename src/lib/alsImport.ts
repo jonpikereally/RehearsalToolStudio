@@ -155,6 +155,23 @@ export function placementOf(clips: AlsClip[] | undefined): Variant['placement'] 
   return { bar: clip.startBar, sourceSec: clip.sourceStartSec };
 }
 
+/**
+ * The part's fader and pan as the set has them: the track's own times its
+ * groups', and for a part that is one clip, that clip's gain folded in.
+ * Left out at unity and centre, which is what most stems are.
+ */
+export function mixOf(
+  stem: { gain?: number; pan?: number },
+  clips: AlsClip[] | undefined,
+): Pick<Variant, 'gain' | 'pan'> {
+  const clip = clips?.find((c) => !c.disabled) ?? clips?.[0];
+  const gain = (stem.gain ?? 1) * (clip?.gain ?? 1);
+  const out: Pick<Variant, 'gain' | 'pan'> = {};
+  if (Math.abs(gain - 1) > 1e-4) out.gain = gain;
+  if (stem.pan && Math.abs(stem.pan) > 1e-4) out.pan = stem.pan;
+  return out;
+}
+
 /** A single-clip part's own transposition and warp speed, when it has any. */
 export function ownShift(clips: AlsClip[] | undefined): Pick<Variant, 'pitch' | 'speed'> {
   const clip = clips?.find((c) => !c.disabled) ?? clips?.[0];
@@ -231,6 +248,7 @@ export function songsFromProject(
         regions: stem.regions ?? undefined,
         placement: arranged.length > 1 ? undefined : placementOf(stem.clips),
         ...(arranged.length > 1 ? {} : ownShift(stem.clips)),
+        ...mixOf(stem, arranged.length > 1 ? undefined : stem.clips),
         clips:
           arranged.length > 1
             ? arranged.map(({ clip, file: f }) => ({
@@ -242,6 +260,7 @@ export function songsFromProject(
                 fadeOutSec: clip.fadeOutSec,
                 semitones: clip.semitones ?? 0,
                 speed: clip.speed ?? 1,
+                gain: clip.gain ?? 1,
               }))
             : undefined,
       });
@@ -297,8 +316,9 @@ export function songsFromProject(
       bpm: alsSong.startBpm ?? alsSong.bpm ?? prev?.bpm ?? project.tempo,
       tempoUnset: false,
       tempoMap: alsSong.tempoChanges.length ? alsSong.tempoChanges : undefined,
-      timeSigNum: project.timeSigNum,
-      timeSigDen: project.timeSigDen,
+      timeSigNum: alsSong.timeSigNum ?? project.timeSigNum,
+      timeSigDen: alsSong.timeSigDen ?? project.timeSigDen,
+      caveats: alsSong.caveats?.length ? alsSong.caveats : undefined,
       firstBarOffsetSec: prev?.firstBarOffsetSec ?? 0,
       originalKey: alsSong.key ?? prev?.originalKey,
       transpose: prev?.transpose ?? 0,

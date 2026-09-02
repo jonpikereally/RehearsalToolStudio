@@ -21,6 +21,8 @@ export interface ClipPlacement {
   sourceStartSec: number;
   fadeInSec: number;
   fadeOutSec: number;
+  /** The clip's level, linear; 1 when absent. Fades ramp to it. */
+  gain?: number;
 }
 
 /** How much of a fade to allow, as a share of the clip; a fade can't outlast it. */
@@ -67,14 +69,15 @@ export async function renderTrack(
     const startAt = Math.max(0, clip.startSec);
     const endAt = startAt + playFor;
 
+    const level = clip.gain ?? 1;
     if (fadeIn > 0) {
       gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(1, startAt + fadeIn);
+      gain.gain.linearRampToValueAtTime(level, startAt + fadeIn);
     } else {
-      gain.gain.setValueAtTime(1, startAt);
+      gain.gain.setValueAtTime(level, startAt);
     }
     if (fadeOut > 0) {
-      gain.gain.setValueAtTime(1, endAt - fadeOut);
+      gain.gain.setValueAtTime(level, endAt - fadeOut);
       gain.gain.linearRampToValueAtTime(0, endAt);
     }
 

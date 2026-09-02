@@ -113,6 +113,11 @@ export function checkSet(project: AlsProject): Finding[] {
   }
 
   // The parser already noticed songs it could find no audio for.
+  // What the player cannot follow, said before the gig rather than at it.
+  for (const song of project.songs) {
+    for (const caveat of song.caveats ?? []) out.push({ severity: 'warning', song: song.title, message: caveat });
+  }
+
   for (const warning of project.warnings) {
     out.push({ severity: 'problem', song: null, message: warning });
   }

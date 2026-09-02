@@ -65,6 +65,13 @@ export interface Variant {
   pitch?: number;
   speed?: number;
   /**
+   * The fader and pan the set has for this part — the track's, times every
+   * group above it — as the mixer's starting position until you move it.
+   * Linear gain, 1 for unity; pan -1..1. Absent means unity, centred.
+   */
+  gain?: number;
+  pan?: number;
+  /**
    * The part as an arrangement of clips, when it is more than one file
    * played from one point: a phrase dropped in from another take, the
    * vocal picked up again ten seconds further in. Each names its file and
@@ -86,6 +93,8 @@ export interface VariantClip {
   semitones: number;
   /** How much faster than its file the clip plays, from its warp; 1 for as is. */
   speed: number;
+  /** The clip's own gain in Live, linear. */
+  gain: number;
 }
 
 export interface Marker {
@@ -216,6 +225,11 @@ export interface Song {
    * will do and when.
    */
   rig?: RigTrack[];
+  /**
+   * What this app cannot play as Ableton does — a time signature change
+   * partway through, say — read from the set and shown with the song.
+   */
+  caveats?: string[];
 
   variants: Variant[];
   /**

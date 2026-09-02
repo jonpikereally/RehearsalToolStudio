@@ -402,6 +402,11 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
+        {song.caveats?.length ? (
+          <div className="notice">
+            <strong>Not quite as Ableton plays it.</strong> {song.caveats.join(' ')}
+          </div>
+        ) : null}
         {song.variants.length === 0 && (
           <div className="notice">
             None of this song's audio is in the folder. The set points at stems that aren't

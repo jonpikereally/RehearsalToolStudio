@@ -61,6 +61,14 @@ export interface AlsSong {
   tempoChanges: { bar: number; bpm: number }[];
   /** Locators the app wrote for the rig, still as names. */
   rigMarks: { bar: number; name: string }[];
+  /** The time signature in force where the song starts. */
+  timeSigNum: number;
+  timeSigDen: number;
+  /**
+   * What this app cannot play as Ableton does: a time signature change
+   * partway through, say. Shown with the song, so nobody is surprised.
+   */
+  caveats: string[];
   /**
    * The set's own rig tracks — MIDI to a pedalboard or the lights, a video
    * track, a timecode track — cut down to what plays inside this song.
@@ -78,6 +86,10 @@ export interface AlsSong {
      * says so itself or sits in a REF folder inside the song's group.
      */
     reference: boolean;
+    /** The track's fader times every group's above it, as a linear gain. */
+    gain: number;
+    /** The track's pan with its groups' added, -1..1. */
+    pan: number;
     path: string;
     regions: { startBar: number; endBar: number }[] | null;
     /** Every clip this track plays inside this song, in order. */
@@ -115,6 +127,8 @@ interface RawClip {
   sampleRate: number | null;
   /** The clip's own transposition, in semitones, as set in Live. */
   semitones: number;
+  /** The clip's own gain, linear: 1 for none. */
+  gain: number;
 }
 
 /**
@@ -143,6 +157,8 @@ export interface AlsClip {
    * stem; 1.1 for a file warped up a tenth to match.
    */
   speed: number;
+  /** The clip's own gain in Live, linear; 1 for none. */
+  gain: number;
 }
 
 export interface AlsLane {
@@ -288,6 +304,26 @@ interface Track {
   groupId: string;
   name: string;
   chunk: string;
+  /** The fader, as a linear gain: 1 is 0 dB. */
+  gain: number;
+  /** -1 hard left, 0 centre, 1 hard right. */
+  pan: number;
+}
+
+/** A track's own fader and pan, from its mixer section. */
+function mixerOf(chunk: string): { gain: number; pan: number } {
+  const mixer = chunk.match(/<Mixer>[\s\S]*?<\/Mixer>/)?.[0] ?? '';
+  const gain = parseFloat((mixer.match(/<Volume>\s*<LomId[^>]*>\s*<Manual Value="([-\d.]+)"/) ?? [])[1] ?? '1');
+  const pan = parseFloat((mixer.match(/<Pan>\s*<LomId[^>]*>\s*<Manual Value="([-\d.]+)"/) ?? [])[1] ?? '0');
+  return { gain: Number.isFinite(gain) ? gain : 1, pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0 };
+}
+
+/**
+ * Live writes a time signature as one number: the numerator less one, plus
+ * 99 for each doubling of the denominator — 201 is 4/4, 199 is 2/4.
+ */
+function decodeSignature(value: number): { num: number; den: number } {
+  return { num: (value % 99) + 1, den: 2 ** Math.floor(value / 99) };
 }
 
 interface Clip {
@@ -423,6 +459,10 @@ function clipsOfTrack(track: Track): RawClip[] {
       fadeOutSec: fades && !Number.isNaN(fadeOut) ? fadeOut : 0,
       warpBps: warpRate(body),
       sampleRate: num(/<DefaultSampleRate Value="(\d+)"/) || null,
+      gain: (() => {
+        const g = num(/<SampleVolume Value="([-\d.]+)"/);
+        return Number.isNaN(g) ? 1 : g;
+      })(),
       // Coarse in semitones, fine in cents — the clip's own transposition.
       semitones:
         (Number.isNaN(num(/<PitchCoarse Value="([-\d.]+)"/)) ? 0 : num(/<PitchCoarse Value="([-\d.]+)"/)) +
@@ -641,6 +681,7 @@ export function parseAlsXml(xml: string): AlsProject {
       groupId: (chunk.match(/<TrackGroupId Value="(-?\d+)"/) ?? [])[1] ?? '-1',
       name: decodeXml((chunk.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? ''),
       chunk,
+      ...mixerOf(chunk),
     }));
 
   // Tempo automation, so a song that changes tempo can be described honestly.
@@ -661,6 +702,29 @@ export function parseAlsXml(xml: string): AlsProject {
   }
 
   const sections = clipsOf(trackByFlag(tracks, /\+\s*SECTIONS\b|^sections\b/i)?.chunk ?? '', 'MidiClip');
+
+  /*
+   * Time signature changes, from the main track's automation: one encoded
+   * number per event. A song takes the signature in force where it starts;
+   * a change inside it is something this app cannot follow.
+   */
+  const signatureTarget = (xml.match(
+    /<TimeSignature>\s*<LomId[^>]*>\s*<Manual Value="\d+"[^>]*>\s*<AutomationTarget Id="(\d+)"/,
+  ) ?? [])[1];
+  let signatureChanges: { beat: number; num: number; den: number }[] = [];
+  if (signatureTarget) {
+    const envelope = xml.match(
+      new RegExp(
+        `<AutomationEnvelope Id="\\d+">\\s*<EnvelopeTarget>\\s*<PointeeId Value="${signatureTarget}"[\\s\\S]*?</AutomationEnvelope>`,
+      ),
+    );
+    if (envelope) {
+      signatureChanges = [...envelope[0].matchAll(/<EnumEvent Id="\d+" Time="([-\d.]+)" Value="(\d+)"/g)]
+        .map((m) => ({ beat: parseFloat(m[1]), ...decodeSignature(Number(m[2])) }))
+        .filter((e) => !Number.isNaN(e.beat) && e.num > 0 && e.num < 64 && e.den >= 1 && e.den <= 32)
+        .sort((a, b) => a.beat - b.beat);
+    }
+  }
 
   /*
    * The rig's tracks: what the set sends out rather than plays to the band.
@@ -828,8 +892,14 @@ export function parseAlsXml(xml: string): AlsProject {
      * ten-thousandth of a beat out — which would otherwise report bar 3 as
      * 2.9996. Snap anything within a thousandth of a bar to the whole number.
      */
+    // The song's own signature, for counting its bars.
+    const signature = signatureChanges.filter((e) => e.beat <= loc.beat + 1e-6).pop() ?? {
+      num: timeSigNum,
+      den: timeSigDen,
+    };
+    const songBeatsPerBar = signature.num * (4 / signature.den);
     const relBar = (beat: number) => {
-      const bar = (beat - loc.beat) / beatsPerBar + 1;
+      const bar = (beat - loc.beat) / songBeatsPerBar + 1;
       const rounded = Math.round(bar);
       return Math.abs(bar - rounded) < 0.001 ? rounded : Math.round(bar * 1000) / 1000;
     };
@@ -843,10 +913,17 @@ export function parseAlsXml(xml: string): AlsProject {
             // Every group between the track and the song's own group; the
             // song group itself is not a folder the track was filed under.
             const folders: string[] = [];
+            let gain = t.gain;
+            let pan = t.pan;
             for (let c = byId.get(t.groupId), i = 0; c && c !== group && i < 8; i++) {
               folders.push(c.name);
+              gain *= c.gain;
+              pan += c.pan;
               c = byId.get(c.groupId);
             }
+            // The song's own group is a fader over everything in it, too.
+            gain *= group.gain;
+            pan = Math.max(-1, Math.min(1, pan + group.pan));
             const reference = REF_RE.test(t.name) || folders.some((f) => REF_RE.test(f));
             const all = clipsOfTrack(t);
             const muted = trackIsMuted(t);
@@ -867,6 +944,7 @@ export function parseAlsXml(xml: string): AlsProject {
               fadeOutSec: c.fadeOutSec,
               warped: c.warpBps !== null,
               semitones: c.semitones,
+              gain: c.gain,
               // A warped file at another tempo is stretched to this song's:
               // its beats per second against the song's, where they differ.
               speed:
@@ -878,6 +956,8 @@ export function parseAlsXml(xml: string): AlsProject {
             return {
               name: t.name,
               reference,
+              gain,
+              pan,
               path: sounding?.path ?? '',
               regions: audibleRegions(mine, muted, loc.beat, endBeat, relBar),
               clips,
@@ -887,6 +967,23 @@ export function parseAlsXml(xml: string): AlsProject {
       : [];
 
     if (!stems.length) warnings.push(`No audio tracks found for “${meta.title}”.`);
+
+    /*
+     * What cannot be played as Ableton plays it. A time signature change
+     * inside the song: this app counts one signature per song, so bars
+     * after the change land in the wrong place, though the audio plays on.
+     */
+    const caveats: string[] = [];
+    let current = signature;
+    for (const change of signatureChanges) {
+      if (change.beat <= loc.beat + 1e-6 || change.beat >= endBeat) continue;
+      if (change.num === current.num && change.den === current.den) continue;
+      caveats.push(
+        `The time signature changes to ${change.num}/${change.den} at bar ${relBar(change.beat)}; ` +
+          `bars, loops and the click are counted in ${signature.num}/${signature.den} throughout.`,
+      );
+      current = change;
+    }
 
     return {
       title: meta.title,
@@ -917,6 +1014,9 @@ export function parseAlsXml(xml: string): AlsProject {
       rigMarks: locators
         .filter((l) => isRigLocator(l.name) && l.beat >= loc.beat - 1e-6 && l.beat < endBeat)
         .map((l) => ({ bar: relBar(l.beat), name: l.name })),
+      timeSigNum: signature.num,
+      timeSigDen: signature.den,
+      caveats,
       rigTracks: rigTrackDefs
         .map((t) => ({
           name: t.name,
