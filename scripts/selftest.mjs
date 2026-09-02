@@ -3154,5 +3154,52 @@ group('the file API');
   server.close();
 }
 
+/* ------------------------ a group named a little differently ------------------------ */
+
+group('a group named a little differently');
+{
+  /*
+   * The locator and the group track are typed separately and drift: an
+   * ampersand against "and", a "Play in F" note the group never carried, a
+   * group that only began the name. And Live escapes the ampersand in the
+   * file, which read back literally matched nothing at all.
+   */
+  const { parseAlsXml, songKey, decodeXml } = await import('../src/lib/alsParser.ts');
+  check('an escaped ampersand reads back as one', decodeXml('Forever &amp; Always') === 'Forever & Always');
+  check('"&" and "and" are the same song', songKey('Forever &amp; Always') === songKey('Forever and Always'));
+  check('a "Play in" note is not part of the name', songKey('22 Song - Play in F') === '22 song', songKey('22 Song - Play in F'));
+  check('nor is a key in braces', songKey('Cruel Summer {A}') === 'cruel summer');
+
+  const audio = (id, group, name, at) => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      <AudioClip Id="1" Time="${at}"><CurrentStart Value="${at}" /><CurrentEnd Value="${at + 32}" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/${name}.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Forever and Always" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="3"><Time Value="128" /><Name Value="22 Song - Play in F" /></Locator>
+    <Locator Id="4"><Time Value="192" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="5"><Time Value="256" /><Name Value="Wildest Dreams" /></Locator>
+    <Locator Id="6"><Time Value="320" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Forever &amp; Always" /></GroupTrack>
+    ${audio(11, 10, 'FA Bass', 0)}
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="22" /></GroupTrack>
+    ${audio(21, 20, '22 Bass', 128)}
+    <GroupTrack Id="30"><TrackGroupId Value="-1" /><EffectiveName Value="SONG 3" /></GroupTrack>
+    ${audio(31, 30, 'WD Bass', 256)}
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const stemsOf = (title) => p.songs.find((s) => s.title === title)?.stems.map((s) => s.name).join() ?? 'no song';
+  check('an escaped ampersand still finds its group', stemsOf('Forever and Always') === 'FA Bass', stemsOf('Forever and Always'));
+  check('a group that only began the name is matched when it is the only one', stemsOf('22 Song - Play in F') === '22 Bass', stemsOf('22 Song - Play in F'));
+  check('a group named nothing like the song is matched by where its clips sit', stemsOf('Wildest Dreams') === 'WD Bass', stemsOf('Wildest Dreams'));
+  check('and no song is left without audio tracks', p.warnings.length === 0, JSON.stringify(p.warnings));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

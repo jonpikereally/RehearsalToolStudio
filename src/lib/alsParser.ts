@@ -278,7 +278,7 @@ function clipsOf(chunk: string, tag: 'MidiClip' | 'AudioClip'): Clip[] {
   return [...chunk.matchAll(re)]
     .map((m) => ({
       beat: parseFloat((m[1].match(/<CurrentStart Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
-      name: (m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? '',
+      name: decodeXml((m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? ''),
     }))
     .filter((c) => c.name && !Number.isNaN(c.beat))
     .sort((a, b) => a.beat - b.beat);
@@ -316,6 +316,38 @@ function trackByFlag(tracks: Track[], flag: RegExp): Track | undefined {
  * It is also the groundwork for rendering an arrangement, which needs to know
  * not just that a clip exists but which slice of which file it plays.
  */
+/** What Live wrote into an attribute, read back: `&amp;` is an ampersand. */
+export function decodeXml(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * A song's name as a group track and a locator would both spell it.
+ *
+ * The two are typed separately and drift: "Forever & Always" against
+ * "Forever and Always", a locator carrying "- Play in F" that the group
+ * never did, a stray bracket. Neither is wrong, so both are flattened
+ * before they are compared.
+ */
+export function songKey(name: string): string {
+  return decodeXml(name)
+    .toLowerCase()
+    .replace(/\s*[-–—(]\s*play(ed)?\s+in\s+[a-g][#b♯♭]?m?(inor|ajor)?\s*\)?\s*$/i, '')
+    .replace(/&/g, ' and ')
+    // A key or a version in brackets is a note on the name, not the name.
+    .replace(/\s*[\[{(][^\]})]*[\]})]/g, ' ')
+    .replace(/["'’‘.,!?:;]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function clipsOfTrack(track: Track): RawClip[] {
   const clips: RawClip[] = [];
   for (const m of track.chunk.matchAll(/<AudioClip Id="\d+"[^>]*>([\s\S]*?)<\/AudioClip>/g)) {
@@ -328,10 +360,13 @@ function clipsOfTrack(track: Track): RawClip[] {
     const end = num(/<CurrentEnd Value="([-\d.]+)"/);
     if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
 
-    const path =
+    // Read back as Live wrote it: a folder called "Forever & Always" is
+    // "Forever &amp; Always" in the file, and matches no file by that name.
+    const path = decodeXml(
       (body.match(/<RelativePath Value="([^"]+)"/) ??
         body.match(/<Path Value="([^"]+)"/) ??
-        [])[1] ?? '';
+        [])[1] ?? '',
+    );
 
     /*
      * Which slice of the file plays. Ableton counts this in beats from the
@@ -568,7 +603,7 @@ export function parseAlsXml(xml: string): AlsProject {
       kind: (chunk.match(/^<(\w+)/) ?? [])[1] ?? '',
       id: (chunk.match(/^<\w+ Id="(\d+)"/) ?? [])[1] ?? '',
       groupId: (chunk.match(/<TrackGroupId Value="(-?\d+)"/) ?? [])[1] ?? '-1',
-      name: (chunk.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? '',
+      name: decodeXml((chunk.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? ''),
       chunk,
     }));
 
@@ -620,7 +655,7 @@ export function parseAlsXml(xml: string): AlsProject {
   const locators = [...xml.matchAll(/<Locator Id="\d+">([\s\S]*?)<\/Locator>/g)]
     .map((m) => ({
       beat: parseFloat((m[1].match(/<Time Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
-      name: (m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? '',
+      name: decodeXml((m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? ''),
     }))
     .filter((l) => !Number.isNaN(l.beat))
     .sort((a, b) => a.beat - b.beat);
@@ -662,6 +697,42 @@ export function parseAlsXml(xml: string): AlsProject {
     return cur;
   };
 
+  /*
+   * The group track that is this song's. By name first, the way both were
+   * meant to agree; then by a name one of them only began ("22" for "22
+   * Song"), when only one group could; and failing both, by position — the
+   * group whose clips mostly sit inside the song's bars, which is what a
+   * group being a song's means in the arrangement whatever it was called.
+   */
+  const claimed = new Set<Track>();
+  const groupFor = (title: string, startBeat: number, endBeat: number): Track | undefined => {
+    const key = songKey(title);
+    const free = songGroups.filter((g) => !claimed.has(g));
+    let found = free.find((g) => songKey(g.name) === key);
+    if (!found && key) {
+      const partial = free.filter((g) => {
+        const gk = songKey(g.name);
+        return gk && (key.startsWith(gk + ' ') || gk.startsWith(key + ' '));
+      });
+      if (partial.length === 1) found = partial[0];
+    }
+    if (!found) {
+      const inside = (g: Track) => {
+        const clips = tracks
+          .filter((t) => t.kind === 'AudioTrack' && rootOf(t) === g)
+          .flatMap(clipsOfTrack);
+        if (!clips.length) return 0;
+        const within = clips.filter((c) => c.startBeat >= startBeat - 1e-6 && c.startBeat < endBeat).length;
+        return within / clips.length;
+      };
+      const scored = free.map((g) => ({ g, share: inside(g) })).filter((x) => x.share > 0.5);
+      scored.sort((a, b) => b.share - a.share);
+      found = scored[0]?.g;
+    }
+    if (found) claimed.add(found);
+    return found;
+  };
+
   const warnings: string[] = [];
   const songs: AlsSong[] = songLocators.map((loc, index) => {
     const meta = parseLocatorName(loc.name);
@@ -699,9 +770,7 @@ export function parseAlsXml(xml: string): AlsProject {
     };
 
     // Match a group track to the song by name, so stems can be attributed.
-    const group = songGroups.find(
-      (g) => g.name.trim().toLowerCase() === meta.title.trim().toLowerCase(),
-    );
+    const group = groupFor(meta.title, loc.beat, endBeat);
     const stems = group
       ? tracks
           .filter((t) => t.kind === 'AudioTrack' && rootOf(t) === group)
