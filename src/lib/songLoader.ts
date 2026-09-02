@@ -1,5 +1,5 @@
 import type { Song, Variant } from '../types';
-import { isLocal, readBytes } from './source';
+import { availability, isLocal, readBytes } from './source';
 import { fileKey, getFile, putFile } from './idb';
 import { getShiftedBuffer } from './pitchService';
 import type { SongEngine, TrackConfig } from './audioEngine';
@@ -153,6 +153,41 @@ export function isSetClick(song: Song, variant: Variant): boolean {
   return !!song.setPath && variant.name.trim().toLowerCase() === 'click';
 }
 
+/** One file of a song, and which part wants it. */
+export interface FileStanding {
+  part: string;
+  path: string;
+}
+
+/** Every file the song's parts want, sorted by whether it can be had. */
+export interface FilesReport {
+  missing: FileStanding[];
+  forbidden: FileStanding[];
+}
+
+/**
+ * What of the song is not there to play: files not in the folder, and
+ * files in a folder the studio has not been allowed to read. Every part's
+ * file and every clip of an arranged part, each asked about once.
+ */
+export async function filesReport(song: Song): Promise<FilesReport> {
+  const wanted = new Map<string, string>();
+  for (const v of variantsToLoad(song)) {
+    if (v.clips?.length) {
+      for (const c of v.clips) if (!wanted.has(c.path.toLowerCase())) wanted.set(c.path.toLowerCase(), v.name);
+    } else if (!wanted.has(v.path.toLowerCase())) {
+      wanted.set(v.path.toLowerCase(), v.name);
+    }
+  }
+  const report: FilesReport = { missing: [], forbidden: [] };
+  for (const [path, part] of wanted) {
+    const standing = await availability(path);
+    if (standing === 'missing') report.missing.push({ part, path });
+    if (standing === 'forbidden') report.forbidden.push({ part, path });
+  }
+  return report;
+}
+
 export interface LoadOptions {
   semitones: number;
   /** Playback speed vs the recording: 1 untouched, 0.9 a tenth slower. */
@@ -160,6 +195,8 @@ export interface LoadOptions {
   budgetBytes: number;
   /** Imitate the set's devices and buses in Web Audio. Off plays the files raw. */
   effects?: boolean;
+  /** A part that could not be loaded is left out and reported here, not fatal. */
+  onSkip?: (variant: Variant, reason: string) => void;
   onProgress?: (p: LoadProgress) => void;
   signal?: AbortSignal;
 }
@@ -217,9 +254,15 @@ export async function loadSong(
       for (const [i, clip] of arranged.entries()) {
         let buffer = files.get(clip.path.toLowerCase());
         if (!buffer) {
-          const { bytes } = await readBytes(clip.path, undefined, signal);
-          report('decoding', i / arranged.length, true);
-          buffer = await engine.decode(bytes);
+          try {
+            const { bytes } = await readBytes(clip.path, undefined, signal);
+            report('decoding', i / arranged.length, true);
+            buffer = await engine.decode(bytes);
+          } catch (err) {
+            if ((err as { name?: string })?.name === 'AbortError') throw err;
+            // One clip whose file is not to be had: the rest still play.
+            continue;
+          }
           files.set(clip.path.toLowerCase(), buffer);
         }
         /*
@@ -253,6 +296,7 @@ export async function loadSong(
           gain: clip.gain,
         });
       }
+      if (!placements.length) throw new Error('none of its files are here');
       const durationSec = Math.max(...placements.map((p) => p.endSec));
       const channels = Math.min(2, Math.max(...placements.map((p) => p.buffer.numberOfChannels)));
       original = await renderTrack(placements, durationSec, ctx.sampleRate, channels);
@@ -295,7 +339,21 @@ export async function loadSong(
     done++;
   };
 
-  await inParallel(variants, concurrencyLimit(), loadOne);
+  /*
+   * A part that cannot be loaded — its file missing, or in a folder the
+   * studio may not read — is left out and said so, and the song still opens
+   * with the rest. It used to take the whole song down with it.
+   */
+  const loadOrSkip = async (variant: Variant): Promise<void> => {
+    try {
+      await loadOne(variant);
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') throw err;
+      opts.onSkip?.(variant, err instanceof Error ? err.message : String(err));
+      done++;
+    }
+  };
+  await inParallel(variants, concurrencyLimit(), loadOrSkip);
 
   if (signal?.aborted) throw new DOMException('Load cancelled', 'AbortError');
 

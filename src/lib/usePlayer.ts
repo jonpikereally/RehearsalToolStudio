@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { SongEngine, type LoopRegion } from './audioEngine';
-import { clearDecodedCache, downloadPlan, loadSong, variantsToLoad, visibleVariants, type DownloadItem, type LoadProgress } from './songLoader';
+import { clearDecodedCache, downloadPlan, filesReport, loadSong, variantsToLoad, visibleVariants, type DownloadItem, type FilesReport, type LoadProgress } from './songLoader';
 import { setSkipped, skippedFor } from './loadPrefs';
 import { barToSec, clickBeats, nudgeBars, secToBar } from './bars';
 import { resetMix, saveSetting } from './stemMix';
@@ -119,31 +119,27 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
    */
   const [choice, setChoice] = useState<DownloadItem[] | null>(null);
   const [choosing, setChoosing] = useState(false);
-  const askedRef = useRef<string | null>(null);
 
+  /*
+   * What of the song is not here, worked out as it opens: files not in the
+   * folder, files in a folder the studio may not read, parts that failed to
+   * load. Said on the page, once; nothing is asked. The parts picker stays
+   * behind its button for choosing what to load.
+   */
+  const [files, setFiles] = useState<FilesReport & { failed: { part: string; reason: string }[] }>({
+    missing: [],
+    forbidden: [],
+    failed: [],
+  });
   useEffect(() => {
     if (!song) return;
     let cancelled = false;
-    if (askedRef.current === song.id) return;
-    askedRef.current = song.id;
-    void (async () => {
-      const plan = await downloadPlan(song);
-      if (cancelled) return;
-      const skipped = new Set(skippedFor(song.id));
-      const wouldFetch = plan.some((item) => !item.cached && !skipped.has(item.variant.id));
-      if (!wouldFetch) return;
-      setChoice(plan);
-      setChoosing(true);
-    })();
+    setFiles({ missing: [], forbidden: [], failed: [] });
+    void filesReport(song).then((report) => {
+      if (!cancelled) setFiles((f) => ({ ...report, failed: f.failed }));
+    });
     return () => {
       cancelled = true;
-      /*
-       * Let a remount ask again. React sets an effect up, tears it down and
-       * sets it up once more in development, and a guard that outlives the
-       * teardown leaves the second run thinking the question was already put —
-       * so the picker never appeared there at all.
-       */
-      if (askedRef.current === song.id) askedRef.current = null;
     };
   }, [song?.id]);
 
@@ -217,6 +213,8 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
           effects,
           signal: controller.signal,
           onProgress: reportProgress,
+          onSkip: (variant, reason) =>
+            setFiles((f) => ({ ...f, failed: [...f.failed.filter((x) => x.part !== variant.name), { part: variant.name, reason }] })),
         });
         if (controller.signal.aborted) return;
 
@@ -619,6 +617,8 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     downloadChoice: choosing ? choice : null,
     openDownloadPicker,
     confirmDownloads,
+    /** What of the song is not here to play. */
+    files,
     skippedVariants: song ? skippedFor(song.id) : [],
     setSwitched,
     audioReport,

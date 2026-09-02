@@ -3577,6 +3577,12 @@ group("the set's click and cues");
     check('and remembers the sample\'s absolute path', click.clips[0].absPath === '/Users/x/Resources/Click/MetronomeUp.wav');
     const imported = songsFromProject(rp, '/Set.als', [{ path: '/Stems/Bass.wav', name: 'Bass.wav', rev: 'r', size: 1 }], new Map()).songs[0];
     const part = imported.variants.find((v) => v.name === 'Click');
+    {
+      const { versionsOf } = await import('../src/lib/versions.ts');
+      const got = songsFromProject(rp, '/Set.als', [{ path: '/Stems/Bass.wav', name: 'Bass.wav', rev: 'r', size: 1 }], new Map()).songs[0];
+      check('everything a set gives a song is one version, whatever folders it came from',
+        versionsOf(got.variants, got.title).length === 1, String(versionsOf(got.variants, got.title).length));
+    }
     check('a sample outside the folder is named absolutely, read-only, when the folder has no copy',
       part?.clips?.length === 16 && part.clips[0].path === 'abs:/Users/x/Resources/Click/MetronomeUp.wav' && part.path.startsWith('abs:'),
       JSON.stringify([part?.path, part?.clips?.[0]?.path]));

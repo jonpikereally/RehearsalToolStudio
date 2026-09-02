@@ -33,6 +33,7 @@ import TimecodeDialog from './TimecodeDialog';
 import PrepareSongDialog from './PrepareSongDialog';
 import { hasDevices } from '../lib/usePlayer';
 import { isAbsoluteRef } from '../lib/localSource';
+import type { FileStanding } from '../lib/songLoader';
 import { chainSummary, unsupportedIn } from '../lib/fx';
 import DownloadDialog from './DownloadDialog';
 import BlockHead from './BlockHead';
@@ -46,7 +47,7 @@ import type { Marker, Song } from '../types';
 const LOOP_LENGTHS = [2, 4, 8, 16];
 
 export default function PlayerView({ songId, setlistId }: { songId: string; setlistId: string | null }) {
-  const { library, settings, updateSong, resourcesFolderName, pickResourcesFolder } = useStore();
+  const { library, settings, updateSong, pickResourcesFolder } = useStore();
   const [resourcesError, setResourcesError] = useState<string | null>(null);
   const song = library.songs.find((s) => s.id === songId) ?? null;
   const player = usePlayer(song, settings.cacheBudgetGB, settings.keepAwake);
@@ -406,26 +407,50 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
-        {externalRoot(song) && !resourcesFolderName && (
+        {(player.files.forbidden.length > 0 || player.files.missing.length > 0 || player.files.failed.length > 0) && (
           <div className="notice stack">
-            <span>
-              <strong>The click and cues are samples outside your folder</strong>, in{' '}
-              <span className="code">{externalRoot(song)}</span>. Allow the studio to read that
-              folder — read only — and they play as in Live.
-            </span>
-            {resourcesError && <span style={{ color: 'var(--bad)' }}>{resourcesError}</span>}
-            <div className="btn-row">
-              <button
-                className="btn primary"
-                onClick={() =>
-                  void pickResourcesFolder(externalRoot(song) ?? undefined).catch((err) => {
-                    if (!/abort/i.test(String(err?.message ?? err))) setResourcesError(String(err?.message ?? err));
-                  })
-                }
-              >
-                Allow that folder
-              </button>
-            </div>
+            {player.files.forbidden.length > 0 && (
+              <>
+                <span>
+                  <strong>
+                    {player.files.forbidden.length} file{player.files.forbidden.length === 1 ? '' : 's'} for this song
+                    {player.files.forbidden.length === 1 ? ' is' : ' are'} in a folder the studio hasn't been allowed to read
+                  </strong>
+                  {commonFolder(player.files.forbidden) ? (
+                    <>
+                      : <span className="code">{commonFolder(player.files.forbidden)}</span>
+                    </>
+                  ) : null}
+                  . Read only, never written.
+                </span>
+                {resourcesError && <span style={{ color: 'var(--bad)' }}>{resourcesError}</span>}
+                <div className="btn-row">
+                  <button
+                    className="btn primary"
+                    onClick={() =>
+                      void pickResourcesFolder(commonFolder(player.files.forbidden) ?? undefined).catch((err) => {
+                        if (!/abort/i.test(String(err?.message ?? err))) setResourcesError(String(err?.message ?? err));
+                      })
+                    }
+                  >
+                    Allow that folder
+                  </button>
+                </div>
+              </>
+            )}
+            {player.files.missing.length > 0 && (
+              <span>
+                <strong>Not in your folder:</strong> {describeStanding(player.files.missing)}. Copy{' '}
+                {player.files.missing.length === 1 ? 'it' : 'them'} in and rescan; the song plays without{' '}
+                {player.files.missing.length === 1 ? 'it' : 'them'} until then.
+              </span>
+            )}
+            {player.files.failed.length > 0 && (
+              <span>
+                <strong>Left out:</strong>{' '}
+                {player.files.failed.map((f) => `${f.part} (${f.reason})`).join('; ')}.
+              </span>
+            )}
           </div>
         )}
         {hasDevices(song) && !player.effectsDecided && (
@@ -1174,16 +1199,9 @@ function describeDevices(song: Song): string {
   return `${list}${no}`;
 }
 
-/**
- * The folder the song's outside samples share, when it has any: the longest
- * path every one of them starts with, offered as the folder to allow.
- */
-function externalRoot(song: Song): string | null {
-  const paths: string[] = [];
-  for (const v of song.variants) {
-    if (isAbsoluteRef(v.path)) paths.push(v.path.slice(4));
-    for (const c of v.clips ?? []) if (isAbsoluteRef(c.path)) paths.push(c.path.slice(4));
-  }
+/** The folder a set of files share, when they do: the longest path they all start with. */
+function commonFolder(files: FileStanding[]): string | null {
+  const paths = files.map((f) => (isAbsoluteRef(f.path) ? f.path.slice(4) : f.path));
   if (!paths.length) return null;
   let parts = paths[0].split('/').slice(0, -1);
   for (const p of paths.slice(1)) {
@@ -1193,6 +1211,15 @@ function externalRoot(song: Song): string | null {
     parts = parts.slice(0, i);
   }
   return parts.length > 1 ? parts.join('/') : null;
+}
+
+/** "REF DRUMS (Cruel Summer_Drums.wav), Cues (3 files)" — by part, files named when few. */
+function describeStanding(files: FileStanding[]): string {
+  const byPart = new Map<string, string[]>();
+  for (const f of files) byPart.set(f.part, [...(byPart.get(f.part) ?? []), f.path.split('/').pop() ?? f.path]);
+  return [...byPart]
+    .map(([part, names]) => (names.length <= 2 ? `${part} (${names.join(', ')})` : `${part} (${names.length} files)`))
+    .join(', ');
 }
 
 /** A bar for a rig clip: whole when it is, else to a tenth. */

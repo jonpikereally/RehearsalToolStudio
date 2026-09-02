@@ -46,6 +46,20 @@ export async function listAll(onProgress?: (count: number) => void): Promise<Fil
 /* --------------------------------- reading -------------------------------- */
 
 /** True when this file is in the folder. */
+/**
+ * Where a file stands: here, not there, or in a folder the studio has not
+ * been allowed to read. A check that could not be made at all counts as
+ * here — a momentary gap in the server is not a missing file.
+ */
+export async function availability(path: string): Promise<'here' | 'missing' | 'forbidden'> {
+  if (!localReady()) return 'here';
+  try {
+    return (await local.exists(config.folder!, config.root, path)) ? 'here' : 'missing';
+  } catch (err) {
+    return /not a folder the studio was given/.test(String((err as Error)?.message ?? err)) ? 'forbidden' : 'here';
+  }
+}
+
 export async function isLocal(path: string): Promise<boolean> {
   if (!localReady()) return false;
   // A check that could not be made is not a file that is not there.

@@ -265,6 +265,9 @@ export function songsFromProject(
         id: file.path.toLowerCase(),
         name: label,
         role: roleForTrack(label),
+        // One set, one version: a click or a cue from another folder is not
+        // a version of the song, whatever folder it came from.
+        versionId: setlistIdFor(alsPath),
         path: file.path,
         rev: file.rev,
         sizeBytes: file.size,
