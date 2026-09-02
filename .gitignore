@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Local, machine-specific Claude Code settings
+.claude/settings.local.json
+
+# The library file. It belongs in whatever folder you scan, never in the repo.
+.learning-songs.json
+Mac apps/
+lyrics-studio/.state.json
+lyrics-studio/server.log
+lyrics-studio/__pycache__/
+.studio-build.log
+tsconfig.tsbuildinfo

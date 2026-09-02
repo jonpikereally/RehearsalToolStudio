@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyrics Studio</title>
+<style>
+  :root {
+    --bg: #14151a; --panel: #1d1f27; --panel2: #242732;
+    --text: #e8e9ee; --dim: #9aa0ae; --accent: #6ee7b7; --accent2: #60a5fa;
+    --border: #32363f; --err: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh; padding: 2rem 1.5rem;
+  }
+  /* Room to work on a desktop, still a readable measure on a laptop. */
+  .wrap { max-width: min(1400px, 100%); margin: 0 auto; }
+  h1 { font-size: 1.5rem; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--dim); font-size: 0.85rem; margin: 0.2rem 0 1.5rem; }
+
+  #drop {
+    border: 2px dashed var(--border); border-radius: 14px;
+    background: var(--panel); padding: 2.2rem 1rem; text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: var(--panel2); }
+  #drop .big { font-size: 1.05rem; margin-bottom: 0.3rem; }
+  #drop .hint { color: var(--dim); font-size: 0.85rem; }
+  #drop input { display: none; }
+  .opts { display: flex; gap: 1.5rem; justify-content: center; margin-top: 1rem;
+          color: var(--dim); font-size: 0.85rem; flex-wrap: wrap; }
+  .opts label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+
+  .card { background: var(--panel); border: 1px solid var(--border);
+          border-radius: 14px; padding: 1.2rem 1.4rem; margin-top: 1rem; }
+  .card h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;
+             color: var(--dim); margin-bottom: 0.8rem; }
+
+  #queueCard { display: none; }
+  .qrow {
+    display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 0.7rem;
+    border-radius: 9px; cursor: pointer; border: 1px solid transparent;
+  }
+  .qrow:hover { background: var(--panel2); }
+  .qrow.selected { background: var(--panel2); border-color: var(--accent); }
+  .qrow .qname { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .qrow .qmeta { color: var(--dim); font-size: 0.8rem; white-space: nowrap; }
+  .chip { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 99px;
+          white-space: nowrap; }
+  .chip.queued  { background: var(--panel2); color: var(--dim); border: 1px solid var(--border); }
+  .chip.working { background: #1e3a5f; color: var(--accent2); }
+  .chip.done    { background: #123528; color: var(--accent); }
+  .chip.error   { background: #3b1a1a; color: var(--err); }
+  .spinner {
+    display: inline-block; width: 11px; height: 11px; vertical-align: -1px;
+    border: 2px solid var(--border); border-top-color: var(--accent2);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 0.35rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner.big { width: 15px; height: 15px; vertical-align: -2px; margin-right: 0.5rem; }
+  #status { display: none; margin-top: 1rem; padding: 0.7rem;
+            text-align: center; color: var(--text); font-size: 0.92rem;
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 12px; }
+  .batchbar { display: flex; align-items: center; gap: 1rem; margin-top: 0.9rem;
+              flex-wrap: wrap; }
+  .batchbar .meta { color: var(--dim); font-size: 0.85rem; }
+
+  #results { display: none; }
+  #lyricsText { white-space: pre-wrap; max-height: 320px; overflow-y: auto;
+                font-size: 0.95rem; }
+  #lyricsText details { border: 1px solid var(--border); border-radius: 10px;
+                        margin-bottom: 0.5rem; background: var(--panel2); }
+  .songintro { color: var(--dim); font-size: 0.82rem; margin-bottom: 0.5rem; }
+  .songhead { cursor: pointer; padding: 0.55rem 0.7rem; list-style: none;
+              display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem; }
+  .songhead .stitle { color: var(--accent); font-weight: 600; font-size: 0.95rem; }
+  .songhead .sfacts { color: var(--dim); font-size: 0.8rem; }
+  .songhead.empty .stitle { color: var(--dim); font-weight: 400; }
+  details[open] > .songhead { border-bottom: 1px solid var(--border); }
+  .tempotable { display: flex; flex-direction: column; gap: 0.25rem;
+                margin-bottom: 0.4rem; }
+  .temporow { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+              padding: 0.4rem 0.6rem; background: var(--panel2);
+              border: 1px solid var(--border); border-radius: 9px; }
+  .temporow .tbpm { color: var(--accent); font-weight: 700; font-size: 1rem;
+                    min-width: 90px; }
+  .temporow .tname { flex: 1; min-width: 140px; }
+  .songhead::-webkit-details-marker { display: none; }
+  .songhead.empty { color: var(--dim); font-weight: 400; }
+  .songhead::before { content: "▸ "; color: var(--dim); }
+  details[open] .songhead::before { content: "▾ "; }
+  .songlines { padding: 0 0.9rem 0.7rem 1.5rem; white-space: pre-wrap;
+               font-size: 0.9rem; }
+  .controls { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 0.8rem; color: var(--dim); margin-bottom: 0.35rem; }
+  input[type=number] {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.45rem 0.6rem; width: 90px; font-size: 0.95rem;
+  }
+  .slider-field { flex: 1; min-width: 260px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ticks { display: flex; justify-content: space-between; font-size: 0.78rem;
+           color: var(--dim); margin-top: 0.15rem; }
+  .ticks span.active { color: var(--accent); font-weight: 600; }
+  #noteCount { font-size: 0.85rem; color: var(--accent2); margin-top: 0.5rem; }
+
+  #timeline { position: relative; height: 74px; background: var(--panel2);
+              border-radius: 10px; overflow-x: auto; overflow-y: hidden; margin-top: 0.9rem; }
+  #timelineInner { position: relative; height: 100%; }
+  .note {
+    position: absolute; top: 12px; height: 50px; background: var(--accent);
+    color: #0b2b1e; border-radius: 6px; font-size: 0.7rem; overflow: hidden;
+    padding: 3px 5px; white-space: nowrap; text-overflow: ellipsis; opacity: 0.92;
+  }
+  .btns { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-top: 1.1rem; }
+  button {
+    background: var(--accent); color: #08251a; border: none; border-radius: 10px;
+    padding: 0.6rem 1.1rem; font-size: 0.92rem; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: var(--panel2); color: var(--text);
+                     border: 1px solid var(--border); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:not(:disabled):hover { filter: brightness(1.1); }
+  .meta { color: var(--dim); font-size: 0.85rem; }
+  .pathlink { color: var(--accent2); cursor: pointer; text-decoration: none;
+              word-break: break-all; }
+  .pathlink:hover { text-decoration: underline; }
+  select.dd { background: var(--panel2); color: var(--text); max-width: 340px;
+              border: 1px solid var(--border); border-radius: 8px;
+              padding: 0.45rem 0.6rem; font-size: 0.9rem; }
+  button.on { background: var(--accent); color: #08251a; border-color: var(--accent); }
+  .regionmenu { position: relative; }
+  .regionmenu > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.45rem 0.7rem; font-size: 0.9rem; white-space: nowrap; }
+  .regionmenu > summary::-webkit-details-marker { display: none; }
+  .regionmenu > summary::after { content: " ▾"; color: var(--dim); }
+  .regionmenu[open] > summary::after { content: " ▴"; }
+  .regionmenu[aria-disabled="true"] > summary { opacity: 0.45; cursor: default; }
+  #regionList {
+    position: absolute; z-index: 20; margin-top: 0.35rem; left: 0; min-width: 340px;
+    max-height: 260px; overflow-y: auto; padding: 0.5rem;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+  #regionList label { display: flex; gap: 0.5rem; align-items: flex-start;
+                      padding: 0.3rem 0.35rem; border-radius: 6px; font-size: 0.88rem;
+                      cursor: pointer; }
+  #regionList label:hover { background: var(--panel2); }
+  #regionList .rbars { color: var(--dim); white-space: nowrap; }
+  #regionList .rowbtns { display: flex; gap: 0.5rem; padding: 0.15rem 0.35rem 0.45rem; }
+  #regionList .rowbtns a { color: var(--accent2); cursor: pointer; font-size: 0.82rem; }
+  .ver { font-size: 0.75rem; font-weight: 400; color: var(--dim);
+         vertical-align: 0.35em; margin-left: 0.2rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Lyrics <span>Studio</span> <span id="ver" class="ver"></span></h1>
+  <p class="sub">Transcribe lyrics from songs and export them as timed MIDI clips. Runs entirely on this Mac.</p>
+
+  <div id="drop">
+    <div class="big">Drop songs here, or click to choose</div>
+    <div class="hint">mp3 · wav · m4a · flac · aiff · ogg — drop several to batch them.<br>
+      Drop an <b>.als</b> to work directly on an Ableton set: pick which track to
+      read the song from and which MIDI track gets the lyric clips.<br>
+      Have the official lyrics? Drop a .txt with the same name as the song
+      (e.g. <i>MySong.mp3</i> + <i>MySong.txt</i>) and they'll be aligned to the audio.</div>
+    <input type="file" id="fileInput" multiple accept="audio/*,.m4a,.flac,.aiff,.aif,.txt,.lrc,.als">
+    <div class="opts" onclick="event.stopPropagation()">
+      <label><input type="checkbox" id="isolate"> Isolate vocals first (slower, better on dense mixes)</label>
+      <label>Language
+        <select id="language" style="background:var(--panel2); color:var(--text);
+                border:1px solid var(--border); border-radius:6px; padding:0.2rem 0.4rem">
+          <option value="en" selected>English</option>
+          <option value="">Auto-detect</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="it">Italian</option>
+          <option value="ja">Japanese</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div id="status"><span class="spinner big"></span><span id="statusText"></span></div>
+
+  <div class="card" id="alsCard" style="display:none">
+    <h2>Ableton set <span class="meta" id="alsMeta"></span></h2>
+    <div class="controls">
+      <div class="field">
+        <label for="alsSource">Read the song audio from</label>
+        <select id="alsSource" class="dd"></select>
+        <label class="meta" for="srcPref" style="display:block; margin-top:0.35rem">
+          Always prefer the track named
+          <input type="text" id="srcPref" placeholder="e.g. SONG"
+                 style="width:110px; margin-left:0.3rem">
+        </label>
+      </div>
+      <div class="field">
+        <label for="alsTarget">Write lyric clips to</label>
+        <select id="alsTarget" class="dd"></select>
+        <label class="meta" id="keepRow"
+               style="display:none; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer">
+          <input type="checkbox" id="keepExisting">
+          Don't delete its MIDI clips — add the lyrics alongside them
+        </label>
+      </div>
+      <div class="field" style="flex:1; min-width:320px">
+        <label>What to transcribe</label>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
+          <button class="secondary" id="fullTrackBtn" onclick="toggleFullTrack()">Full track</button>
+          <span class="meta">bars</span>
+          <input type="number" id="alsFromBar" min="1" step="1" placeholder="from" style="width:76px">
+          <span class="meta">to</span>
+          <input type="number" id="alsToBar" min="1" step="1" placeholder="to" style="width:76px">
+          <details id="regionMenu" class="regionmenu">
+            <summary id="regionSummary">Regions: all</summary>
+            <div id="regionList"></div>
+          </details>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:0">
+        <button onclick="alsTranscribe()">Transcribe</button>
+      </div>
+    </div>
+    <p class="meta" id="alsRangeHint" style="margin-top:0.5rem"></p>
+    <p class="meta" style="margin-top:0.6rem">
+      The lyric clips replace whatever arrangement clips are on the chosen MIDI
+      track. The set is saved in place, with a timestamped copy of the original
+      dropped into its Backup folder first.
+    </p>
+  </div>
+
+  <div class="card" id="queueCard">
+    <h2>Queue</h2>
+    <div id="queueList"></div>
+    <div class="batchbar">
+      <button id="batchBtn" onclick="downloadBatch()" disabled>Download all (.zip)</button>
+      <span class="meta" id="batchMeta"></span>
+    </div>
+  </div>
+
+  <div id="results">
+    <div class="card">
+      <h2>Lyrics <span class="meta" id="songMeta"></span></h2>
+      <div id="lyricsText"></div>
+      <div class="btns">
+        <button class="secondary" onclick="downloadTxt()">Download .txt</button>
+        <button class="secondary" onclick="downloadSrt()">Download .srt</button>
+        <button class="secondary" onclick="togglePaste()">Paste official lyrics…</button>
+      </div>
+      <div id="pasteBox" style="display:none; margin-top:0.9rem">
+        <textarea id="pasteLyrics" rows="7" placeholder="Paste the real lyrics here, one line per lyric line. They'll be aligned to the audio's timing — your words and line breaks replace the transcription."
+          style="width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:0.6rem; font:inherit; font-size:0.9rem"></textarea>
+        <div class="btns" style="margin-top:0.6rem">
+          <button onclick="applyLyrics()">Align these lyrics</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Tempo</h2>
+      <p class="meta" id="tempoHelp" style="margin-bottom:0.8rem"></p>
+      <audio id="player" controls style="width:100%; height:34px; margin-bottom:0.8rem"></audio>
+      <div id="tempoFromSet" style="display:none"></div>
+      <div class="controls" id="tempoManual" style="align-items:center">
+        <div class="field">
+          <label for="bpm">BPM used for export</label>
+          <div style="display:flex; gap:0.5rem; align-items:center">
+            <input type="number" id="bpm" step="0.1" min="20" max="300"
+                   style="width:110px; font-size:1.15rem; font-weight:600">
+            <button id="setBpm" onclick="commitBpm()" disabled
+                    title="Apply this BPM (or press Enter in the field)">&#10003; set</button>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:0">
+          <button class="secondary" id="halfBtn" onclick="scaleBpm(0.5)" title="Half — if detection doubled it">÷2</button>
+          <button class="secondary" id="dblBtn" onclick="scaleBpm(2)" title="Double — if detection halved it">×2</button>
+          <button class="secondary" onclick="tapTempo()" id="tapBtn"
+                  title="Click on every beat while the song plays">Tap tempo</button>
+        </div>
+        <span class="meta" id="tapInfo"></span>
+        <span class="meta">detected:
+          <a href="#" id="detectedBpm" style="color:var(--accent2)"
+             title="Click to restore the detected value" onclick="resetBpm(); return false;"></a>
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>MIDI &amp; Ableton clips</h2>
+      <div class="controls">
+        <div class="field slider-field">
+          <label>Fineness — how the lyrics are chopped into notes (applies to all songs)</label>
+          <input type="range" id="fineness" min="0" max="2" step="1" value="1">
+          <div class="ticks">
+            <span data-i="0">Word</span><span data-i="1">Line</span><span data-i="2">Section</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="nudge">Nudge (ms)</label>
+          <div style="display:flex; gap:0.4rem; align-items:center">
+            <button class="secondary" onclick="bumpNudge(-100)" title="100ms earlier">−</button>
+            <input type="number" id="nudge" step="50" value="0" style="width:90px"
+                   title="Negative moves lyrics earlier, positive moves them later">
+            <button class="secondary" onclick="bumpNudge(100)" title="100ms later">+</button>
+          </div>
+        </div>
+      </div>
+      <div id="noteCount"></div>
+      <div id="timeline"><div id="timelineInner"></div></div>
+      <div class="btns">
+        <button id="saveAlsBtn" onclick="downloadAls()">Save Ableton set (.als)</button>
+        <button class="secondary" onclick="downloadMidi()">Download .mid</button>
+      </div>
+      <p class="meta" id="alsStatus" style="margin-top:0.7rem; color:var(--accent2)"></p>
+      <p class="meta" id="saveHelp" style="margin-top:0.4rem"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+fetch("/api/version").then(r => r.json())
+  .then(v => { $("ver").textContent = "v" + v.version; })
+  .catch(() => {});
+
+const FINENESS = ["word", "line", "section"];
+const SECTION_GAP = 1.8;
+let songs = [];         // {id, name, file, status, data, bpm, error}
+let selectedId = null;
+let nextId = 1;
+let processing = false;
+
+const $ = id => document.getElementById(id);
+const drop = $("drop"), fileInput = $("fileInput");
+
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("over");
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInput.value = ""; });
+
+async function addFiles(fileList) {
+  const texts = [], audio = [];
+  for (const file of fileList) {
+    if (/\.als$/i.test(file.name)) { await handleAlsFile(file); continue; }
+    (/\.(txt|lrc)$/i.test(file.name) ? texts : audio).push(file);
+  }
+
+  for (const file of audio) {
+    songs.push({
+      id: nextId++,
+      name: file.name.replace(/\.[^.]+$/, ""),
+      file, status: "queued", data: null, bpm: null, error: null,
+      lyricsText: null, aligned: false,
+    });
+  }
+  // attach lyric files to songs with the same name (new or already loaded)
+  for (const file of texts) {
+    const stem = file.name.replace(/\.[^.]+$/, "");
+    const song = songs.find(s => s.name === stem);
+    if (!song) { alert(`No song named "${stem}" for lyrics file ${file.name}`); continue; }
+    song.lyricsText = await file.text();
+    if (song.status === "done") await alignSong(song);
+  }
+  renderQueue();
+  processQueue();
+}
+
+async function alignSong(song) {
+  const res = await fetch("/api/align", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ segments: song.data.segments, lyrics: song.lyricsText }),
+  });
+  if (!res.ok) { alert("Alignment error: " + ((await res.json()).detail || res.statusText)); return; }
+  const out = await res.json();
+  song.data.segments = out.segments;
+  song.data.duration = out.duration;
+  song.aligned = true;
+  if (song.id === selectedId) select(song.id);
+  renderQueue();
+}
+
+async function processQueue() {
+  if (processing) return;
+  processing = true;
+  let song;
+  while ((song = songs.find(s => s.status === "queued"))) {
+    song.status = "working";
+    renderQueue();
+    const form = new FormData();
+    form.append("file", song.file);
+    form.append("isolate", $("isolate").checked);
+    form.append("language", $("language").value);
+    if (song.lyricsText) form.append("lyrics", song.lyricsText);
+    try {
+      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      song.data = await res.json();
+      song.bpm = song.data.bpm;
+      song.aligned = song.data.aligned;
+      song.status = "done";
+      // song.file is kept so the Tempo section can play the audio
+      if (selectedId === null) select(song.id);
+    } catch (err) {
+      song.status = "error";
+      song.error = err.message;
+    }
+    renderQueue();
+  }
+  processing = false;
+}
+
+function statusChip(s) {
+  if (s.status === "queued") return '<span class="chip queued">queued</span>';
+  if (s.status === "working") return '<span class="chip working"><span class="spinner"></span>transcribing</span>';
+  if (s.status === "done")
+    return s.aligned ? '<span class="chip done">aligned</span>' : '<span class="chip done">done</span>';
+  return `<span class="chip error" title="${s.error || ""}">error</span>`;
+}
+
+function togglePaste() {
+  const box = $("pasteBox");
+  box.style.display = box.style.display === "none" ? "block" : "none";
+  const song = selectedSong();
+  if (song && song.lyricsText) $("pasteLyrics").value = song.lyricsText;
+}
+
+async function applyLyrics() {
+  const song = selectedSong();
+  const text = $("pasteLyrics").value.trim();
+  if (!song || !text) return;
+  song.lyricsText = text;
+  await alignSong(song);
+}
+
+function renderQueue() {
+  $("queueCard").style.display = songs.length ? "block" : "none";
+  $("queueList").innerHTML = songs.map(s => `
+    <div class="qrow ${s.id === selectedId ? "selected" : ""}" onclick="select(${s.id})">
+      <span class="qname">${s.name}</span>
+      <span class="qmeta">${s.data ? fmtDur(s.data.duration) + " · " + s.bpm + " BPM" : ""}</span>
+      ${statusChip(s)}
+    </div>`).join("");
+  const done = songs.filter(s => s.status === "done");
+  $("batchBtn").disabled = !done.length;
+  const failed = songs.filter(s => s.status === "error").length;
+  $("batchMeta").textContent =
+    `${done.length} of ${songs.length} transcribed` + (failed ? ` · ${failed} failed` : "") +
+    (done.length ? ` — zip includes .als (AbleSet lyrics track), .mid, .txt and .srt for each song` : "");
+}
+
+function fmtDur(d) {
+  return Math.floor(d / 60) + ":" + String(Math.round(d % 60)).padStart(2, "0");
+}
+
+function renderSetTempo(song) {
+  const box = $("tempoFromSet");
+  box.textContent = "";
+  const list = song.data.songs || [];
+  const table = document.createElement("div");
+  table.className = "tempotable";
+  for (const s of list) {
+    const row = document.createElement("div");
+    row.className = "temporow";
+    const name = document.createElement("span");
+    name.className = "tname";
+    name.textContent = `${s.index}. ${s.name}`;
+    const bpm = document.createElement("span");
+    bpm.className = "tbpm";
+    bpm.textContent = `${s.tempo} BPM`;
+    const bars = document.createElement("span");
+    bars.className = "meta";
+    bars.textContent = `bars ${s.start_bar}–${s.end_bar} · ${fmtClock(s.start_sec)}–${fmtClock(s.end_sec)}`;
+    row.append(bpm, name, bars);
+    table.appendChild(row);
+  }
+  box.appendChild(table);
+}
+
+function fmtClock(sec) {
+  return Math.floor(sec / 60) + ":" + String(Math.floor(sec % 60)).padStart(2, "0");
+}
+
+// A set can hold several songs; show each region's own tempo, position and lyrics
+function renderLyrics(song) {
+  const box = $("lyricsText");
+  box.textContent = "";
+  const list = song.data.songs || [];
+  if (!list.length) {
+    box.textContent = song.data.segments.map(s => s.text).join("\n");
+    return;
+  }
+  if (list.length > 1) {
+    const intro = document.createElement("div");
+    intro.className = "songintro";
+    intro.textContent = `${list.length} songs on this track — click one to read its lyrics`;
+    box.appendChild(intro);
+  }
+  for (const s of list) {
+    const details = document.createElement("details");
+    // with several songs, start collapsed so the list reads as an index
+    details.open = list.length === 1 && s.lines.length > 0;
+    const summary = document.createElement("summary");
+    summary.className = "songhead" + (s.lines.length ? "" : " empty");
+
+    const title = document.createElement("span");
+    title.className = "stitle";
+    title.textContent = `${s.index}. ${s.name}`;
+    const facts = document.createElement("span");
+    facts.className = "sfacts";
+    facts.textContent =
+      `${s.tempo} BPM · bars ${s.start_bar}–${s.end_bar} · ` +
+      `${fmtClock(s.start_sec)}–${fmtClock(s.end_sec)} · ` +
+      (s.lines.length ? `${s.lines.length} lines` : "no lyrics found");
+    summary.append(title, facts);
+
+    const body = document.createElement("div");
+    body.className = "songlines";
+    body.textContent = s.lines.length
+      ? s.lines.join("\n")
+      : "Nothing was transcribed here — an instrumental section, or the vocal is too quiet.";
+    details.append(summary, body);
+    box.appendChild(details);
+  }
+}
+
+function selectedSong() { return songs.find(s => s.id === selectedId); }
+
+function select(id) {
+  const song = songs.find(s => s.id === id);
+  if (!song || !song.data) { selectedId = id; renderQueue(); $("results").style.display = "none"; return; }
+  selectedId = id;
+  renderQueue();
+  $("results").style.display = "block";
+  renderLyrics(song);
+  const r = song.als && song.als.regions;
+  const nSongs = (song.data.songs || []).length;
+  const tr = song.data.tempo_range;
+  $("songMeta").textContent =
+    ` — ${song.name} · ${fmtDur(song.data.duration)} · ` +
+    (nSongs > 1 ? `${nSongs} songs · ` : "") +
+    (song.als
+      ? (song.data.tempo_changes
+          ? `${tr[0]}–${tr[1]} BPM from your set`
+          : `${song.data.bpm} BPM from your set`)
+      : `detected ${song.data.bpm} BPM`) +
+    ` · ${song.data.language}` +
+    (r ? ` · ${r.transcribed} of ${r.total} regions` +
+         (r.missing ? `, ${r.missing} unreadable` : "") +
+         (r.short ? `, ${r.short} too short` : "") +
+         (r.out_of_range ? `, ${r.out_of_range} outside the bar range` : "") : "") +
+    (song.data.range ? ` · bars ${song.data.range.start_bar ?? "start"}–${song.data.range.end_bar ?? "end"}` : "") +
+    (song.data.lag_ms ? ` · auto-aligned ${song.data.lag_ms > 0 ? "+" : ""}${song.data.lag_ms} ms` : "") +
+    (song.aligned ? " · aligned to your lyrics" : "");
+  $("bpm").value = song.bpm;
+  setBpmButtonState(true);
+  $("tapInfo").textContent = "";
+  // songs read from an Ableton set use the set's own tempo — not editable here
+  const locked = !!song.als;
+  for (const id of ["bpm", "halfBtn", "dblBtn", "tapBtn"]) $(id).disabled = locked;
+  const changes = song.data.tempo_changes || 0;
+  const range = song.data.tempo_range;
+  $("detectedBpm").textContent = locked
+    ? (changes
+        ? `${range[0]}–${range[1]} BPM, ${changes} change${changes === 1 ? "" : "s"} (from your set)`
+        : `${song.data.bpm} BPM (from your set)`)
+    : song.data.bpm + " BPM";
+
+  // A set carries its own tempo (often several); the manual BPM controls only
+  // make sense for a plain audio file, so show a read-only summary instead.
+  $("tempoManual").style.display = locked ? "none" : "flex";
+  $("tempoFromSet").style.display = locked ? "block" : "none";
+  $("tempoHelp").textContent = locked
+    ? (song.data.tempo_source === "leader"
+        ? "Tempo is read from the tempo-leader clips in your set — their warping "
+          + "drives the song tempo, so that is what these figures and the clip "
+          + "positions follow."
+        : "Tempo comes from your Ableton set, including any tempo changes — there "
+          + "is nothing to set here. Clip positions follow the set's tempo map, so "
+          + "they stay put across changes.")
+    : "Clip timing is written at this BPM — it must match your Ableton set's tempo, "
+      + "or every clip lands in the wrong place. Auto-detection can be off (often by "
+      + "exactly half or double); play the song and tap along to check.";
+  if (locked) renderSetTempo(song);
+  $("saveAlsBtn").textContent = locked
+    ? "Write lyrics into set" : "Save Ableton set (.als)";
+  // The keep-or-replace choice only exists when the chosen track has clips to
+  // lose. This render owns the row while a song is selected; the set card's
+  // target picker owns it while a target is being chosen.
+  $("keepRow").style.display = locked && song.als.targetHadClips ? "flex" : "none";
+  $("saveHelp").innerHTML = locked
+    ? `Writes the lyric clips onto the <b>${esc(song.als.targetLabel || "chosen MIDI track")}</b>
+       track of a <b>new copy</b> of your set, saved beside the original — which is
+       never modified. Clip positions follow your set's own tempo map, so they stay
+       put across tempo changes.`
+    : `Writes a Live set into a project folder <b>next to your original audio file</b>,
+       referencing the audio in place (no copy). Two tracks, already in time with each
+       other: <b>Lyrics +LYRICS</b> (one named clip per word/line/section,
+       AbleSet-compatible) and <b>Song Audio</b>. If the original can't be found on
+       disk, a project zip with the audio bundled downloads instead.`;
+  const player = $("player");
+  if (song.als && song.als.sample) {
+    player.src = "/api/audio?path=" + encodeURIComponent(song.als.sample);
+    player.style.display = "";
+  } else if (song.file) {
+    if (!song.audioUrl) song.audioUrl = URL.createObjectURL(song.file);
+    player.src = song.audioUrl;
+    player.style.display = "";
+  } else {
+    player.removeAttribute("src");
+    player.style.display = "none";
+  }
+  updatePreview();
+}
+
+// Typing alone doesn't change the export BPM — it must be confirmed with the
+// "set" button or Enter. Tap tempo, ÷2/×2 and restore-detected apply directly.
+function commitBpm() {
+  const song = selectedSong();
+  const v = parseFloat($("bpm").value);
+  if (!song) return;
+  if (!v || v < 20 || v > 300) { alert("Enter a BPM between 20 and 300."); return; }
+  song.bpm = Math.round(v * 10) / 10;
+  $("bpm").value = song.bpm;
+  setBpmButtonState(true);
+  renderQueue();
+}
+
+function setBpmButtonState(committed) {
+  const btn = $("setBpm");
+  btn.disabled = committed;
+  btn.innerHTML = committed ? "&#10003; set" : "set";
+}
+
+$("bpm").addEventListener("input", () => setBpmButtonState(false));
+$("bpm").addEventListener("keydown", e => { if (e.key === "Enter") commitBpm(); });
+
+function scaleBpm(f) {
+  const v = parseFloat($("bpm").value);
+  if (!v) return;
+  $("bpm").value = Math.round(v * f * 10) / 10;
+  commitBpm();
+}
+
+function resetBpm() {
+  const song = selectedSong();
+  if (!song) return;
+  $("bpm").value = song.data.bpm;
+  commitBpm();
+}
+
+let taps = [];
+function tapTempo() {
+  const now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+  taps.push(now);
+  if (taps.length < 2) { $("tapInfo").textContent = "keep tapping…"; return; }
+  const iv = taps.slice(1).map((t, i) => t - taps[i]).sort((a, b) => a - b);
+  const median = iv[Math.floor(iv.length / 2)];
+  const bpm = Math.round(60000 / median * 10) / 10;
+  $("bpm").value = bpm;
+  commitBpm();
+  $("tapInfo").textContent = `${taps.length} taps → ${bpm} BPM`;
+}
+
+// Whisper's segment bounds usually begin before the first word is sung, so
+// prefer the word timings when we have them — otherwise clips land early.
+function segSpan(s) {
+  const w = s.words || [];
+  return w.length ? [w[0].start, w[w.length - 1].end] : [s.start, s.end];
+}
+
+function nudgeSeconds() {
+  return (parseFloat($("nudge").value) || 0) / 1000;
+}
+
+function groupNotes(segments, fineness) {
+  let notes;
+  if (fineness === "word") {
+    const words = segments.flatMap(s => s.words);
+    notes = words.length ? words.map(w => ({ ...w }))
+      : segments.map(s => { const [a, b] = segSpan(s); return { text: s.text, start: a, end: b }; });
+  } else if (fineness === "line") {
+    notes = segments.map(s => { const [a, b] = segSpan(s); return { text: s.text, start: a, end: b }; });
+  } else {
+    notes = [];
+    for (const s of segments) {
+      const [start, end] = segSpan(s);
+      const last = notes[notes.length - 1];
+      if (last && start - last.end < SECTION_GAP) {
+        last.end = end; last.text += " " + s.text;
+      } else {
+        notes.push({ text: s.text, start, end });
+      }
+    }
+  }
+  const offset = nudgeSeconds();
+  if (offset) notes = notes.map(n => {
+    const start = Math.max(0, n.start + offset);
+    return { ...n, start, end: Math.max(start + 0.05, n.end + offset) };
+  });
+  return notes;
+}
+
+function updatePreview() {
+  const song = selectedSong();
+  if (!song || !song.data) return;
+  const level = +$("fineness").value;
+  document.querySelectorAll(".ticks span").forEach(el =>
+    el.classList.toggle("active", +el.dataset.i === level));
+  const notes = groupNotes(song.data.segments, FINENESS[level]);
+  $("noteCount").textContent =
+    `${notes.length} MIDI note${notes.length === 1 ? "" : "s"} (one per ${FINENESS[level]})`;
+
+  const pxPerSec = level === 0 ? 40 : 14;
+  const inner = $("timelineInner");
+  inner.style.width = Math.max(800, song.data.duration * pxPerSec + 20) + "px";
+  inner.innerHTML = "";
+  for (const n of notes) {
+    const el = document.createElement("div");
+    el.className = "note";
+    el.style.left = n.start * pxPerSec + "px";
+    el.style.width = Math.max(6, (n.end - n.start) * pxPerSec - 2) + "px";
+    el.textContent = n.text;
+    el.title = `${n.text}\n${n.start.toFixed(2)}s – ${n.end.toFixed(2)}s`;
+    inner.appendChild(el);
+  }
+  renderQueue();
+}
+$("fineness").addEventListener("input", updatePreview);
+$("nudge").addEventListener("input", updatePreview);
+
+function bumpNudge(ms) {
+  $("nudge").value = (parseFloat($("nudge").value) || 0) + ms;
+  updatePreview();
+}
+
+async function downloadMidi() {
+  const song = selectedSong();
+  if (!song) return;
+  const fineness = FINENESS[+$("fineness").value];
+  const res = await fetch("/api/midi", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      segments: song.data.segments,
+      bpm: song.bpm || song.data.bpm,
+      fineness, section_gap: SECTION_GAP, offset: nudgeSeconds(),
+      name: song.name + ".lyrics",
+    }),
+  });
+  if (!res.ok) { alert("MIDI error: " + ((await res.json()).detail || res.statusText)); return; }
+  saveBlob(await res.blob(), `${song.name}.lyrics.${fineness}.mid`);
+}
+
+async function downloadAls(chosenPath) {
+  const song = selectedSong();
+  if (!song) return;
+  const fineness = FINENESS[+$("fineness").value];
+  if (song.als) {
+    // write the lyric clips straight into the user's own set
+    $("alsStatus").textContent = "writing into your set…";
+    const res = await fetch("/api/als_write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        als_path: song.als.path, target_track_id: song.als.targetId,
+        segments: song.data.segments, mapping: song.als.mapping,
+        fineness, section_gap: SECTION_GAP, offset: nudgeSeconds(),
+        keep_existing: $("keepExisting").checked,
+      }),
+    });
+    if (!res.ok) {
+      $("alsStatus").textContent = "";
+      alert("Write error: " + JSON.stringify((await res.json()).detail || res.statusText));
+      return;
+    }
+    const out = await res.json();
+    showSavedPath(out.saved_to, "Set updated — new copy saved: ");
+    $("alsStatus").append(document.createTextNode(
+      `  — ${out.clips} lyric clips written` +
+      (out.kept_existing ? `, alongside ${out.kept_existing} existing clips` : "") +
+      (out.dropped_overlapping
+        ? `; ${out.dropped_overlapping} skipped where existing clips already sat` : "") +
+      `. Your original ${out.source.split("/").pop()} is untouched.`));
+    return;
+  }
+  if (song.file) {
+    // preferred: write the .als next to the original audio file, referencing
+    // it in place (no copy of the audio)
+    $("alsStatus").textContent = "locating original file…";
+    const res = await fetch("/api/als_local", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: song.file.name, size: song.file.size,
+        modified: song.file.lastModified, path: chosenPath || null,
+        segments: song.data.segments,
+        bpm: song.bpm || song.data.bpm,
+        fineness, section_gap: SECTION_GAP, offset: nudgeSeconds(),
+        name: song.name,
+      }),
+    });
+    if (res.ok) {
+      const out = await res.json();
+      showSavedPath(out.saved_to, "Project saved: ");
+      return;
+    }
+    if (res.status === 409) {
+      // several copies of this file on disk — let the user say which one
+      showCandidatePicker((await res.json()).detail);
+      return;
+    }
+    if (res.status !== 404) {
+      $("alsStatus").textContent = "";
+      alert("Ableton export error: " + ((await res.json()).detail || res.statusText));
+      return;
+    }
+    // original not found on disk — fall back to a project zip with the audio
+    $("alsStatus").textContent =
+      "Couldn't locate the original file on disk — downloading a project zip with the audio bundled instead.";
+    const form = new FormData();
+    form.append("file", song.file);
+    form.append("segments", JSON.stringify(song.data.segments));
+    form.append("bpm", song.bpm || song.data.bpm);
+    form.append("fineness", fineness);
+    form.append("section_gap", SECTION_GAP);
+    form.append("offset", nudgeSeconds());
+    form.append("name", song.name);
+    const zres = await fetch("/api/als_project", { method: "POST", body: form });
+    if (!zres.ok) { alert("Ableton export error: " + ((await zres.json()).detail || zres.statusText)); return; }
+    saveBlob(await zres.blob(), `${song.name} Lyrics Project.zip`);
+    return;
+  }
+  const res = await fetch("/api/als", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      segments: song.data.segments,
+      bpm: song.bpm || song.data.bpm,
+      fineness, section_gap: SECTION_GAP, offset: nudgeSeconds(),
+      name: song.name,
+    }),
+  });
+  if (!res.ok) { alert("Ableton export error: " + ((await res.json()).detail || res.statusText)); return; }
+  saveBlob(await res.blob(), `${song.name} Lyrics.als`);
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : s;
+  return d.innerHTML;
+}
+
+let pendingAls = null;
+
+function busy(text) {
+  $("statusText").textContent = text;
+  $("status").style.display = "block";
+}
+function idle() { $("status").style.display = "none"; }
+
+async function handleAlsFile(file, chosenPath) {
+  busy(chosenPath
+    ? `Reading ${chosenPath.split("/").pop()}…`
+    : `Locating and reading ${file.name}…`);
+  let res;
+  try {
+    res = await fetch("/api/als_inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, size: file.size,
+                             modified: file.lastModified, path: chosenPath || null }),
+    });
+  } catch (err) {
+    idle();
+    alert("Couldn't reach Lyrics Studio: " + err.message);
+    return;
+  }
+  idle();
+  if (res.status === 409) {
+    $("results").style.display = "block";
+    showCandidatePicker((await res.json()).detail, p => handleAlsFile(file, p));
+    return;
+  }
+  if (res.status === 404) {
+    // couldn't find the dropped file on disk — ask through a native dialog
+    busy(`Couldn't find ${file.name} on disk — choose it in the dialog…`);
+    const pick = await fetch("/api/pick_file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: `Locate ${file.name}`, types: ["als"] }),
+    });
+    idle();
+    if (pick.ok) handleAlsFile(file, (await pick.json()).path);
+    return;
+  }
+  if (!res.ok) {
+    alert("Ableton set error: " + JSON.stringify((await res.json()).detail || res.statusText));
+    return;
+  }
+  pendingAls = await res.json();
+  const info = pendingAls;
+  $("alsCard").style.display = "block";
+  const [lo, hi] = info.tempo_range || [info.tempo, info.tempo];
+  $("alsMeta").textContent = ` — ${info.path.split("/").pop()} · ` +
+    (info.tempo_changes
+      ? `${lo}–${hi} BPM, ${info.tempo_changes} tempo change${info.tempo_changes === 1 ? "" : "s"}`
+      : `${info.tempo} BPM`);
+  $("alsSource").innerHTML = info.sources.map((s, i) =>
+    `<option value="${i}" ${s.resolved ? "" : "disabled"}>${esc(s.label)}` +
+    `${s.resolved ? (s.resolved < s.regions
+        ? ` — ${s.regions - s.resolved} file(s) missing` : "")
+      : " — files missing"}</option>`).join("");
+  $("alsTarget").innerHTML = info.targets.map(t =>
+    `<option value="${esc(t.track_id)}">${esc(t.label)}` +
+    `${t.existing_clips ? ` (replaces ${t.existing_clips} clips)` : ""}</option>`).join("");
+  // The keep-or-replace choice only matters when the chosen track has clips
+  // to lose — then it must be visible, or "replaces" is a silent default.
+  const updateKeepRow = () => {
+    const t = info.targets.find(t => t.track_id === $("alsTarget").value);
+    $("keepRow").style.display = t && t.existing_clips ? "flex" : "none";
+  };
+  $("alsTarget").onchange = updateKeepRow;
+  updateKeepRow();
+  $("alsFromBar").value = "";
+  $("alsToBar").value = "";
+  // Any set's track with the wanted name is preselected: the name from the
+  // hand-off URL first, else the preferred name typed below the picker.
+  // Picking a different track by hand applies to this set alone; the typed
+  // preference is the only thing that carries.
+  applySourcePreference();
+  $("alsSource").onchange = onSourceChange;
+  onSourceChange();
+}
+
+function applySourcePreference() {
+  const wanted = (handoffTrack || $("srcPref").value || "").trim().toLowerCase();
+  if (!wanted || !pendingAls) return;
+  // When several tracks share the wanted name, the combined all-of-them
+  // source is the one meant — a rig often has one VOCALS per song.
+  const matches = pendingAls.sources
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s.resolved && (s.name || "").trim().toLowerCase() === wanted);
+  if (!matches.length) return;
+  const all = matches.find(({ s }) => s.track_ids);
+  $("alsSource").value = String((all ?? matches[0]).i);
+}
+
+// The source track a hand-off URL asked for, held until the set card renders.
+let handoffTrack = "";
+
+let fullTrack = true;
+
+function onSourceChange() {
+  const src = pendingAls && pendingAls.sources[+$("alsSource").value];
+  const list = $("regionList");
+  list.textContent = "";
+  if (src) {
+    const bar = document.createElement("div");
+    bar.className = "rowbtns";
+    const all = document.createElement("a");
+    all.textContent = "select all";
+    all.onclick = () => setAllRegions(true);
+    const none = document.createElement("a");
+    none.textContent = "clear";
+    none.onclick = () => setAllRegions(false);
+    bar.append(all, none);
+    list.appendChild(bar);
+
+    for (const r of src.region_list || []) {
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = r.index;
+      cb.disabled = !r.resolved;
+      cb.dataset.missing = r.resolved ? "0" : "1";   // stays disabled either way
+      cb.onchange = () => { if (fullTrack) setFullTrack(false); updateRegionSummary(); };
+      const text = document.createElement("span");
+      text.textContent = `${r.index + 1}. ${r.name}${r.resolved ? "" : "  (file missing)"}`;
+      const bars = document.createElement("span");
+      bars.className = "rbars";
+      bars.textContent = `bars ${r.start_bar}–${r.end_bar}`;
+      label.append(cb, text, bars);
+      list.appendChild(label);
+    }
+  }
+  $("alsRangeHint").textContent = src
+    ? `This track runs from bar ${src.first_bar} to bar ${src.last_bar}. `
+      + "“Full track” takes all of it. Switch it off to narrow things down: set a "
+      + "bar range (partly-covered regions get trimmed to it), tick individual "
+      + "regions, or both. Bars assume 4/4."
+    : "";
+  setFullTrack(true);
+}
+
+function regionBoxes() {
+  return [...$("regionList").querySelectorAll("input[type=checkbox]")];
+}
+
+function setAllRegions(on) {
+  if (on && fullTrack) setFullTrack(false);
+  regionBoxes().forEach(cb => { if (!cb.disabled) cb.checked = on; });
+  updateRegionSummary();
+}
+
+function selectedRegions() {
+  return regionBoxes().filter(cb => cb.checked).map(cb => +cb.value);
+}
+
+function updateRegionSummary() {
+  const picked = selectedRegions().length;
+  const total = regionBoxes().length;
+  $("regionSummary").textContent =
+    picked ? `Regions: ${picked} of ${total}` : `Regions: all (${total})`;
+}
+
+function setFullTrack(on) {
+  fullTrack = on;
+  $("fullTrackBtn").classList.toggle("on", on);
+  for (const id of ["alsFromBar", "alsToBar"]) {
+    $(id).disabled = on;
+    if (on) $(id).value = "";
+  }
+  const menu = $("regionMenu");
+  menu.setAttribute("aria-disabled", on ? "true" : "false");
+  if (on) {
+    menu.open = false;
+    regionBoxes().forEach(cb => (cb.checked = false));
+  }
+  regionBoxes().forEach(cb => (cb.disabled = on || cb.dataset.missing === "1"));
+  updateRegionSummary();
+}
+
+function toggleFullTrack() { setFullTrack(!fullTrack); }
+
+async function alsTranscribe() {
+  const info = pendingAls;
+  if (!info) return;
+  const src = info.sources[+$("alsSource").value];
+  if (!src || !src.resolved) { alert("Pick a track whose audio files can be found."); return; }
+  const song = {
+    id: nextId++, name: info.path.split("/").pop().replace(/\.als$/i, ""),
+    file: null, status: "working", data: null, bpm: info.tempo, error: null,
+    lyricsText: null, aligned: false,
+    als: { path: info.path, targetId: $("alsTarget").value, mapping: null, sample: src.sample,
+           targetLabel: $("alsTarget").selectedOptions[0].textContent.split(" (")[0],
+           targetHadClips: !!info.targets.find(t => t.track_id === $("alsTarget").value)?.existing_clips },
+  };
+  songs.push(song);
+  renderQueue();
+  $("alsCard").style.display = "none";
+  busy(`Transcribing ${src.regions} region${src.regions === 1 ? "" : "s"}…`);
+
+  // poll the server so a long track shows real progress, not just a spinner
+  const poll = setInterval(async () => {
+    try {
+      const p = await (await fetch("/api/als_progress?als_path=" +
+        encodeURIComponent(info.path) + "&track_id=" +
+        encodeURIComponent(src.track_id))).json();
+      if (p.total) busy(`Transcribing region ${Math.min(p.done + 1, p.total)} of ${p.total}…`);
+    } catch (e) { /* keep the last message */ }
+  }, 1000);
+
+  const res = await fetch("/api/als_transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      als_path: info.path, track_id: src.track_id, track_ids: src.track_ids || null,
+      language: $("language").value, isolate: $("isolate").checked,
+      start_bar: fullTrack ? null : (parseFloat($("alsFromBar").value) || null),
+      end_bar: fullTrack ? null : (parseFloat($("alsToBar").value) || null),
+      region_indexes: fullTrack ? [] : selectedRegions(),
+    }),
+  });
+  clearInterval(poll);
+  idle();
+  if (!res.ok) {
+    song.status = "error";
+    song.error = JSON.stringify((await res.json()).detail || res.statusText);
+    renderQueue();
+    return;
+  }
+  song.data = await res.json();
+  song.bpm = song.data.bpm;
+  song.als.mapping = song.data.mapping;
+  song.als.regions = song.data.regions;
+  song.aligned = song.data.aligned;
+  song.status = "done";
+  renderQueue();
+  select(song.id);
+}
+
+function showCandidatePicker(detail, onPick) {
+  const box = $("alsStatus");
+  box.textContent = "";
+  const intro = document.createElement("div");
+  intro.textContent = (detail.message || "Several copies found.") +
+    " Which one is the song you're working on?";
+  box.appendChild(intro);
+  detail.candidates.forEach((path, i) => {
+    const row = document.createElement("div");
+    row.style.marginTop = "0.3rem";
+    const link = document.createElement("a");
+    link.className = "pathlink";
+    link.href = "#";
+    link.textContent = path;
+    link.onclick = e => {
+      e.preventDefault();
+      box.textContent = "working…";
+      (onPick || downloadAls)(path);
+    };
+    row.appendChild(link);
+    if (i === 0) {
+      const tag = document.createElement("span");
+      tag.className = "meta";
+      tag.textContent = "  (best guess)";
+      row.appendChild(tag);
+    }
+    box.appendChild(row);
+  });
+}
+
+function showSavedPath(path, label = "Saved next to the audio: ") {
+  const box = $("alsStatus");
+  box.textContent = label;
+  const link = document.createElement("a");
+  link.className = "pathlink";
+  link.href = "#";
+  link.textContent = path;
+  link.title = "Open this set in Ableton Live";
+  link.onclick = e => { e.preventDefault(); openSaved(path, false); };
+  box.append(link, document.createTextNode("  ·  "));
+  const finder = document.createElement("a");
+  finder.className = "pathlink";
+  finder.href = "#";
+  finder.textContent = "Show in Finder";
+  finder.onclick = e => { e.preventDefault(); openSaved(path, true); };
+  box.append(finder);
+}
+
+async function openSaved(path, reveal) {
+  const res = await fetch("/api/reveal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, reveal }),
+  });
+  if (!res.ok) alert("Couldn't open: " + ((await res.json()).detail || res.statusText));
+}
+
+async function downloadBatch() {
+  const done = songs.filter(s => s.status === "done");
+  if (!done.length) return;
+  const fineness = FINENESS[+$("fineness").value];
+  const res = await fetch("/api/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      songs: done.map(s => ({ name: s.name, segments: s.data.segments, bpm: s.bpm || s.data.bpm })),
+      fineness, section_gap: SECTION_GAP, offset: nudgeSeconds(),
+    }),
+  });
+  if (!res.ok) { alert("Batch error: " + ((await res.json()).detail || res.statusText)); return; }
+  saveBlob(await res.blob(), "lyrics-batch.zip");
+}
+
+function downloadTxt() {
+  const song = selectedSong();
+  if (!song) return;
+  const txt = song.data.segments.map(s => s.text).join("\n") + "\n";
+  saveBlob(new Blob([txt], { type: "text/plain" }), `${song.name}.lyrics.txt`);
+}
+
+function tc(t) {
+  const h = String(Math.floor(t / 3600)).padStart(2, "0");
+  const m = String(Math.floor(t / 60) % 60).padStart(2, "0");
+  const s = String(Math.floor(t % 60)).padStart(2, "0");
+  const ms = String(Math.round(t % 1 * 1000)).padStart(3, "0");
+  return `${h}:${m}:${s},${ms}`;
+}
+function downloadSrt() {
+  const song = selectedSong();
+  if (!song) return;
+  const srt = song.data.segments.map((s, i) =>
+    `${i + 1}\n${tc(s.start)} --> ${tc(s.end)}\n${s.text}\n`).join("\n");
+  saveBlob(new Blob([srt], { type: "text/plain" }), `${song.name}.srt`);
+}
+
+function saveBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// The server sees itself out when nothing has spoken to it for a while, so an
+// open window says so once a minute. Losing a beat costs nothing: the idle
+// window is twenty times longer than the gap between them.
+setInterval(() => { fetch("/api/version").catch(() => {}); }, 60000);
+
+// The preferred source-track name: remembered across visits, applied to every
+// set on open, and re-applied live as it is typed.
+try { $("srcPref").value = localStorage.getItem("ls.sourceTrack") || ""; } catch {}
+$("srcPref").addEventListener("input", () => {
+  try { localStorage.setItem("ls.sourceTrack", $("srcPref").value.trim()); } catch {}
+  if (pendingAls) { applySourcePreference(); onSourceChange(); }
+});
+
+// Launched from Rehearsal Tool Studio: the URL names a set to open straight
+// away — by name, size and date, which is all locating a dropped file needs.
+{
+  const params = new URLSearchParams(location.search);
+  const name = params.get("als_name");
+  if (name && /\.als$/i.test(name)) {
+    handoffTrack = params.get("als_track") || "";
+    // A reload of this tab shouldn't redo the hand-off.
+    history.replaceState(null, "", location.pathname);
+    handleAlsFile({
+      name,
+      size: Number(params.get("als_size")) || 0,
+      lastModified: Number(params.get("als_mtime")) || null,
+    });
+  }
+}
+</script>
+</body>
+</html>

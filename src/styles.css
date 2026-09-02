@@ -1,0 +1,2136 @@
+:root {
+  --bg: #0d0f13;
+  --bg-raised: #161a21;
+  --bg-raised-2: #1e242e;
+  --border: #2a323f;
+  --text: #e8ecf3;
+  --text-dim: #93a0b4;
+  --text-faint: #5b6676;
+  --accent: #ffb03a;
+  --accent-dim: #7a5518;
+  --good: #4ade80;
+  --bad: #f87171;
+  --radius: 12px;
+  --tap: 48px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------- app shell -------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The player fills the body and scrolls inside itself. */
+.player-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar h1 {
+  font-size: 17px;
+  font-weight: 650;
+  margin: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar .sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ---------------------------- the set of songs ---------------------------- */
+
+/*
+ * The song title doubles as the way into the rest of the set, so it has to
+ * still read as a title: same size and weight, with only a caret to say it
+ * opens something.
+ */
+.song-title-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.song-title-btn:hover {
+  color: var(--accent);
+}
+
+.caret {
+  display: inline-block;
+  flex: none;
+  /* The only thing saying the title opens something, so not as slight as the
+     disclosure triangles inside a panel. */
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: transform 120ms ease;
+}
+
+.caret.open {
+  transform: rotate(180deg);
+}
+
+/* Anchored to the topbar rather than the viewport, so it hangs from the title
+   whatever the safe-area inset does to the bar's height. */
+.set-menu {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  right: 8px;
+  z-index: 2;
+  max-width: 520px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.set-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.set-menu-head {
+  padding: 8px 10px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.set-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.set-menu-row:hover {
+  background: var(--bg-raised-2);
+}
+
+/* The song you're on, marked so the list reads as "where I am" at a glance. */
+.set-menu-row.on {
+  background: var(--bg-raised-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.set-menu-row.on .set-menu-title {
+  color: var(--accent);
+}
+
+.set-menu-row.nested {
+  padding-left: 32px;
+  min-height: 40px;
+}
+
+.set-menu-num {
+  flex: none;
+  width: 18px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.set-menu-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+}
+
+.set-menu-time {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.set-menu-others {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.set-menu-set {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.set-menu-set:hover {
+  background: var(--bg-raised-2);
+  color: var(--text);
+}
+
+.icon-btn {
+  min-width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 20px;
+}
+
+.icon-btn:hover {
+  background: var(--bg-raised-2);
+  color: var(--text);
+}
+
+.tabbar {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  padding-top: var(--safe-top);
+  z-index: 30;
+}
+
+.tabbar button {
+  flex: 1;
+  padding: 10px 4px;
+  min-height: var(--tap);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tabbar button.on {
+  color: var(--accent);
+}
+
+.tabbar .glyph {
+  font-size: 19px;
+  line-height: 1;
+}
+
+/* --------------------------------- lists ---------------------------------- */
+
+.section-title {
+  padding: 18px 16px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* The project a group of artists belongs to, sitting above the artist name. */
+.section-project {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  opacity: 0.75;
+  margin-bottom: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 60px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: none;
+}
+
+.row:active {
+  background: var(--bg-raised);
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-sub {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-right {
+  color: var(--text-dim);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--bg-raised-2);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.badge.warn {
+  background: var(--accent-dim);
+  color: #ffd79a;
+}
+
+.badge.ok {
+  background: #14532d;
+  color: #86efac;
+}
+
+.badge.offline {
+  background: #1e293b;
+  color: #7dd3fc;
+}
+
+/* --------------------------------- player --------------------------------- */
+
+.player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.player-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.readout {
+  text-align: center;
+  padding: 20px 16px 8px;
+}
+
+.readout .bar-num {
+  font-size: 62px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.readout .bar-num .beat {
+  color: var(--accent);
+  font-size: 34px;
+}
+
+.readout .time {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.readout .of-bars {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* timeline */
+
+.timeline {
+  position: relative;
+  height: 56px;
+  margin: 8px 16px 0;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.timeline .loop-region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 176, 58, 0.16);
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.timeline .playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  will-change: transform;
+}
+
+.timeline .gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+.timeline .gridline.strong {
+  background: #3b4657;
+}
+
+.timeline .marker {
+  position: absolute;
+  bottom: 3px;
+  font-size: 10px;
+  color: var(--text-dim);
+  transform: translateX(2px);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ------------------------------- patch clips ------------------------------ */
+
+/*
+ * The rig's changes laid out along the song, on the same left-to-right as the
+ * timeline above. Taller than the timeline because each clip carries its own
+ * name — "Snapshot 3" is the point of it, and a bare tick mark isn't.
+ */
+.patch-lane {
+  position: relative;
+  height: 62px;
+  margin: 4px 0 2px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+/* Section names sit behind the clips, so a change can be read against them. */
+.patch-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 3px;
+  font-size: 9.5px;
+  line-height: 12px;
+  color: var(--text-faint);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* The clip and its end handle travel together, so the handle is always at the
+   clip's end whatever the length works out to be. */
+.patch-clip-wrap {
+  position: absolute;
+  top: 14px;
+  bottom: 6px;
+}
+
+.patch-clip {
+  position: absolute;
+  inset: 0;
+  /* The lane is horizontal, so a drag along it must not become a page scroll. */
+  touch-action: none;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  color: var(--text);
+  text-align: left;
+}
+
+.patch-clip:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.patch-clip:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+/* Lifted off the lane while it's being moved, so it reads as held rather than
+   as having already landed. */
+.patch-clip.dragging {
+  z-index: 2;
+  cursor: grabbing;
+  background: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.patch-clip-bar {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.patch-clip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/*
+ * The handle that gives a clip a length. Sits just inside the right edge and
+ * stays a finger wide however narrow the clip is drawn.
+ */
+.patch-clip-end {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 14px;
+  z-index: 3;
+  touch-action: none;
+  cursor: ew-resize;
+}
+
+.patch-clip-end::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--text);
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.patch-clip-wrap:hover .patch-clip-end::after,
+.patch-clip-wrap.ends .patch-clip-end::after {
+  opacity: 0.55;
+}
+
+/* A clip that stops on its own says so with a hard edge; one that simply runs
+   into the next needs no mark, since the next clip is the mark. */
+.patch-clip-wrap.ends .patch-clip {
+  border-right-width: 3px;
+}
+
+.patch-lane-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-align: center;
+  pointer-events: none;
+}
+
+.patch-lane .playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/* transport */
+
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 16px 6px;
+}
+
+.jump-btn {
+  min-width: 56px;
+  height: 52px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.jump-btn:active {
+  background: var(--bg-raised-2);
+  transform: scale(0.97);
+}
+
+.jump-btn .unit {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  display: block;
+  margin-top: 1px;
+  letter-spacing: 0.05em;
+}
+
+.play-btn {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1a1205;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  flex-shrink: 0;
+}
+
+.play-btn:active {
+  transform: scale(0.96);
+}
+
+.play-btn[disabled] {
+  opacity: 0.4;
+}
+
+/* variant switcher */
+
+.variants {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 4px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.variant-btn {
+  min-height: 54px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1.5px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.variant-btn.on {
+  border-color: var(--accent);
+  background: rgba(255, 176, 58, 0.1);
+}
+
+.variant-btn .name {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.variant-btn .hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/*
+ * Reference vs stems: one or the other, never both. A segmented control rather
+ * than a single toggle, so which side is live is readable without working out
+ * what the button would do if pressed.
+ */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.seg {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.seg + .seg {
+  border-left: 1px solid var(--border);
+}
+
+.seg.on {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+/* lyrics and chords chart */
+
+.chart-lanes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.lane-chip {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lane-chip.on {
+  color: var(--bg);
+  background: var(--good);
+  border-color: var(--good);
+}
+
+.chart-empty {
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.chart {
+  /* The rows' offset parent, so scrolling to one is a plain offsetTop. */
+  position: relative;
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  scroll-behavior: smooth;
+}
+
+.chart-row {
+  display: flex;
+  align-items: baseline;
+  /* The section label takes a line of its own above the words. */
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 5px 12px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+
+.chart-row.on {
+  background: rgba(255, 176, 58, 0.12);
+  border-left-color: var(--accent);
+}
+
+.chart-row:active {
+  background: var(--bg-raised-2);
+}
+
+/*
+ * A full-width line of its own rather than an absolutely positioned label.
+ * Positioned absolutely it had no positioned ancestor, so its containing block
+ * was the page — and a box whose containing block sits outside a scroll
+ * container isn't clipped by it, leaving section names floating over the mixer
+ * as the chart scrolled.
+ */
+.chart-section {
+  flex: 0 0 100%;
+  margin-bottom: 1px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--good);
+}
+
+.chart-row:has(.chart-section) {
+  margin-top: 10px;
+}
+
+.chart-bar {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #5c6779;
+  text-align: right;
+}
+
+.chart-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chart-chords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chart-chord {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.chart-lyric {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.chart-row.on .chart-lyric {
+  font-weight: 600;
+}
+
+/* stem mixer */
+
+.mixer {
+  padding: 4px 0 8px;
+}
+
+.stem {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stem-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stem-row + .stem-row {
+  margin-top: 4px;
+}
+
+/* Drag handle. touch-action:none stops the page scrolling under the finger. */
+.stem-grip {
+  width: 22px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: #5c6779;
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.stem-grip:hover,
+.stem-grip:focus-visible {
+  color: var(--accent);
+  background: var(--bg-raised);
+}
+
+.stem.dragging {
+  background: var(--bg-raised);
+  border-radius: 8px;
+  cursor: grabbing;
+}
+
+.stem.dragging .stem-grip {
+  color: var(--accent);
+  cursor: grabbing;
+}
+
+/* Renaming in place, sized to sit exactly where the label was. */
+.stem-name-input {
+  width: 118px;
+  flex-shrink: 0;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 13.5px;
+  font-weight: 550;
+  border-radius: 7px;
+}
+
+.stem-sub {
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #5c6779;
+  margin-left: 2px;
+}
+
+/* The volume row sits tight under the pan row it belongs to. */
+.stem-row + .stem-row {
+  margin-top: 2px;
+}
+
+/*
+ * Volume is the control reached for constantly, pan only occasionally, so the
+ * two are deliberately unequal: a fat accented fader against a thin grey one.
+ */
+
+.stem-fader,
+.stem-pan {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  flex: 1;
+  min-width: 60px;
+}
+
+/* volume — primary */
+.stem-fader {
+  height: 42px;
+}
+
+.stem-fader::-webkit-slider-runnable-track {
+  height: 9px;
+  border-radius: 5px;
+  background: var(--bg-raised-2);
+}
+.stem-fader::-moz-range-track {
+  height: 9px;
+  border-radius: 5px;
+  background: var(--bg-raised-2);
+}
+
+.stem-fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -8.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.stem-fader::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+}
+
+/* pan — secondary, and deliberately small */
+.stem-pan {
+  height: 22px;
+  flex: 0 1 auto;
+  width: 76px;
+  min-width: 52px;
+}
+
+.stem-pan::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.stem-pan::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.stem-pan::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  border: none;
+}
+.stem-pan::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  border: none;
+}
+
+.stem:last-child {
+  border-bottom: none;
+}
+
+.stem.quiet .stem-name,
+.stem.quiet .stem-db {
+  opacity: 0.4;
+}
+
+.stem-name {
+  width: 74px;
+  flex-shrink: 0;
+  font-size: 13.5px;
+  font-weight: 550;
+  text-transform: capitalize;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  padding: 4px 0;
+}
+
+.stem-name:hover {
+  color: var(--accent);
+}
+
+.stem-btn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.stem-btn.mute-on {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.stem-btn.solo-on {
+  background: rgba(255, 176, 58, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/*
+ * Muted, but soloed, so it is sounding anyway. The mute is still set — it takes
+ * effect again the moment solo is dropped — so the button stays red rather
+ * than looking unmuted, and is struck through to say it isn't in force.
+ */
+.stem-btn.mute-on.overridden {
+  background: transparent;
+  border-style: dashed;
+  color: rgba(248, 113, 113, 0.55);
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+
+.stem-db {
+  width: 44px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 4px 0;
+}
+
+.stem-db.secondary {
+  width: 30px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7789;
+}
+
+.stem-db:hover {
+  color: var(--accent);
+}
+
+/* control strip */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 176, 58, 0.1);
+}
+
+/* jump-size picker */
+
+.jump-picker {
+  gap: 8px;
+  padding-right: 6px;
+  color: var(--text-dim);
+}
+
+.jump-select {
+  min-height: 32px;
+  height: 32px;
+  width: auto;
+  min-width: 88px;
+  padding: 0 26px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised-2);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13.5px;
+  -webkit-appearance: none;
+  appearance: none;
+  /* Chevron, drawn inline so nothing is fetched from another host. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2393a0b4' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.jump-select:focus {
+  border-color: var(--accent);
+}
+
+/* ------------------------------- forms/panels ------------------------------ */
+
+.panel {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* A folding panel pads its head and body instead, so a closed one is one row. */
+.setting-section {
+  padding: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.section-head:hover {
+  background: var(--bg-raised);
+}
+
+.section-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.section-head strong {
+  flex: none;
+}
+
+/* What the section is set to, on the outside of it. Truncates before it wraps:
+   a closed panel is worth one line, however long the folder name is. */
+.section-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+
+.section-summary .badge {
+  margin-right: 4px;
+}
+
+.section-body {
+  padding: 0 16px 16px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.field label {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.field .hint {
+  display: block;
+  font-size: 12px;
+  color: #6b7789;
+  margin-top: 2px;
+}
+
+input[type='text'],
+input[type='number'],
+select,
+textarea {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  min-height: 44px;
+  width: 100%;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+input[type='number'] {
+  max-width: 110px;
+  text-align: right;
+}
+
+.field input[type='text'],
+.field select {
+  max-width: 190px;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+  width: 100%;
+}
+
+.btn {
+  min-height: var(--tap);
+  padding: 0 18px;
+  border-radius: 10px;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #1a1205;
+  border-color: transparent;
+}
+
+.btn.danger {
+  color: var(--bad);
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------- misc ---------------------------------- */
+
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.empty h2 {
+  color: var(--text);
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.empty p {
+  margin: 0 auto 16px;
+  max-width: 34ch;
+  font-size: 14px;
+}
+
+.notice {
+  margin: 12px 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.notice.error {
+  border-color: #7f1d1d;
+  background: #2a1414;
+  color: #fca5a5;
+}
+
+.loading-bar {
+  height: 4px;
+  background: var(--bg-raised-2);
+  overflow: hidden;
+}
+
+.loading-bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  word-break: break-all;
+}
+
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* Wider screens: give the player room but keep it centred. */
+@media (min-width: 720px) {
+  .app-body > * {
+    max-width: 760px;
+    margin-inline: auto;
+  }
+  .readout .bar-num {
+    font-size: 76px;
+  }
+  .timeline {
+    height: 72px;
+  }
+}
+
+/*
+ * A desktop window: take the room it offers. 760px is a good measure for a
+ * phone held up at a music stand and a waste of a Mac window, where the
+ * studio's settings and the library's rows both have more to say than fits.
+ * Still centred and still bounded — a line of text spanning an ultrawide is
+ * nobody's friend.
+ */
+@media (min-width: 1100px) {
+  .app-body > * {
+    max-width: 1040px;
+  }
+}
+
+/* ------------------------------ context menu ------------------------------ */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.ctx-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.ctx-item:hover {
+  background: var(--bg-raised);
+}
+
+.ctx-item.danger {
+  color: var(--bad);
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+}
+
+
+/* ---------------------------- rearrangeable blocks ------------------------- */
+
+.blocks {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The single horizontal inset for everything in a block. It used to be applied
+ * separately by the mixer, the chart, the versions grid and the head itself,
+ * which is why the blocks didn't line up with each other.
+ */
+.block {
+  padding: 6px 16px;
+}
+
+.block.dragging {
+  opacity: 0.55;
+}
+
+.block-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+
+.grip {
+  /* Generous target, but visually slight — it shouldn't compete with the
+     controls it sits beside. */
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 30px;
+  color: var(--text-faint);
+  font-size: 15px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.grip:hover {
+  color: var(--text-dim);
+}
+
+.block.dragging .grip {
+  cursor: grabbing;
+}
+
+.block-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.block-toggle:hover {
+  color: var(--text);
+}
+
+/* A disclosure triangle, wherever one folds something away. */
+.arrow {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 120ms ease;
+}
+
+.arrow.open {
+  transform: rotate(90deg);
+}
+
+.block-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+
+/* --------------------------------- tempo ---------------------------------- */
+
+.tempo-now {
+  margin-top: 5px;
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: color 200ms ease;
+}
+
+.tempo-now .mono {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* A tempo step is easy to miss mid-song, so it announces itself briefly. */
+.tempo-now.changed,
+.tempo-now.changed .mono {
+  color: var(--accent);
+}
+
+.tempo-hint {
+  margin-left: 8px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--text-dim);
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
+.timeline .tempo-tick {
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.timeline .tempo-flag {
+  position: absolute;
+  top: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--accent);
+  transform: translateX(2px);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ------------------------------ channel meters ---------------------------- */
+
+/*
+ * The gradient lives on the track at full width and never moves, so a colour
+ * always means the same level — amber near the top, red at the very top. It's
+ * the unlit mask that scales, from the right. Scaling a gradient-filled bar
+ * instead would squeeze the whole green-to-red ramp into whatever length the
+ * bar happened to be, painting a quiet channel red at its tip.
+ */
+.stem-meter {
+  position: relative;
+  display: block;
+  height: 3px;
+  margin: 1px 0 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--good) 0%, var(--good) 72%, var(--accent) 88%, var(--bad) 100%);
+}
+
+.stem-meter-fill {
+  position: absolute;
+  inset: 0;
+  /* Scaled from the right by the frame loop; transform avoids layout entirely. */
+  transform: scaleX(1);
+  transform-origin: right center;
+  background: var(--bg-raised-2);
+  will-change: transform;
+}
+
+/*
+ * A channel that isn't sounding meters in grey.
+ *
+ * The colour ramp means level, and level means nothing on a channel you can't
+ * hear — a muted stem still showing green reads as though it were playing. The
+ * bar still moves, so you can see there is signal there to bring back.
+ */
+.stem.quiet .stem-meter {
+  background: var(--text-faint);
+  opacity: 0.5;
+}
+
+/* --------------------------- settings over a song ------------------------- */
+
+/*
+ * Settings sits on top of the player rather than replacing it, so the song
+ * keeps playing while you change a setting. The player stays mounted
+ * underneath — routing away would tear down the audio graph mid-song.
+ */
+.sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg);
+  padding-bottom: calc(var(--safe-bottom) + 24px);
+}
+
+/* ------------------------ controls inside a block ------------------------- */
+
+/* The block already provides the gutter, so its rows must not add another. */
+.controls.flush {
+  padding: 6px 0;
+}
+
+.control-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-right: 2px;
+}
+
+.control-note {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.bpm-input {
+  width: 76px;
+  height: 36px;
+  padding: 0 8px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.bpm-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* The reference, other mixes and the click are named by the set, not by you. */
+.stem-name.reference,
+.stem-name.mix,
+.stem-name.click {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ---------------------------- first-run choices --------------------------- */
+
+.source-choices {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* Equal heights, so both cards' buttons sit on the same line. */
+  align-items: stretch;
+}
+
+.source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.source-card h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.source-card p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.source-card p.hint {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+/* The button sits at the bottom whichever card has the longer explanation. */
+.source-card .btn {
+  margin-top: auto;
+}
+
+/* The reference's A/B button, in place of its mute and solo. */
+.stem-switch {
+  width: 78px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.stem-switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* ------------------------------- dialogs ---------------------------------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.dialog {
+  width: min(480px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.dialog h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.dialog-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* A second line inside a chip, for the cost of pressing it. */
+.chip-note {
+  display: block;
+  margin-top: 1px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.text-input {
+  flex: 1;
+  min-width: 120px;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/*
+ * While the reference is switched in it is the only thing sounding, so its own
+ * row is lifted and everything else is dimmed by the ordinary `.quiet` rule.
+ * The name loses its italic and goes bold in the accent colour — the same
+ * channel, plainly doing something different.
+ */
+.stem.switched {
+  background: rgba(255, 176, 58, 0.07);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.stem.switched .stem-name {
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  color: var(--accent);
+}
+
+/* Parts switched off entirely, listed so they can be brought back. */
+.stems-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--border);
+}
+
+.chip-plus {
+  color: var(--good);
+  font-weight: 700;
+}
+
+.stem-btn.off-btn {
+  width: 30px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.stem-btn.off-btn:hover {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+/* --------------------------- choosing what to fetch ----------------------- */
+
+/*
+ * No scroller of its own. With a version list and a stem list stacked inside a
+ * dialog that already scrolls, each having its own scroll box meant both were
+ * clipped mid-item and neither looked scrollable. The dialog handles it.
+ */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.pick.on {
+  background: var(--bg-raised-2);
+  color: var(--text);
+}
+
+.pick input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-size {
+  font-size: 12px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.report {
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* The loop toggle sits with the transport, so it reads as a transport control. */
+.loop-btn {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.loop-btn.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.loop-btn.on .unit {
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+/* ---------------------------- confidence monitor -------------------------- */
+
+/*
+ * Read from a distance, in a dark room, past a mic stand. Type is sized in vw
+ * so it fills whatever it's shown on — a phone on a stand or a laptop on an
+ * amp — and the ground is black rather than the app's grey, because anything
+ * lighter is a lamp pointed at the singer.
+ */
+.monitor {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: #000;
+  color: #fff;
+  padding: calc(var(--safe-top) + 12px) 20px calc(var(--safe-bottom) + 12px);
+  overscroll-behavior: contain;
+}
+
+.monitor-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.monitor-section {
+  font-size: clamp(13px, 2.2vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--good);
+  min-height: 1.2em;
+}
+
+.monitor-title {
+  flex: 1;
+  font-size: clamp(12px, 1.6vw, 17px);
+  color: #7b8288;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-bar {
+  font-size: clamp(16px, 2.4vw, 26px);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.monitor .icon-btn {
+  color: #7b8288;
+}
+
+.monitor-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(10px, 2vh, 26px);
+  min-height: 0;
+  text-align: center;
+}
+
+.monitor-chords {
+  font-size: clamp(18px, 3.4vw, 40px);
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  min-height: 1.2em;
+}
+
+/* The line being sung. Everything else on the screen is smaller than this. */
+.monitor-now {
+  font-size: clamp(30px, 7.5vw, 96px);
+  font-weight: 650;
+  line-height: 1.1;
+  text-wrap: balance;
+  min-height: 1.1em;
+}
+
+.monitor-next {
+  font-size: clamp(18px, 3.6vw, 44px);
+  font-weight: 500;
+  line-height: 1.15;
+  color: #6d757b;
+  text-wrap: balance;
+  min-height: 1.15em;
+}
+
+.monitor-foot {
+  display: flex;
+  justify-content: center;
+}
+
+.monitor-play {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #15181b;
+  border: 1px solid #2a3036;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+}
+
+.monitor-play:active {
+  transform: scale(0.96);
+}
+
+/* A row of pickers reads as a sentence, so they sit inline rather than stacking. */
+.dialog .controls.flush select {
+  width: auto;
+  min-width: 76px;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+
+/* --------------------------- where songs come from ------------------------ */
+
+.now-scanning {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* The card that is actually in use is unmistakable, not inferred from a tick. */
+.source-card.on {
+  border-color: var(--good);
+  box-shadow: inset 3px 0 0 var(--good);
+}
+
+.source-card .spread h3 {
+  margin: 0;
+}
+
+.source-card .hint {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.source-choices .source-card .btn-row {
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+
+/* The path a part was looked for at, when it isn't in the chosen folder. */
+.pick-path {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-faint);
+}
