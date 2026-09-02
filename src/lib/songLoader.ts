@@ -148,6 +148,11 @@ async function inParallel<T>(
   await Promise.all(runners);
 }
 
+/** The set's own click track, brought in as a part: it stands in for the metronome. */
+export function isSetClick(song: Song, variant: Variant): boolean {
+  return !!song.setPath && variant.name.trim().toLowerCase() === 'click';
+}
+
 export interface LoadOptions {
   semitones: number;
   /** Playback speed vs the recording: 1 untouched, 0.9 a tenth slower. */
@@ -351,6 +356,8 @@ export async function loadSong(
   const activeId =
     preferred && configs.get(preferred)?.role === 'mix' ? preferred : mixes[0]?.id ?? null;
   await engine.setTracks(configs, activeId, { effects: !!opts.effects });
+  // A set's click track takes the metronome's place, so there is one click.
+  engine.useClickTrack(variants.find((v) => isSetClick(song, v))?.id ?? null);
 
   /*
    * Transposing leaves two full copies of every part in memory — the original

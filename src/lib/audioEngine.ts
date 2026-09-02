@@ -136,6 +136,8 @@ export class SongEngine {
   private loop: LoopRegion | null = null;
   private clickBeats: ClickBeat[] = [];
   private clickOn = false;
+  /** A part of the song standing in for the metronome: the set's own click. */
+  private clickSource: string | null = null;
   private clickGain = 0.5;
   /** Kept so a rebuilt click track kicks off where the old one was panned. */
   private clickPan = 0;
@@ -275,6 +277,7 @@ export class SongEngine {
     this.stopSources();
     for (const track of this.tracks.values()) this.disconnectTrack(track);
     this.tracks.clear();
+    this.clickSource = null;
     const effects = !!fx.effects;
 
     let maxDuration = 0;
@@ -523,7 +526,7 @@ export class SongEngine {
   setStemMuted(id: string, muted: boolean): void {
     // The click is a channel now, so muting it is what turns it off — keep the
     // flag that survives a click rebuild in step with the fader.
-    if (id === CLICK_TRACK_ID) this.clickOn = !muted;
+    if (id === CLICK_TRACK_ID || id === this.clickSource) this.clickOn = !muted;
     const track = this.tracks.get(id);
     if (!track) return;
     track.muted = muted;
@@ -659,9 +662,38 @@ export class SongEngine {
   /** The click is a channel like any other; enabling it is unmuting it. */
   setClickEnabled(on: boolean): void {
     this.clickOn = on;
-    const track = this.tracks.get(CLICK_TRACK_ID);
+    const track = this.tracks.get(this.clickSource ?? CLICK_TRACK_ID);
     if (track) track.muted = !on;
     this.applyGains();
+  }
+
+  /**
+   * Let one of the song's own parts be the click — the set's click track —
+   * in place of the rendered metronome, which is taken down. There is one
+   * click either way: the transport's button and the mixer's mute drive
+   * whichever it is. Null puts the metronome back.
+   */
+  useClickTrack(id: string | null): void {
+    this.clickSource = id && this.tracks.has(id) ? id : null;
+    if (this.clickSource) {
+      const track = this.tracks.get(this.clickSource)!;
+      // On unless it was muted on this device last time, as any part would be.
+      this.clickOn = !track.muted;
+      const rendered = this.tracks.get(CLICK_TRACK_ID);
+      if (rendered) {
+        this.stopTrackSource(rendered);
+        this.disconnectTrack(rendered);
+        this.tracks.delete(CLICK_TRACK_ID);
+      }
+    } else {
+      this.rebuildClickTrack();
+    }
+    this.applyGains(0);
+  }
+
+  /** The id of the part serving as the click, when the set brought one. */
+  get clickSourceId(): string | null {
+    return this.clickSource;
   }
 
   setClickVolume(v: number): void {
@@ -702,6 +734,8 @@ export class SongEngine {
       this.disconnectTrack(existing);
       this.tracks.delete(CLICK_TRACK_ID);
     }
+    // The set's own click is playing; the metronome stays down.
+    if (this.clickSource) return;
     if (!this.clickBeats.length || this.duration <= 0) return;
 
     const buffer = renderClickBuffer(ctx, this.clickBeats, this.duration);

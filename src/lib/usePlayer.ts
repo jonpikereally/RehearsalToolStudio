@@ -232,6 +232,7 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
           position: engine.position,
           playing: engine.isPlaying,
           activeVariantId: engine.activeVariantId,
+          clickOn: engine.clickEnabled,
         }));
       } catch (err: any) {
         if (err?.name === 'AbortError') return;

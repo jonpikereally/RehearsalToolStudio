@@ -1115,11 +1115,13 @@ export function parseAlsXml(xml: string): AlsProject {
      * The set's own click and cues, which live outside any song's group and
      * run the length of the set. Each becomes one part of every song they
      * play in — every cue track summed into "Cues", every click track into
-     * one click — cut to the clips inside the song, with each track's fader
-     * folded into its clips. A MIDI click makes no audio and adds nothing.
+     * one "Click" — cut to the clips inside the song, with each track's
+     * fader folded into its clips. A MIDI click makes no audio and adds
+     * nothing. A set's click *is* the click: the player's own metronome
+     * steps aside for it, so there is one click channel either way.
      */
     for (const [label, match] of [
-      ['Click (set)', /^click/i],
+      ['Click', /^click/i],
       ['Cues', /^cues?$/i],
     ] as const) {
       const groups = tracks.filter((t) => t.kind === 'GroupTrack' && t.groupId === '-1' && match.test(t.name.trim()));

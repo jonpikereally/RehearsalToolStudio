@@ -3511,17 +3511,17 @@ group("the set's click and cues");
   const p = parseAlsXml(xml);
   const [yellow, clocks] = p.songs;
   const names = (s) => s.stems.map((x) => x.name).join(',');
-  check("the set's click and cues join each song as parts", names(yellow) === 'Bass,Click (set),Cues', names(yellow));
+  check("the set's click and cues join each song as parts", names(yellow) === 'Bass,Click,Cues', names(yellow));
   const cues = yellow.stems.find((s) => s.name === 'Cues');
   check('every cue track is summed into one part, cut to the song',
     cues.clips.length === 2 && cues.clips.map((c) => c.path.split('/').pop()).join() === 'Yellow.wav,yellow pitch.wav', JSON.stringify(cues.clips.map((c) => c.path)));
-  check("the next song gets its own", clocks.stems.find((s) => s.name === 'Cues')?.clips.length === 1 && clocks.stems.find((s) => s.name === 'Click (set)')?.clips[0].path === 'Click/clocks click.wav');
-  check("the click track's fader rides into its clips", yellow.stems.find((s) => s.name === 'Click (set)')?.clips[0].gain === 0.5);
-  check('neither is ever transposed', isUnpitched('Cues') && isUnpitched('Click (set)'));
+  check("the next song gets its own", clocks.stems.find((s) => s.name === 'Cues')?.clips.length === 1 && clocks.stems.find((s) => s.name === 'Click')?.clips[0].path === 'Click/clocks click.wav');
+  check("the click track's fader rides into its clips", yellow.stems.find((s) => s.name === 'Click')?.clips[0].gain === 0.5);
+  check('neither is ever transposed', isUnpitched('Cues') && isUnpitched('Click'));
   const files = ['Stems/Bass.wav', 'Click/yellow click.wav', 'Slates/Yellow.wav', 'Cues/yellow pitch.wav'].map((f) => ({ path: `/${f}`, name: f.split('/').pop(), rev: 'r', size: 1 }));
   const song = songsFromProject(p, '/Set.als', files, new Map()).songs[0];
   check('and they import as parts of the song, the cues as one arrangement',
-    song.variants.map((v) => v.name).join() === 'Bass,Click (set),Cues' && song.variants[2].clips?.length === 2 && song.variants[2].role === 'stem',
+    song.variants.map((v) => v.name).join() === 'Bass,Click,Cues' && song.variants[2].clips?.length === 2 && song.variants[2].role === 'stem',
     JSON.stringify(song.variants.map((v) => [v.name, v.role, v.clips?.length])));
 }
 

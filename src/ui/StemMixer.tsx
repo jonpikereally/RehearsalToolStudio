@@ -4,6 +4,7 @@ import type { Player } from '../lib/usePlayer';
 import { mixesOf, stemsOf } from '../lib/stemMix';
 import { isReferenceName } from '../lib/scan';
 import { hasDevices } from '../lib/usePlayer';
+import { isSetClick } from '../lib/songLoader';
 import { useStore } from '../lib/store';
 import BlockHead, { type BlockChrome } from './BlockHead';
 import { SongEngine } from '../lib/audioEngine';
@@ -70,7 +71,11 @@ export default function StemMixer({
         kind: isReferenceName(v.name) ? ('reference' as const) : ('mix' as const),
         order: v.order ?? LAST,
       })),
-    { id: CLICK_ID, name: 'Click', kind: 'click' as const, order: song.clickOrder ?? LAST },
+    // The metronome's row, unless the set brought its own click, which is
+    // already among the stems above and is the click then.
+    ...(stems.some((v) => isSetClick(song, v))
+      ? []
+      : [{ id: CLICK_ID, name: 'Click', kind: 'click' as const, order: song.clickOrder ?? LAST }]),
   ].sort((a, b) => a.order - b.order);
 
   const meterRefs = useRef(new Map<string, HTMLSpanElement>());
