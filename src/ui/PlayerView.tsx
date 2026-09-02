@@ -697,8 +697,7 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
               );
             }
             if (id === 'rig') {
-              // Nothing to show where MIDI can't be sent at all.
-              return midiSupported() ? (
+              return (
                 <div key={id} ref={blocks.refFor(id)}>
                   <section className={chrome.dragging ? 'block dragging' : 'block'} aria-label="Rig">
                     <BlockHead
@@ -727,6 +726,9 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
                               {writing ? 'Writing…' : 'Commit to .als'}
                             </button>
                           )}
+                          <button className="chip" onClick={() => setTimecode(true)} title="LTC for playback">
+                            Timecode…
+                          </button>
                         </div>
                       }
                     />
@@ -751,16 +753,57 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
                           subscribePosition={player.subscribePosition}
                         />
                         {setWrite && <div className="notice">{setWrite}</div>}
-                        {!midiOn && clips.length > 0 && (
+                        {!midiSupported() ? (
                           <div className="control-note">
-                            Switch patch changes on in Settings and these will be sent as you play.
+                            This window can't send MIDI itself. Patch changes programmed here go
+                            into the set — commit them to the .als and Live drives the rig.
+                          </div>
+                        ) : (
+                          !midiOn &&
+                          clips.length > 0 && (
+                            <div className="control-note">
+                              Switch patch changes on in Settings and these will be sent as you play.
+                            </div>
+                          )
+                        )}
+                        {/*
+                          What the set itself sends the rig during this song: its MIDI,
+                          video and timecode tracks, clip by clip. Read from the set and
+                          shown as a running order, since Live is what plays them.
+                        */}
+                        {song.rig?.length ? (
+                          <div className="rig-tracks">
+                            {song.rig.map((track) => (
+                              <div className="rig-track" key={track.name}>
+                                <div className="rig-track-name">
+                                  <span className={`badge ${track.kind === 'midi' ? '' : 'ok'}`}>{track.kind}</span>
+                                  {track.name}
+                                </div>
+                                <div className="rig-clips">
+                                  {track.clips.map((clip, i) => (
+                                    <span className="rig-clip" key={i} title={clip.name}>
+                                      <span className="mono">
+                                        {clip.endBar > clip.bar
+                                          ? `${formatBar(clip.bar)}–${formatBar(clip.endBar)}`
+                                          : formatBar(clip.bar)}
+                                      </span>{' '}
+                                      {clip.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="control-note">
+                            No MIDI, video or timecode tracks in the set play during this song.
                           </div>
                         )}
                       </>
                     )}
                   </section>
                 </div>
-              ) : null;
+              );
             }
             return (
               <div key={id} ref={blocks.refFor(id)}>
@@ -797,13 +840,6 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
                       </div>
                       <TempoControl song={song} />
 
-                      <div className="controls flush" role="group" aria-label="Timecode">
-                        <span className="control-label">Rig</span>
-                        <button className="chip" onClick={() => setTimecode(true)}>
-                          Timecode…
-                          <span className="chip-note">LTC for playback</span>
-                        </button>
-                      </div>
                     </>
                   )}
                 </section>
@@ -1060,4 +1096,9 @@ function describeProgress(p: import('../lib/songLoader').LoadProgress): string {
     default:
       return 'Ready';
   }
+}
+
+/** A bar for a rig clip: whole when it is, else to a tenth. */
+function formatBar(bar: number): string {
+  return Number.isInteger(bar) ? String(bar) : bar.toFixed(1);
 }

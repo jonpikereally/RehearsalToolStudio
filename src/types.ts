@@ -115,6 +115,13 @@ export interface ChartLane {
   items: TimedText[];
 }
 
+/** One of the set's rig tracks, cut down to one song. */
+export interface RigTrack {
+  name: string;
+  kind: 'midi' | 'audio' | 'video';
+  clips: { name: string; bar: number; endBar: number }[];
+}
+
 export interface Song {
   /** Stable id: the Dropbox folder path + base name (lowercased). */
   id: SongId;
@@ -165,6 +172,13 @@ export interface Song {
    * as something to play.
    */
   patchClips?: PatchClip[];
+  /**
+   * The set's own rig tracks inside this song — MIDI to the pedalboard or
+   * the lights, video, timecode — as Ableton plays them. Read from the set
+   * and shown, never sent from here: Live drives the rig, this shows what it
+   * will do and when.
+   */
+  rig?: RigTrack[];
 
   variants: Variant[];
   /**

@@ -3209,5 +3209,55 @@ group('a group named a little differently');
   check('and no song is left without audio tracks', p.warnings.length === 0, JSON.stringify(p.warnings));
 }
 
+/* --------------------------------- rig tracks --------------------------------- */
+
+group('rig tracks');
+{
+  /*
+   * A set drives the rig from tracks of its own — MIDI to a pedalboard, a
+   * video, a timecode file — outside any song's group. Each song gets the
+   * clips that play during it, so the player can show what Live will send.
+   */
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const midiClip = (id, start, end, name) =>
+    `<MidiClip Id="${id}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" /><Name Value="${name}" /></MidiClip>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="3"><Time Value="128" /><Name Value="Clocks" /></Locator>
+    <Locator Id="4"><Time Value="192" /><Name Value="AUTOSTOP" /></Locator>
+    <MidiTrack Id="50"><TrackGroupId Value="-1" /><EffectiveName Value="MIDI - Quad Cortex" />
+      ${midiClip(1, 0, 16, 'Clean')}${midiClip(2, 32, 64, 'Crunch')}${midiClip(3, 128, 192, 'Lead')}
+    </MidiTrack>
+    <MidiTrack Id="51"><TrackGroupId Value="-1" /><EffectiveName Value="+SECTIONS" />
+      ${midiClip(1, 0, 8, 'INTRO')}
+    </MidiTrack>
+    <AudioTrack Id="52"><TrackGroupId Value="-1" /><EffectiveName Value="VIDEO" />
+      <AudioClip Id="1"><CurrentStart Value="128" /><CurrentEnd Value="192" /><LoopStart Value="0" /><StartRelative Value="0" />
+        <Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Video/clocks.mp4" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+    <AudioTrack Id="11"><TrackGroupId Value="10" /><EffectiveName Value="Bass" />
+      <AudioClip Id="1"><CurrentStart Value="0" /><CurrentEnd Value="64" /><LoopStart Value="0" /><StartRelative Value="0" />
+        <Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/Bass.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const [yellow, clocks] = p.songs;
+  const rig = (song) => song.rigTracks.map((t) => `${t.kind}:${t.name}=${t.clips.map((c) => `${c.startBar}-${c.endBar} ${c.name}`).join(',')}`).join(' | ');
+  check('a MIDI track outside the songs is the rig\'s, cut to each song',
+    rig(yellow) === 'midi:MIDI - Quad Cortex=1-5 Clean,9-17 Crunch', rig(yellow));
+  check('a video track is known for what it is',
+    rig(clocks) === 'midi:MIDI - Quad Cortex=1-17 Lead | video:VIDEO=1-17 clocks.mp4', rig(clocks));
+  check('the sections track is not a rig track', !yellow.rigTracks.some((t) => /SECTIONS/.test(t.name)));
+  check('nor is a stem inside a song', !yellow.rigTracks.some((t) => t.name === 'Bass'));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

@@ -62,6 +62,11 @@ export interface AlsSong {
   /** Locators the app wrote for the rig, still as names. */
   rigMarks: { bar: number; name: string }[];
   /**
+   * The set's own rig tracks — MIDI to a pedalboard or the lights, a video
+   * track, a timecode track — cut down to what plays inside this song.
+   */
+  rigTracks: AlsRigTrack[];
+  /**
    * Audio files Ableton has on this song's tracks, when it has its own group.
    * `regions` is null when the track plays throughout, which is the usual case.
    */
@@ -78,6 +83,13 @@ export interface AlsSong {
     /** Every clip this track plays inside this song, in order. */
     clips: AlsClip[];
   }[];
+}
+
+/** A track that drives the rig rather than the band, and its clips in one song. */
+export interface AlsRigTrack {
+  name: string;
+  kind: 'midi' | 'audio' | 'video';
+  clips: { name: string; startBar: number; endBar: number }[];
 }
 
 /**
@@ -270,6 +282,8 @@ interface Track {
 
 interface Clip {
   beat: number;
+  /** Where the clip ends; NaN when the set did not say. */
+  endBeat: number;
   name: string;
 }
 
@@ -278,6 +292,7 @@ function clipsOf(chunk: string, tag: 'MidiClip' | 'AudioClip'): Clip[] {
   return [...chunk.matchAll(re)]
     .map((m) => ({
       beat: parseFloat((m[1].match(/<CurrentStart Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
+      endBeat: parseFloat((m[1].match(/<CurrentEnd Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
       name: decodeXml((m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? ''),
     }))
     .filter((c) => c.name && !Number.isNaN(c.beat))
@@ -627,6 +642,35 @@ export function parseAlsXml(xml: string): AlsProject {
   const sections = clipsOf(trackByFlag(tracks, /\+\s*SECTIONS\b|^sections\b/i)?.chunk ?? '', 'MidiClip');
 
   /*
+   * The rig's tracks: what the set sends out rather than plays to the band.
+   * A MIDI track to a pedalboard, a lighting desk or a tuner; a video or a
+   * timecode track. Known by their names, outside any song's group, and
+   * never one of the set's own text or click tracks.
+   */
+  const RIG_TRACK = /\b(midi|rig|patch(es)?|program|pc|video|vid|timecode|tc|ltc|smpte|light(s|ing)?|cortex|helix|kemper|axe|autotune|tuner)\b/i;
+  const NOT_RIG = /^(song|arrangement|tempo track|click|cue|cues)$|\+\s*(lyrics|sections)\b|\bslates?\b/i;
+  const VIDEO_FILE = /\.(mp4|mov|m4v|avi|mkv|webm)$/i;
+  const rigTrackDefs = tracks
+    .filter((t) => (t.kind === 'MidiTrack' || t.kind === 'AudioTrack') && !NOT_RIG.test(t.name.trim()))
+    .filter((t) => {
+      const parent = t.groupId === '-1' ? undefined : tracks.find((g) => g.id === t.groupId);
+      const top = parent ? parent.groupId === '-1' && RIG_TRACK.test(parent.name) : true;
+      return top && (RIG_TRACK.test(t.name) || (parent ? RIG_TRACK.test(parent.name) : false));
+    })
+    .map((t) => {
+      if (t.kind === 'MidiTrack') {
+        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip') };
+      }
+      const raw = clipsOfTrack(t);
+      const kind = raw.some((c) => VIDEO_FILE.test(c.path)) || /\b(video|vid)\b/i.test(t.name) ? 'video' as const : 'audio' as const;
+      return {
+        name: t.name,
+        kind,
+        clips: raw.map((c) => ({ beat: c.startBeat, endBeat: c.endBeat, name: c.path.split('/').pop() ?? c.path })),
+      };
+    });
+
+  /*
    * Where the slates sit. The slate track spans the whole set rather than
    * living in any song's group, so its clips are gathered once here and each
    * song later keeps the ones inside its own stretch — that is how the set
@@ -845,6 +889,19 @@ export function parseAlsXml(xml: string): AlsProject {
       rigMarks: locators
         .filter((l) => isRigLocator(l.name) && l.beat >= loc.beat - 1e-6 && l.beat < endBeat)
         .map((l) => ({ bar: relBar(l.beat), name: l.name })),
+      rigTracks: rigTrackDefs
+        .map((t) => ({
+          name: t.name,
+          kind: t.kind,
+          clips: t.clips
+            .filter((c) => c.beat < endBeat && (Number.isNaN(c.endBeat) ? c.beat >= loc.beat - 1e-6 : c.endBeat > loc.beat))
+            .map((c) => ({
+              name: c.name,
+              startBar: relBar(Math.max(c.beat, loc.beat)),
+              endBar: Number.isNaN(c.endBeat) ? relBar(Math.max(c.beat, loc.beat)) : relBar(Math.min(c.endBeat, endBeat)),
+            })),
+        }))
+        .filter((t) => t.clips.length),
       stems,
     };
   });

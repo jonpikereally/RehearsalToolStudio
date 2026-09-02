@@ -1522,8 +1522,9 @@ input[type='range'] {
 .block-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0 6px;
+  gap: 8px;
+  padding: 10px 0 8px;
+  border-top: 1px solid var(--border);
 }
 
 .grip {
@@ -1548,26 +1549,28 @@ input[type='range'] {
   cursor: grabbing;
 }
 
+/* The block's name: big enough to find from a music stand. */
 .block-toggle {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   padding: 2px 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .block-toggle:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 
 /* A disclosure triangle, wherever one folds something away. */
 .arrow {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
   transition: transform 120ms ease;
 }
 
@@ -2149,4 +2152,37 @@ input[type='range'] {
   text-align: left;
   font-size: 11px;
   color: var(--text-faint);
+}
+
+/* ------------------------------ rig tracks -------------------------------- */
+
+.rig-tracks {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rig-track-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.rig-track-name .badge {
+  text-transform: uppercase;
+}
+
+.rig-clips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 4px 0 0 2px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.rig-clip .mono {
+  color: var(--text);
 }

@@ -260,6 +260,13 @@ export function songsFromProject(
       patchClips: alsSong.rigMarks?.length
         ? clipsFromMarks(alsSong.rigMarks, id)
         : prev?.patchClips,
+      rig: alsSong.rigTracks?.length
+        ? alsSong.rigTracks.map((t) => ({
+            name: t.name,
+            kind: t.kind,
+            clips: t.clips.map((c) => ({ name: c.name, bar: c.startBar, endBar: c.endBar })),
+          }))
+        : undefined,
       lyrics: alsSong.lyrics.length ? alsSong.lyrics.map(toTimedText) : undefined,
       chords: alsSong.chords.length ? alsSong.chords.map(toTimedText) : undefined,
       lanes: laneList(alsSong),
