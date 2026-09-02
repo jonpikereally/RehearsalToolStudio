@@ -3399,8 +3399,8 @@ group('the mix, as the set has it');
   check('a pan cannot go past hard left', bass.pan === -1);
   check('a clip\'s own gain is read', bass.clips[0].gain === 0.5);
   check('the song group\'s fader counts', Math.abs(bass.gain - 0.75) < 1e-9, String(bass.gain));
-  check('a 2/4 bar inside the song is a caveat, in bars',
-    yellow.caveats.length === 2 && /2\/4 at bar 25/.test(yellow.caveats[0]) && /4\/4 at bar 27/.test(yellow.caveats[1]),
+  check('a stretch in 2/4 inside the song is one caveat, in bars',
+    yellow.caveats.length === 1 && /^Bars from 25 to 27 are in 2\/4/.test(yellow.caveats[0]),
     JSON.stringify(yellow.caveats));
   check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
     `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
@@ -3413,7 +3413,7 @@ group('the mix, as the set has it');
   const files = ['Ref Master', 'Bass', 'Drums'].map((n) => ({ path: `/Stems/${n}.wav`, name: `${n}.wav`, rev: 'r', size: 1 }));
   const imported = songsFromProject(p, '/Set.als', files, new Map()).songs;
   check('the song keeps its own signature and caveats',
-    imported[1].timeSigNum === 3 && imported[0].caveats?.length === 2 && imported[1].caveats === undefined);
+    imported[1].timeSigNum === 3 && imported[0].caveats?.length === 1 && imported[1].caveats === undefined);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

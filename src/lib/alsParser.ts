@@ -974,15 +974,23 @@ export function parseAlsXml(xml: string): AlsProject {
      * after the change land in the wrong place, though the audio plays on.
      */
     const caveats: string[] = [];
-    let current = signature;
-    for (const change of signatureChanges) {
-      if (change.beat <= loc.beat + 1e-6 || change.beat >= endBeat) continue;
-      if (change.num === current.num && change.den === current.den) continue;
+    const inside = signatureChanges.filter((c) => c.beat > loc.beat + 1e-6 && c.beat < endBeat);
+    const fmt = (b: number) => (Number.isInteger(b) ? String(b) : b.toFixed(1));
+    for (let i = 0; i < inside.length; i++) {
+      const change = inside[i];
+      // Only a stretch in another meter; a change back is the end of one.
+      if (change.num === signature.num && change.den === signature.den) continue;
+      const before = inside[i - 1];
+      if (before && before.num === change.num && before.den === change.den) continue;
+      const from = relBar(change.beat);
+      const after = inside.slice(i + 1).find((c) => c.num !== change.num || c.den !== change.den);
+      const to = after ? relBar(after.beat) : null;
+      const where =
+        to !== null && to - from <= 1.001 ? `Bar ${fmt(from)} is` : `Bars from ${fmt(from)}${to !== null ? ` to ${fmt(to)}` : ' on'} are`;
       caveats.push(
-        `The time signature changes to ${change.num}/${change.den} at bar ${relBar(change.beat)}; ` +
-          `bars, loops and the click are counted in ${signature.num}/${signature.den} throughout.`,
+        `${where} in ${change.num}/${change.den}; bars, loops and the click here are counted in ` +
+          `${signature.num}/${signature.den} throughout.`,
       );
-      current = change;
     }
 
     return {
