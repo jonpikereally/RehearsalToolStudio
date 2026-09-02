@@ -119,11 +119,13 @@ export default function PrepareSet() {
         readFile: async (path) => (await readBytes(path)).bytes,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
-        shift: (buffer, semitones, speed) =>
+        // Cached under the file it came from: a key without it once served
+        // one stem's render for every stem of the song.
+        shift: (buffer, semitones, speed, source) =>
           getShiftedBuffer({
             ctx,
-            path: `prepare:${semitones}:${speed}`,
-            rev: `${buffer.length}@${buffer.sampleRate}`,
+            path: source,
+            rev: `prepare:${buffer.length}@${buffer.sampleRate}`,
             semitones,
             tempo: speed,
             source: buffer,

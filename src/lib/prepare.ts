@@ -70,9 +70,12 @@ export interface PrepareOptions {
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
   /**
    * Transpose and stretch a decoded file, for a clip Live plays shifted or
-   * warped to another tempo. Without one, such clips print as their files.
+   * warped to another tempo. `source` names the file, and must be part of
+   * whatever the caller caches a render under: six stems of one song are
+   * the same length, and a key without the file served the first render
+   * — the drums — for all six. Without one, such clips print as their files.
    */
-  shift?: (buffer: AudioBuffer, semitones: number, speed: number) => Promise<AudioBuffer>;
+  shift?: (buffer: AudioBuffer, semitones: number, speed: number, source: string) => Promise<AudioBuffer>;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
 }
@@ -281,7 +284,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             // As Live plays it: the clip's own transposition and warp speed.
             const speed = clip.speed ?? 1;
             if (opts.shift && ((clip.semitones ?? 0) !== 0 || Math.abs(speed - 1) > 1e-6)) {
-              buffer = await opts.shift(buffer, clip.semitones ?? 0, speed);
+              buffer = await opts.shift(buffer, clip.semitones ?? 0, speed, resolvePath(clip.path) ?? clip.path);
             }
             placements.push(placementOf(clip, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
