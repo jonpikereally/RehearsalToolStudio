@@ -287,13 +287,18 @@ interface Clip {
   name: string;
 }
 
-function clipsOf(chunk: string, tag: 'MidiClip' | 'AudioClip'): Clip[] {
+/**
+ * The clips on a track. A text track's clips are their names, so an unnamed
+ * one is nothing; a rig track's clip is what it sends, name or no name, and
+ * `unnamed` is what to call one when it comes.
+ */
+function clipsOf(chunk: string, tag: 'MidiClip' | 'AudioClip', unnamed?: string): Clip[] {
   const re = new RegExp(`<${tag} Id="\\d+"[^>]*>([\\s\\S]*?)</${tag}>`, 'g');
   return [...chunk.matchAll(re)]
     .map((m) => ({
       beat: parseFloat((m[1].match(/<CurrentStart Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
       endBeat: parseFloat((m[1].match(/<CurrentEnd Value="([-\d.]+)"/) ?? [])[1] ?? 'NaN'),
-      name: decodeXml((m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? ''),
+      name: decodeXml((m[1].match(/<Name Value="([^"]*)"/) ?? [])[1] ?? '') || (unnamed ?? ''),
     }))
     .filter((c) => c.name && !Number.isNaN(c.beat))
     .sort((a, b) => a.beat - b.beat);
@@ -659,7 +664,7 @@ export function parseAlsXml(xml: string): AlsProject {
     })
     .map((t) => {
       if (t.kind === 'MidiTrack') {
-        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip') };
+        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip', 'clip') };
       }
       const raw = clipsOfTrack(t);
       const kind = raw.some((c) => VIDEO_FILE.test(c.path)) || /\b(video|vid)\b/i.test(t.name) ? 'video' as const : 'audio' as const;

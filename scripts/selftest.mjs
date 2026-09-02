@@ -3229,7 +3229,7 @@ group('rig tracks');
     <Locator Id="3"><Time Value="128" /><Name Value="Clocks" /></Locator>
     <Locator Id="4"><Time Value="192" /><Name Value="AUTOSTOP" /></Locator>
     <MidiTrack Id="50"><TrackGroupId Value="-1" /><EffectiveName Value="MIDI - Quad Cortex" />
-      ${midiClip(1, 0, 16, 'Clean')}${midiClip(2, 32, 64, 'Crunch')}${midiClip(3, 128, 192, 'Lead')}
+      ${midiClip(1, 0, 16, 'Clean')}${midiClip(2, 32, 64, 'Crunch')}${midiClip(3, 128, 192, 'Lead')}${midiClip(4, 160, 164, '')}
     </MidiTrack>
     <MidiTrack Id="51"><TrackGroupId Value="-1" /><EffectiveName Value="+SECTIONS" />
       ${midiClip(1, 0, 8, 'INTRO')}
@@ -3253,8 +3253,8 @@ group('rig tracks');
   const rig = (song) => song.rigTracks.map((t) => `${t.kind}:${t.name}=${t.clips.map((c) => `${c.startBar}-${c.endBar} ${c.name}`).join(',')}`).join(' | ');
   check('a MIDI track outside the songs is the rig\'s, cut to each song',
     rig(yellow) === 'midi:MIDI - Quad Cortex=1-5 Clean,9-17 Crunch', rig(yellow));
-  check('a video track is known for what it is',
-    rig(clocks) === 'midi:MIDI - Quad Cortex=1-17 Lead | video:VIDEO=1-17 clocks.mp4', rig(clocks));
+  check('a video track is known for what it is, and an unnamed MIDI clip still counts',
+    rig(clocks) === 'midi:MIDI - Quad Cortex=1-17 Lead,9-10 clip | video:VIDEO=1-17 clocks.mp4', rig(clocks));
   check('the sections track is not a rig track', !yellow.rigTracks.some((t) => /SECTIONS/.test(t.name)));
   check('nor is a stem inside a song', !yellow.rigTracks.some((t) => t.name === 'Bass'));
 }
