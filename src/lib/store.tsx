@@ -659,6 +659,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [settings.root, schedulePush]);
 
+  /*
+   * The folder is the truth, so it is read on every launch: every set in it,
+   * fresh, with whatever a newer build now makes of them. A library left in
+   * the file by an older build is replaced rather than trusted. Once per
+   * page, after the file has been read, and only when there is a folder.
+   */
+  const scannedOnLoad = useRef(false);
+  useEffect(() => {
+    if (!canReadLibrary || scannedOnLoad.current) return;
+    scannedOnLoad.current = true;
+    void rescan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReadLibrary]);
+
   /** The band's folder, asked for once and remembered by the server. */
   const pickPublishFolder = useCallback(async () => {
     const picked = await local.pickFolder('publish');
