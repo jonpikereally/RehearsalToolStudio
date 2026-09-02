@@ -45,6 +45,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     var window: NSWindow!
     var web: WKWebView!
     var titleWatch: NSKeyValueObservation?
+    /// The build the page was loaded from, to notice when the server has moved on.
+    var loadedBuild: String?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -82,10 +84,12 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         web.loadHTMLString(page("Starting the studio…",
             "Building it first if the source has moved on, which takes a moment."), baseURL: nil)
         DispatchQueue.global(qos: .userInitiated).async {
-            let up = self.startServers()
+            let build = self.startServers()
             DispatchQueue.main.async {
-                if up {
-                    self.web.load(URLRequest(url: studioURL))
+                if let build {
+                    self.loadedBuild = build
+                    self.web.load(URLRequest(url: studioURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                             timeoutInterval: 30))
                 } else {
                     self.web.loadHTMLString(page("The studio didn't start",
                         "Nothing answered on port 5177. The launcher's log says why: " +
@@ -97,7 +101,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     }
 
     /// Run the launcher's server-only mode — build if stale, serve, voice helper — then wait for an answer.
-    func startServers() -> Bool {
+    /// Returns the build the server is serving, or nil when nothing answered.
+    func startServers() -> String? {
         let launcher = "\(repo)/scripts/app-launch.sh"
         if FileManager.default.isReadableFile(atPath: launcher) {
             let sh = Process()
@@ -107,26 +112,48 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
             sh.waitUntilExit()
         }
         for _ in 0..<40 {
-            if studioAnswers() { return true }
+            if let build = studioBuild() { return build }
             Thread.sleep(forTimeInterval: 0.5)
         }
-        return false
+        return nil
     }
 
-    /// True when what is on 5177 is the studio and not a stranger on the port.
-    func studioAnswers() -> Bool {
-        var request = URLRequest(url: studioURL.appendingPathComponent("__rehearsal-studio"))
-        request.timeoutInterval = 2
-        var ok = false
+    /// The build on 5177 when what answers is the studio and not a stranger on the port.
+    func studioBuild() -> String? {
+        var request = URLRequest(url: studioURL.appendingPathComponent("__rehearsal-studio"),
+                                 cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 2)
+        request.httpShouldHandleCookies = false
+        var build: String?
         let done = DispatchSemaphore(value: 0)
         URLSession.shared.dataTask(with: request) { data, _, _ in
-            if let data, let text = String(data: data, encoding: .utf8) {
-                ok = text.contains("rehearsal-tool-studio")
+            if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               json["serving"] as? String == "rehearsal-tool-studio" {
+                build = json["build"] as? String ?? "unstamped"
             }
             done.signal()
         }.resume()
         done.wait()
-        return ok
+        return build
+    }
+
+    /*
+     * The launcher rebuilds on every click, but a window left open keeps the
+     * page it loaded. Coming back to the app is the moment to check: when the
+     * server now holds a newer build than the page came from, the page is
+     * reloaded rather than left to offer a banner it may never show. The
+     * studio writes edits within a couple of seconds, so nothing is lost.
+     */
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard loadedBuild != nil else { return }
+        DispatchQueue.global(qos: .utility).async {
+            guard let build = self.studioBuild() else { return }
+            DispatchQueue.main.async {
+                if build != self.loadedBuild {
+                    self.loadedBuild = build
+                    self.web.reloadFromOrigin()
+                }
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
