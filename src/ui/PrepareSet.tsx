@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
@@ -19,7 +19,7 @@ import SettingsSection from './SettingsSection';
  * files locally, not to opening the app.
  */
 export default function PrepareSet() {
-  const { lastScan, publishFolderName, pickPublishFolder, publishFolder } = useStore();
+  const { currentSet, publishFolderName, pickPublishFolder, publishFolder } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -27,10 +27,8 @@ export default function PrepareSet() {
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<AlsProject | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const loading = useRef(false);
 
-  const sets = lastScan?.alsSets ?? 0;
-  const setPath = lastScan?.alsSetPaths?.[0] ?? null;
+  const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
 
   /*
@@ -39,16 +37,22 @@ export default function PrepareSet() {
    * the stems, and those are only touched once you press the button.
    */
   useEffect(() => {
-    if (!setPath || loading.current) return;
-    loading.current = true;
+    setProject(null);
+    setChosen(null);
+    if (!setPath) return;
+    let live = true;
     void (async () => {
       try {
         const { bytes } = await readBytes(setPath);
-        setProject(await parseAls(bytes));
+        const parsed = await parseAls(bytes);
+        if (live) setProject(parsed);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (live) setError(err instanceof Error ? err.message : String(err));
       }
     })();
+    return () => {
+      live = false;
+    };
   }, [setPath]);
 
   // Titles, deduped and in set order: a count-in locator repeats its song's.
@@ -137,13 +141,13 @@ export default function PrepareSet() {
     }
   };
 
-  if (!sets) return null;
+  if (!setPath) return null;
 
   return (
     <SettingsSection
       id="prepare"
       title="Prepare for Rehearsal Tool"
-      summary={busy ? 'preparing…' : alsName ?? `${sets} set${sets === 1 ? '' : 's'} found`}
+      summary={busy ? 'preparing…' : alsName ?? 'no set chosen'}
     >
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         Reads the set's current arrangement and writes each song out as small files anyone can

@@ -9,24 +9,30 @@ import type { Song } from '../types';
 
 export default function LibraryView() {
   const {
-    library, rescan, scanning, scanProgress, lastScan, dismissScanResult, syncError,
+    library, rescan, scanning, scanProgress, lastScan, dismissScanResult, syncError, currentSet,
   } = useStore();
   const [filter, setFilter] = useState('');
+
+  // Only the set being worked on; the rest of the folder is not on screen.
+  const inSet = useMemo(
+    () => library.songs.filter((s) => s.setPath === currentSet),
+    [library.songs, currentSet],
+  );
 
   const groups = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     const songs = needle
-      ? library.songs.filter(
+      ? inSet.filter(
           (s) =>
             s.title.toLowerCase().includes(needle) ||
             s.project.toLowerCase().includes(needle) ||
             (s.artist ?? '').toLowerCase().includes(needle),
         )
-      : library.songs;
+      : inSet;
     return groupSongs(songs);
-  }, [library.songs, filter]);
+  }, [inSet, filter]);
 
-  const needTempo = library.songs.filter((s) => s.tempoUnset).length;
+  const needTempo = inSet.filter((s) => s.tempoUnset).length;
 
   return (
     <>
@@ -34,7 +40,7 @@ export default function LibraryView() {
         <h1>
           Songs
           <span className="sub" style={{ display: 'block' }}>
-            {library.songs.length} song{library.songs.length === 1 ? '' : 's'}
+            {inSet.length} song{inSet.length === 1 ? '' : 's'}
             {needTempo > 0 && ` · ${needTempo} need a tempo`}
           </span>
         </h1>
@@ -57,7 +63,7 @@ export default function LibraryView() {
         </div>
       )}
 
-      {library.songs.length > 0 && (
+      {inSet.length > 0 && (
         <div style={{ padding: '12px 16px 0' }}>
           <input
             type="text"
@@ -69,16 +75,13 @@ export default function LibraryView() {
         </div>
       )}
 
-      {library.songs.length === 0 && !scanning && (
+      {inSet.length === 0 && !scanning && (
         <div className="empty">
-          <h2>No songs yet</h2>
+          <h2>No songs in this set</h2>
           <p>
-            Choose the folder your Ableton sets live in, in Settings, then tap the ⟳ button to
-            read them.
+            None of its songs have audio here yet, or the set has changed since it was read —
+            tap ⟳ to read it again.
           </p>
-          <button className="btn primary" onClick={() => navigate('/settings')}>
-            Open Settings
-          </button>
         </div>
       )}
 

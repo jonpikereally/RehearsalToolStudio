@@ -1,10 +1,18 @@
 import { useStore } from '../lib/store';
 import { navigate, setlistUrl } from '../lib/router';
-import { isFromSet } from '../lib/alsImport';
+import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 
 export default function SetlistsView() {
-  const { library, createSetlist } = useStore();
+  const { library, createSetlist, currentSet } = useStore();
+
+  // The set's own running order, and any made by hand out of its songs.
+  const inSet = new Set(library.songs.filter((s) => s.setPath === currentSet).map((s) => s.id));
+  const setlists = library.setlists.filter(
+    (sl) =>
+      (currentSet && sl.id === setlistIdFor(currentSet)) ||
+      (!isFromSet(sl.id) && sl.songIds.every((id) => inSet.has(id))),
+  );
 
   const add = () => {
     const name = window.prompt('Name this setlist', 'New setlist');
@@ -24,7 +32,7 @@ export default function SetlistsView() {
         )}
       </div>
 
-      {library.setlists.length === 0 && (
+      {setlists.length === 0 && (
         <div className="empty">
           <h2>No setlists</h2>
           <p>
@@ -40,7 +48,7 @@ export default function SetlistsView() {
         </div>
       )}
 
-      {library.setlists.map((setlist) => (
+      {setlists.map((setlist) => (
         <button key={setlist.id} className="row" onClick={() => navigate(setlistUrl(setlist.id))}>
           <div className="row-main">
             <div className="row-title">{setlist.name}</div>

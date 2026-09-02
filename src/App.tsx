@@ -7,6 +7,7 @@ import SetlistsView from './ui/SetlistsView';
 import SetlistView from './ui/SetlistView';
 import SettingsView from './ui/SettingsView';
 import Onboarding from './ui/Onboarding';
+import ChooseSet from './ui/ChooseSet';
 import SetToolsView from './ui/SetToolsView';
 
 /**
@@ -39,7 +40,7 @@ function useNewerBuild(): string | null {
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet } = useStore();
   const newerBuild = useNewerBuild();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
@@ -53,6 +54,9 @@ export default function App() {
     // reachable before a folder is chosen — as Settings always has.
   } else if (!usingLocalFolder && section !== 'settings' && section !== 'tools') {
     body = <Onboarding />;
+    // Everything is about one set, so a launch chooses it before anything else.
+  } else if (usingLocalFolder && !currentSet && section !== 'settings') {
+    body = <ChooseSet />;
   } else if (section === 'setlists') {
     body = <SetlistsView />;
   } else if (section === 'setlist' && (route.query.get('id') ?? route.path[1])) {
@@ -96,6 +100,16 @@ export default function App() {
         <TabButton on={section === 'tools'} to="/tools" glyph="⚒" label="Set tools" />
         <TabButton on={section === 'settings'} to="/settings" glyph="⚙" label="Settings" />
       </nav>
+      {currentSet && section !== 'song' && (
+        <div className="setbar">
+          <span>
+            Set: <strong>{sets.find((s) => s.path === currentSet)?.name ?? currentSet.split('/').pop()}</strong>
+          </span>
+          <button className="chip" onClick={() => chooseSet(null)}>
+            Change set
+          </button>
+        </div>
+      )}
       <div className="app-body">{body}</div>
     </div>
   );

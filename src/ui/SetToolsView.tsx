@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { inflateAls, parseAls, type AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
-import { newestSetPerFolder } from '../lib/scan';
 import {
   defaultVoice,
   helperVoices,
@@ -38,7 +37,6 @@ const LS_VOICE = 'ls.settools.voice';
 
 export default function SetToolsView() {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
-  const [sets, setSets] = useState<{ path: string; name: string }[] | null>(null);
   const [setPath, setSetPath] = useState<string | null>(null);
   const [project, setProject] = useState<AlsProject | null>(null);
   const [voices, setVoices] = useState<HelperVoice[] | null>(null);
@@ -50,7 +48,7 @@ export default function SetToolsView() {
   const [tool, setTool] = useState<'check' | 'slates' | 'lyrics' | 'chords' | 'patches' | 'setlist'>(
     'check',
   );
-  const { library } = useStore();
+  const { library, currentSet } = useStore();
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<string | null>(null);
@@ -74,28 +72,34 @@ export default function SetToolsView() {
     if (started.current) return;
     started.current = true;
     void connectHelpers();
-    void (async () => {
-      const stored = await local.storedFolder('songs');
-      if (stored) await useFolder(stored);
-    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const useFolder = async (chosen: local.LocalFolder) => {
-    setFolder(chosen);
-    setError(null);
-    const files = await local.listFiles(chosen.handle, '');
-    const newest = newestSetPerFolder(files).sort((a, b) => a.path.localeCompare(b.path));
-    setSets(newest.map((f) => ({ path: f.path, name: f.name.replace(/\.als$/i, '') })));
-  };
+  /*
+   * The set is the one chosen on opening; every tool here works on it. It is
+   * read afresh whenever that choice changes, and a lone .als opened in the
+   * meantime gives way to it.
+   */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const stored = await local.storedFolder('songs');
+      if (!live) return;
+      setFolder(stored);
+      setLone(null);
+      setChosen(null);
+      if (stored && currentSet) await openSet(stored, currentSet);
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSet]);
 
-  const pick = async () => {
-    try {
-      await useFolder(await local.pickFolder('songs'));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
-    }
+  const backToSet = () => {
+    setLone(null);
+    setChosen(null);
+    if (folder && currentSet) void openSet(folder, currentSet);
   };
 
   /**
@@ -145,13 +149,13 @@ export default function SetToolsView() {
   const setBytes = async (): Promise<ArrayBuffer> =>
     lone ? lone.bytes : (await local.readBytes(folder!.handle, '', setPath!)).bytes;
 
-  const openSet = async (path: string) => {
+  const openSet = async (from: local.LocalFolder, path: string) => {
     setError(null);
     setDone(null);
     setSetPath(path);
     setProject(null);
     try {
-      const { bytes } = await local.readBytes(folder!.handle, '', path);
+      const { bytes } = await local.readBytes(from.handle, '', path);
       setProject(await parseAls(bytes));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -363,14 +367,22 @@ export default function SetToolsView() {
           that writes writes to a copy, never the original.
         </div>
 
-        {!folder && !lone && (
-          <div className="btn-row">
-            <button className="btn primary" onClick={() => void pick()}>
-              Choose the folder your projects live in
-            </button>
-            <button className="btn" onClick={() => void openLoneAls()}>
-              Open a single .als…
-            </button>
+        {!lone && (
+          <div className="field">
+            <label>
+              The set
+              <span className="hint">
+                {currentSet
+                  ? 'The set chosen on opening — change it from the bar above.'
+                  : 'No set chosen yet — pick one from the Songs tab.'}
+              </span>
+            </label>
+            <div className="btn-row">
+              {currentSet && <span className="code">{currentSet.split('/').pop()}</span>}
+              <button className="btn" disabled={!!progress} onClick={() => void openLoneAls()}>
+                Open a single .als…
+              </button>
+            </div>
           </div>
         )}
 
@@ -388,44 +400,12 @@ export default function SetToolsView() {
               <button className="btn" disabled={!!progress} onClick={() => void openLoneAls()}>
                 Different .als…
               </button>
+              {currentSet && (
+                <button className="btn" disabled={!!progress} onClick={backToSet}>
+                  Back to {currentSet.split('/').pop()?.replace(/\.als$/i, '')}
+                </button>
+              )}
             </div>
-          </div>
-        )}
-
-        {sets && !sets.length && (
-          <div className="notice">No Ableton sets in {folder?.name} — is this the right folder?</div>
-        )}
-
-        {sets && sets.length > 0 && (
-          <div className="field">
-            <label htmlFor="playback-set">
-              The set
-              <span className="hint">Newest .als per project folder, backups skipped.</span>
-            </label>
-            <select
-              id="playback-set"
-              value={setPath ?? ''}
-              onChange={(e) => void openSet(e.target.value)}
-            >
-              <option value="" disabled>
-                choose a set…
-              </option>
-              {sets.map((s) => (
-                <option key={s.path} value={s.path}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            {sets.length > 0 && (
-              <div className="btn-row" style={{ marginTop: 8 }}>
-                <button className="btn" onClick={() => void pick()}>
-                  Different folder…
-                </button>
-                <button className="btn" onClick={() => void openLoneAls()}>
-                  Open a single .als…
-                </button>
-              </div>
-            )}
           </div>
         )}
 

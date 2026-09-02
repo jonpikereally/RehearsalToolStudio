@@ -20,6 +20,8 @@ const LIBRARY_FILE = '.learning-songs.json';
 const LS_LIBRARY = 'ls.library';
 const LS_REV = 'ls.libraryRev';
 const LS_SETTINGS = 'ls.settings';
+/** The set being worked on. Session-scoped: every launch asks again. */
+const SS_SET = 'ls.currentSet';
 const PUSH_DEBOUNCE_MS = 1500;
 
 export interface Settings {
@@ -57,6 +59,24 @@ function migrateSettings(raw: Partial<Settings> & { sourceKind?: string }): Part
 
 export type SyncState = 'idle' | 'syncing' | 'error' | 'disconnected';
 
+/**
+ * Only a song that came from a set is a song here. The folder holds Ableton
+ * projects; every loose audio file in it is a stem, a bounce, a slate or a
+ * sample. A library written by an earlier build that scanned by file name
+ * still carries those, so they are dropped wherever a library comes in.
+ */
+function setSongsOnly(lib: Library): Library {
+  const songs = lib.songs.filter((s) => s.id.startsWith('als:'));
+  return songs.length === lib.songs.length ? lib : { ...lib, songs };
+}
+
+/** One entry per set the library knows, named after its file. */
+export interface KnownSet {
+  path: string;
+  name: string;
+  songs: number;
+}
+
 /** How the folder stands: none chosen, chosen but switched off, or reading. */
 export type LocalStatus = 'off' | 'not-picked' | 'ready';
 
@@ -70,6 +90,11 @@ interface StoreValue {
   lastScan: ScanResult | null;
   localStatus: LocalStatus;
   localFolderName: string | null;
+  /** The set everything on screen is about, as its path in the folder. */
+  currentSet: string | null;
+  /** The sets the library knows, for choosing between. */
+  sets: KnownSet[];
+  chooseSet: (path: string | null) => void;
   saveSettings: (patch: Partial<Settings>) => void;
   updateSong: (id: string, patch: Partial<Song>) => void;
   updateSetlist: (id: string, patch: Partial<Setlist>) => void;
@@ -143,7 +168,7 @@ function mergeLibraries(mine: Library, theirs: Library): Library {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [library, setLibrary] = useState<Library>(() => loadLocal(LS_LIBRARY, emptyLibrary()));
+  const [library, setLibrary] = useState<Library>(() => setSongsOnly(loadLocal(LS_LIBRARY, emptyLibrary())));
   const [settings, setSettings] = useState<Settings>(() => ({
     ...DEFAULT_SETTINGS,
     ...migrateSettings(loadLocal(LS_SETTINGS, {} as Partial<Settings>)),
@@ -156,6 +181,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [localStatus, setLocalStatus] = useState<LocalStatus>('off');
   const [localFolderName, setLocalFolderName] = useState<string | null>(null);
   const [publishFolderName, setPublishFolderName] = useState<string | null>(null);
+  const [currentSet, setCurrentSet] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(SS_SET);
+    } catch {
+      return null;
+    }
+  });
+
+  const chooseSet = useCallback((path: string | null) => {
+    setCurrentSet(path);
+    try {
+      if (path) sessionStorage.setItem(SS_SET, path);
+      else sessionStorage.removeItem(SS_SET);
+    } catch {
+      /* a session that can't remember still works */
+    }
+  }, []);
+
+  const sets = useMemo<KnownSet[]>(() => {
+    const counts = new Map<string, number>();
+    for (const song of library.songs) {
+      if (song.setPath) counts.set(song.setPath, (counts.get(song.setPath) ?? 0) + 1);
+    }
+    return [...counts]
+      .map(([path, songs]) => ({ path, name: path.split('/').pop()!.replace(/\.als$/i, ''), songs }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [library.songs]);
 
   const revRef = useRef<string | null>(localStorage.getItem(LS_REV));
   const pushTimer = useRef<number | null>(null);
@@ -326,10 +378,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (remote) {
           revRef.current = remote.rev;
           if (remote.rev) localStorage.setItem(LS_REV, remote.rev);
+          const theirs = setSongsOnly(remote.data);
           setLibrary((prev) => {
-            if (replace) return remote.data;
-            const merged = mergeLibraries(prev, remote.data);
-            // Only write back if our local copy actually contributed something.
+            if (replace) return theirs;
+            const merged = mergeLibraries(prev, theirs);
+            // Only write back if our local copy actually contributed something
+            // — which includes having dropped what was never a song.
             if (JSON.stringify(merged) !== JSON.stringify(remote.data)) schedulePush(merged);
             return merged;
           });
@@ -536,10 +590,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result.skippedSamples.push(`${doc.path} — ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ''}`);
           }
         }
-        const songs = [...merged.values()].sort(
-          (a, b) =>
-            (a.artist ?? '').localeCompare(b.artist ?? '') || a.title.localeCompare(b.title),
-        );
+        const songs = [...merged.values()]
+          .filter((s) => s.id.startsWith('als:'))
+          .sort(
+            (a, b) =>
+              (a.artist ?? '').localeCompare(b.artist ?? '') || a.title.localeCompare(b.title),
+          );
         /*
          * One running order per set, built once the library is whole so a song
          * the set names counts whether it arrived in this scan or an earlier
@@ -600,6 +656,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       lastScan,
       localStatus,
       localFolderName,
+      currentSet,
+      sets,
+      chooseSet,
       saveSettings,
       updateSong,
       updateSetlist,
@@ -618,7 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, pullNow, localStatus, localFolderName,
+      rescan, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       pickLocalFolder, stopUsingLocalFiles, forgetLocalFolder,
       publishFolderName, pickPublishFolder, publishFolder,
     ],

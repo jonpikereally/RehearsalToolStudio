@@ -80,6 +80,22 @@ button {
   height: 100%;
 }
 
+/* The set everything on screen is about, named under the tabs. */
+.setbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.setbar strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .topbar {
   display: flex;
   align-items: center;

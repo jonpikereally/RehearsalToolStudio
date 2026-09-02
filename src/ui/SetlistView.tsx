@@ -6,7 +6,7 @@ import { isFromSet } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 
 export default function SetlistView({ setlistId }: { setlistId: string }) {
-  const { library, updateSetlist, deleteSetlist } = useStore();
+  const { library, updateSetlist, deleteSetlist, currentSet } = useStore();
   const setlist = library.setlists.find((s) => s.id === setlistId);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
@@ -51,6 +51,7 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
 
   const candidates = library.songs.filter(
     (s) =>
+      s.setPath === currentSet &&
       !setlist.songIds.includes(s.id) &&
       (filter.trim() === '' ||
         s.title.toLowerCase().includes(filter.trim().toLowerCase()) ||
