@@ -34,10 +34,7 @@ import PrepareSongDialog from './PrepareSongDialog';
 import { hasDevices } from '../lib/usePlayer';
 import { isAbsoluteRef } from '../lib/localSource';
 import type { FileStanding } from '../lib/songLoader';
-import type { Variant } from '../types';
-import { skippedFor } from '../lib/loadPrefs';
 import { chainSummary, unsupportedIn } from '../lib/fx';
-import DownloadDialog from './DownloadDialog';
 import BlockHead from './BlockHead';
 import SetMenu from './SetMenu';
 import { allSets, currentSet, otherSetsInProject } from '../lib/songSets';
@@ -409,19 +406,6 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
-        {switchedOff(song).length > 0 && (
-          <div className="notice stack">
-            <span>
-              <strong>Switched off on this device:</strong> {switchedOff(song).map((v) => v.name).join(', ')}.
-              Not loaded, so not in the mixer.
-            </span>
-            <div className="btn-row">
-              <button className="btn primary" onClick={() => player.confirmDownloads([])}>
-                Turn {switchedOff(song).length === 1 ? 'it' : 'them'} back on
-              </button>
-            </div>
-          </div>
-        )}
         {(player.files.forbidden.length > 0 || player.files.missing.length > 0 || player.files.failed.length > 0) && (
           <div className="notice stack">
             {player.files.forbidden.length > 0 && (
@@ -557,16 +541,6 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
                 ? () => commitClips(withoutClip(clips, patchEdit.clip.id))
                 : undefined
             }
-          />
-        )}
-
-        {player.downloadChoice && (
-          <DownloadDialog
-            songTitle={song.title}
-            items={player.downloadChoice}
-            skipped={player.skippedVariants}
-            onConfirm={player.confirmDownloads}
-            onCancel={() => back()}
           />
         )}
 
@@ -1212,16 +1186,6 @@ function describeDevices(song: Song): string {
   const list = parts.length ? `${parts.join('; ')}.` : '';
   const no = cannot.size ? ` Cannot be imitated at all: ${[...cannot].join(', ')}.` : '';
   return `${list}${no}`;
-}
-
-/**
- * Parts this device has chosen not to load. The parts picker records them,
- * and an older picker once did so on a song's behalf; a part that quietly
- * never appears in the mixer is a part somebody will go looking for.
- */
-function switchedOff(song: Song): Variant[] {
-  const skipped = new Set(skippedFor(song.id));
-  return song.variants.filter((v) => skipped.has(v.id) && !v.hidden);
 }
 
 /** The folder a set of files share, when they do: the longest path they all start with. */

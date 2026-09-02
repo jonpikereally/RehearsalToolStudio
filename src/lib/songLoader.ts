@@ -1,10 +1,9 @@
 import type { Song, Variant } from '../types';
-import { availability, isLocal, readBytes } from './source';
+import { availability, readBytes } from './source';
 import { fileKey, getFile, putFile } from './idb';
 import { getShiftedBuffer } from './pitchService';
 import type { SongEngine, TrackConfig } from './audioEngine';
 import { loadMix, loadedVariants, settingFor } from './stemMix';
-import { skippedFor } from './loadPrefs';
 import { isReferenceName, isUnpitched } from './scan';
 import { renderTrack, type ClipPlacement } from './arrangement.ts';
 import { barToSec } from './bars';
@@ -41,49 +40,12 @@ export function visibleVariants(song: Song): Variant[] {
 }
 
 /**
- * Everything the song has, less what this device has chosen not to fetch.
- * The mixer decides what actually sounds out of that.
+ * Everything the song has. Every part loads, always: the mixer decides what
+ * sounds, and a part that is not there to play is said so on the page.
  */
 export function variantsToLoad(song: Song): Variant[] {
-  const skipped = new Set(skippedFor(song.id));
-  const chosen = loadedVariants(song).filter((v) => !skipped.has(v.id));
-  if (chosen.length) return chosen;
-  // Never load nothing: an empty choice falls back to whatever the song has.
   const all = loadedVariants(song);
   return all.length ? all : visibleVariants(song);
-}
-
-export interface DownloadItem {
-  variant: Variant;
-  /** Nothing to fetch: either cached already, or sitting on this machine. */
-  cached: boolean;
-  /** Where it already is, when it is anywhere. */
-  where: 'disk' | 'cache' | 'remote';
-}
-
-/**
- * What opening this song would cost, part by part.
- *
- * Everything the song offers is listed, including parts this device currently
- * skips, so the picker can show the whole set rather than only what's already
- * chosen.
- */
-export async function downloadPlan(song: Song): Promise<DownloadItem[]> {
-  const items: DownloadItem[] = [];
-  for (const variant of loadedVariants(song)) {
-    /*
-     * Disk first. Asking the cache alone reported a file sitting in the user's
-     * own folder as "not on this device" and put a price in megabytes against
-     * opening it.
-     */
-    if (await isLocal(variant.path)) {
-      items.push({ variant, cached: true, where: 'disk' });
-      continue;
-    }
-    const hit = await getFile(fileKey(variant.path, variant.rev));
-    items.push({ variant, cached: !!hit, where: hit ? 'cache' : 'remote' });
-  }
-  return items;
 }
 
 async function bytesFor(

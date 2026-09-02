@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { SongEngine, type LoopRegion } from './audioEngine';
-import { clearDecodedCache, downloadPlan, filesReport, loadSong, variantsToLoad, visibleVariants, type DownloadItem, type FilesReport, type LoadProgress } from './songLoader';
-import { setSkipped, skippedFor } from './loadPrefs';
+import { clearDecodedCache, filesReport, loadSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
 import { barToSec, clickBeats, nudgeBars, secToBar } from './bars';
 import { resetMix, saveSetting } from './stemMix';
 
@@ -106,25 +105,11 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     [songId],
   );
 
-  /*
-   * Parts to be asked about before anything is fetched.
-   *
-   * Only when there is something to ask about: a part that is neither on this
-   * device nor already turned down. Everything else opens straight into the
-   * song — being asked to approve a download of nothing, every time, on a song
-   * whose stems are all sitting on the disk, is a question with one answer.
-   *
-   * It is still where the version and the parts are chosen, so it stays one tap
-   * away in the mixer for the times that is what you came to do.
-   */
-  const [choice, setChoice] = useState<DownloadItem[] | null>(null);
-  const [choosing, setChoosing] = useState(false);
 
   /*
    * What of the song is not here, worked out as it opens: files not in the
    * folder, files in a folder the studio may not read, parts that failed to
-   * load. Said on the page, once; nothing is asked. The parts picker stays
-   * behind its button for choosing what to load.
+   * load. Said on the page, once; nothing is asked.
    */
   const [files, setFiles] = useState<FilesReport & { failed: { part: string; reason: string }[] }>({
     missing: [],
@@ -143,30 +128,11 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     };
   }, [song?.id]);
 
-  /** Open the picker on demand, with fresh cache information. */
-  const openDownloadPicker = useCallback(async () => {
-    if (!song) return;
-    setChoice(await downloadPlan(song));
-    setChoosing(true);
-  }, [song?.id]);
-
-  const confirmDownloads = useCallback(
-    (skipIds: string[]) => {
-      if (!song) return;
-      setSkipped(song.id, skipIds);
-      setChoosing(false);
-      setChoice(null);
-    },
-    [song?.id],
-  );
-
   /* --------------------------------- loading -------------------------------- */
 
   useEffect(() => {
     if (!song) return;
     abortRef.current?.abort();
-    // Hold off while the picker is up: fetching first would defeat the point.
-    if (choosing) return;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -241,7 +207,7 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     return () => controller.abort();
     // Reload only when the song or its key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, choosing, effects]);
+  }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, effects]);
 
   // Free decoded audio when leaving a song entirely.
   useEffect(() => {
@@ -614,12 +580,8 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     setStemSolo,
     clearSolos,
     stemState,
-    downloadChoice: choosing ? choice : null,
-    openDownloadPicker,
-    confirmDownloads,
     /** What of the song is not here to play. */
     files,
-    skippedVariants: song ? skippedFor(song.id) : [],
     setSwitched,
     audioReport,
     showAudioReport,

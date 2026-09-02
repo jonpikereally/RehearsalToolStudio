@@ -238,13 +238,6 @@ export default function StemMixer({
             </button>
             <button
               className="chip"
-              onClick={() => void player.openDownloadPicker()}
-              title="Choose which parts this device downloads"
-            >
-              Parts…
-            </button>
-            <button
-              className="chip"
               onClick={() => setBouncing(true)}
               title="Print what you hear to a file"
             >
