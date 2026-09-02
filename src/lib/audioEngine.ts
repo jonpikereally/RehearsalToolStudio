@@ -38,6 +38,8 @@ export interface BounceSource {
   level: number;
   pan: number;
   regions?: { startSec: number; endSec: number }[];
+  /** Song time at which the file's first sample plays. */
+  fileStartSec?: number;
 }
 
 interface Track {
@@ -53,6 +55,12 @@ interface Track {
    */
   regionGain: GainNode | null;
   regions: { startSec: number; endSec: number }[] | null;
+  /**
+   * Song time at which the file's first sample plays. Zero for a file that
+   * starts on bar 1; positive when the set places the clip later; negative
+   * when the clip begins partway into the file.
+   */
+  fileStartSec: number;
   /** Null on browsers without StereoPannerNode; panning is then a no-op. */
   panner: StereoPannerNode | null;
   source: AudioBufferSourceNode | null;
@@ -83,6 +91,8 @@ export function stemAudible(
 export interface TrackConfig {
   /** Stretches this part sounds in. Absent means throughout. */
   regions?: { startSec: number; endSec: number }[];
+  /** Song time at which the file's first sample plays. Absent means bar 1. */
+  fileStartSec?: number;
   buffer: AudioBuffer;
   role: Exclude<TrackRole, 'click'>;
   level?: number;
@@ -258,6 +268,7 @@ export class SongEngine {
 
     let maxDuration = 0;
     for (const [id, config] of configs) {
+      const fileStartSec = config.fileStartSec ?? 0;
       const gain = ctx.createGain();
       gain.gain.value = 0;
       const regions = config.regions ?? null;
@@ -290,6 +301,7 @@ export class SongEngine {
         analyser,
         regionGain,
         regions,
+        fileStartSec,
         panner,
         source: null,
         role: config.role,
@@ -298,7 +310,7 @@ export class SongEngine {
         soloed: false,
         switched: false,
       });
-      maxDuration = Math.max(maxDuration, config.buffer.duration);
+      maxDuration = Math.max(maxDuration, fileStartSec + config.buffer.duration);
     }
     this.duration = maxDuration;
 
@@ -322,7 +334,7 @@ export class SongEngine {
     const track = this.tracks.get(id);
     if (!track) return;
     track.buffer = buffer;
-    this.duration = Math.max(...[...this.tracks.values()].map((t) => t.buffer.duration));
+    this.duration = Math.max(...[...this.tracks.values()].map((t) => t.fileStartSec + t.buffer.duration));
     if (this.playing && this.ctx) {
       const pos = this.position;
       // startTrack stops whatever was running on this track first.
@@ -473,6 +485,7 @@ export class SongEngine {
         // Carried through, so a part the arrangement drops is dropped in the
         // print too rather than playing on where you can't hear it.
         regions: track.regions ?? undefined,
+        fileStartSec: track.fileStartSec,
       });
     }
     return out;
@@ -598,18 +611,21 @@ export class SongEngine {
   setLoop(region: LoopRegion | null): void {
     if (region && region.endSec - region.startSec < 0.05) region = null;
     this.loop = region;
-    for (const track of this.tracks.values()) this.applyLoop(track.source);
+    for (const track of this.tracks.values()) this.applyLoop(track.source, track.fileStartSec);
     if (!this.playing && region && (this.pausedAt < region.startSec || this.pausedAt > region.endSec)) {
       this.pausedAt = region.startSec;
     }
   }
 
-  private applyLoop(source: AudioBufferSourceNode | null): void {
+  private applyLoop(source: AudioBufferSourceNode | null, fileStartSec = 0): void {
     if (!source) return;
-    if (this.loop && this.loop.endSec > this.loop.startSec) {
+    // Loop points are song time; the source loops in its own file time.
+    const start = this.loop ? this.loop.startSec - fileStartSec : 0;
+    const end = this.loop ? this.loop.endSec - fileStartSec : 0;
+    if (this.loop && end > Math.max(0, start)) {
       source.loop = true;
-      source.loopStart = this.loop.startSec;
-      source.loopEnd = this.loop.endSec;
+      source.loopStart = Math.max(0, start);
+      source.loopEnd = end;
     } else {
       source.loop = false;
     }
@@ -703,6 +719,7 @@ export class SongEngine {
       role: 'click',
       regionGain: null,
       regions: null,
+      fileStartSec: 0,
       level: this.clickGain,
       muted: !this.clickOn,
       soloed: false,
@@ -735,7 +752,7 @@ export class SongEngine {
     source.buffer = track.buffer;
     source.connect(track.regionGain ?? track.gain);
     this.scheduleRegions(track, when, offset);
-    this.applyLoop(source);
+    this.applyLoop(source, track.fileStartSec);
 
     const gen = this.generation;
     source.onended = () => {
@@ -744,14 +761,23 @@ export class SongEngine {
       // And only from the source this track is actually playing — one that has
       // been replaced has no business ending the song.
       if (track.source !== source) return;
-      if (track.buffer.duration < this.duration - 0.01) return;
+      if (track.fileStartSec + track.buffer.duration < this.duration - 0.01) return;
       this.playing = false;
       this.pausedAt = this.duration;
       this.onEnded?.();
     };
 
-    const startOffset = Math.max(0, Math.min(offset, track.buffer.duration));
-    source.start(when, startOffset);
+    /*
+     * The file's own clock runs from where the set placed it. A part placed
+     * two bars in starts two bars late rather than playing its intro under
+     * the region gate; one placed before the song begins is entered partway.
+     */
+    const fileOffset = offset - track.fileStartSec;
+    if (fileOffset >= 0) {
+      source.start(when, Math.min(fileOffset, track.buffer.duration));
+    } else {
+      source.start(when - fileOffset, 0);
+    }
     track.source = source;
   }
 

@@ -669,8 +669,22 @@ group('ableton locator names');
 
 group('ableton set import');
 {
-  const { songsFromProject, stemLabel, roleForTrack, setName, resolveStemPath } =
+  const { songsFromProject, stemLabel, roleForTrack, setName, resolveStemPath, placementOf } =
     await import('../src/lib/alsImport.ts');
+
+  /*
+   * Where a part's file sits against the song. A clip two bars after the
+   * locator plays its file from there, not from bar 1 — otherwise the intro
+   * plays under the gate and is never heard.
+   */
+  const clip = (startBar, sourceStartSec, disabled = false) =>
+    ({ path: 'x.wav', startBar, endBar: 65, sourceStartSec, disabled, fadeInSec: 0, fadeOutSec: 0, warped: false });
+  check('a clip on bar 1 from the file start needs no placement', placementOf([clip(1, 0)]) === undefined);
+  check('a clip placed later says which bar the file begins on',
+    JSON.stringify(placementOf([clip(2.974, 0)])) === '{"bar":2.974,"sourceSec":0}');
+  check('a clip entered partway says how far in',
+    JSON.stringify(placementOf([clip(1, 3.5)])) === '{"bar":1,"sourceSec":3.5}');
+  check('a disabled clip does not decide it', placementOf([clip(9, 0, true), clip(2, 1)])?.bar === 2);
 
   check('a duplicate track number is dropped', stemLabel('Lead Vox 1') === 'Lead Vox');
   check('a name without one is untouched', stemLabel('Drums') === 'Drums');

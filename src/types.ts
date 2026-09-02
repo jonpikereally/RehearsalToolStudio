@@ -49,6 +49,14 @@ export interface Variant {
    * means nowhere — the track was muted in Ableton.
    */
   regions?: AudibleRegion[];
+  /**
+   * Where the file sits against the song: at song bar `bar`, the file is
+   * `sourceSec` seconds in. Absent means the file starts on bar 1, which is
+   * how an export from 1.1.1 lands. A set whose clip begins two bars after
+   * the locator says so here — without it the file would play two bars
+   * early, and the region gate would swallow its intro.
+   */
+  placement?: { bar: number; sourceSec: number };
 }
 
 export interface Marker {

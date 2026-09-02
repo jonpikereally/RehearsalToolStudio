@@ -18,6 +18,8 @@ export interface BounceTrack {
   pan: number;
   /** Stretches this part sounds in. Absent means throughout. */
   regions?: { startSec: number; endSec: number }[];
+  /** Song time at which the file's first sample plays. Absent means bar 1. */
+  fileStartSec?: number;
 }
 
 /** Mix the tracks down through the same graph shape the engine plays them with. */
@@ -28,7 +30,9 @@ export async function renderMix(
   if (!tracks.length) throw new Error('Nothing is audible to print — every channel is silent.');
 
   const sampleRate = tracks[0].buffer.sampleRate;
-  const frames = Math.max(...tracks.map((t) => t.buffer.length));
+  const frames = Math.max(
+    ...tracks.map((t) => Math.ceil(Math.max(0, t.fileStartSec ?? 0) * sampleRate) + t.buffer.length),
+  );
   // Always stereo: panning a mono source produces two channels anyway.
   const ctx = new OfflineAudioContext(2, frames, sampleRate);
 
@@ -62,7 +66,10 @@ export async function renderMix(
     } else {
       gain.connect(ctx.destination);
     }
-    source.start(0);
+    // Placed where the set puts it: later than bar 1, or entered partway.
+    const at = track.fileStartSec ?? 0;
+    if (at >= 0) source.start(at, 0);
+    else source.start(0, Math.min(-at, track.buffer.duration));
   }
 
   onProgress?.(0.1);

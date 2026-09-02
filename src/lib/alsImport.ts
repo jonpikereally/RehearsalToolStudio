@@ -1,4 +1,4 @@
-import type { AlsProject, AlsSong } from './alsParser';
+import type { AlsClip, AlsProject, AlsSong } from './alsParser';
 import type { FileEntry } from './files';
 import type {
   ChartLane, Marker, PatchClip, Setlist, Song, TimedText, Variant, VariantRole,
@@ -144,6 +144,17 @@ export function roleForTrack(label: string): VariantRole {
   return rest ? 'stem' : 'mix';
 }
 
+/**
+ * Where a part's file lands, from its first clip that sounds. A clip on bar 1
+ * playing the file from its start is the ordinary case and says nothing.
+ */
+export function placementOf(clips: AlsClip[] | undefined): Variant['placement'] {
+  const clip = clips?.find((c) => !c.disabled) ?? clips?.[0];
+  if (!clip) return undefined;
+  if (Math.abs(clip.startBar - 1) < 1e-6 && Math.abs(clip.sourceStartSec) < 1e-6) return undefined;
+  return { bar: clip.startBar, sourceSec: clip.sourceStartSec };
+}
+
 export interface AlsImportResult {
   songs: Song[];
   /** Audio paths the set accounts for, so the folder scan can skip them. */
@@ -189,8 +200,10 @@ export function songsFromProject(
         rev: file.rev,
         sizeBytes: file.size,
         order: variants.length,
-        // The arrangement, not the file, decides where a part sounds.
+        // The arrangement, not the file, decides where a part sounds — and
+        // where its file begins.
         regions: stem.regions ?? undefined,
+        placement: placementOf(stem.clips),
       });
     }
 

@@ -267,6 +267,11 @@ export async function loadSong(
         startSec: barToSec(r.startBar, song),
         endSec: barToSec(r.endBar, song),
       })),
+      // Where the file's start lands in the song. The bar follows the tempo
+      // map; the seconds into the file stretch with the playback speed.
+      fileStartSec: variant.placement
+        ? barToSec(variant.placement.bar, song) - variant.placement.sourceSec / tempo
+        : 0,
     });
   }
 
