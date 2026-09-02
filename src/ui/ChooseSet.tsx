@@ -40,6 +40,9 @@ export default function ChooseSet() {
       </div>
 
       {scanning && <div className="notice">{scanProgress || 'Scanning…'}</div>}
+      {!scanning && lastScan?.alsNotes?.length ? (
+        <div className="notice">{lastScan.alsNotes.join('. ')}.</div>
+      ) : null}
 
       {!scanning && !sets.length && (
         <div className="empty">
@@ -65,7 +68,11 @@ export default function ChooseSet() {
           <div className="row-main">
             <div className="row-title">{set.name}</div>
             <div className="row-sub">
-              {set.songs} song{set.songs === 1 ? '' : 's'} · {set.path.replace(/^\//, '')}
+              {set.songs
+                ? `${set.songs} song${set.songs === 1 ? '' : 's'} with audio here`
+                : 'no audio here yet — the set tools still work'}
+              {' · '}
+              {set.path.replace(/^\//, '')}
             </div>
           </div>
           <div className="row-right">›</div>

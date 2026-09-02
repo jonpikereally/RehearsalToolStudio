@@ -31,8 +31,38 @@ export function setName(alsPath: string): string {
 
 /** Resolve a path stored in the set against the folder the set lives in. */
 export function resolveStemPath(alsPath: string, stemPath: string): string {
-  if (stemPath.startsWith('/')) return stemPath;
-  return `${projectFolder(alsPath)}/${stemPath}`;
+  const raw = stemPath.startsWith('/') ? stemPath : `${projectFolder(alsPath)}/${stemPath}`;
+  // Live writes stems outside the project as `../../Stems/x.wav`; a path with
+  // the dots still in it matches nothing, so they are folded away here.
+  const out: string[] = [];
+  for (const part of raw.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return `/${out.join('/')}`;
+}
+
+/**
+ * Where a stem is when it is not where the set says.
+ *
+ * A set moved to another machine, or copied out of the folder it was made
+ * in, still names its stems by the path they had there. Live finds them
+ * again by searching; this does the same, within the folder: first a file
+ * under the same-named parent folder, then any file of that name so long as
+ * there is only one.
+ */
+function findByName(stemPath: string, available: FileEntry[]): FileEntry | undefined {
+  const parts = stemPath.split('/').filter(Boolean);
+  const name = parts.pop()?.toLowerCase();
+  if (!name) return undefined;
+  const parent = parts.pop()?.toLowerCase();
+  const sameName = available.filter((f) => f.name.toLowerCase() === name);
+  if (parent) {
+    const under = sameName.filter((f) => f.path.toLowerCase().endsWith(`/${parent}/${name}`));
+    if (under.length === 1) return under[0];
+  }
+  return sameName.length === 1 ? sameName[0] : undefined;
 }
 
 /**
@@ -135,7 +165,7 @@ export function songsFromProject(
 
     for (const stem of alsSong.stems) {
       const full = resolveStemPath(alsPath, stem.path);
-      const file = byPath.get(full.toLowerCase());
+      const file = byPath.get(full.toLowerCase()) ?? findByName(stem.path, available);
       if (!file) continue;
 
       claimedPaths.add(file.path.toLowerCase());

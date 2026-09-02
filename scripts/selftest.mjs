@@ -685,6 +685,10 @@ group('ableton set import');
   check('the set names the artist', setName(alsPath) === 'Coldplay Covers Live Set');
   check('paths resolve against the set folder',
     resolveStemPath(alsPath, 'Song Stems/x_Bass.wav') === '/Sets/Coldplay Covers Live Set/Song Stems/x_Bass.wav');
+  check('and fold away the dots Live writes for a stem outside the project',
+    resolveStemPath(alsPath, '../Stems/x_Bass.wav') === '/Sets/Stems/x_Bass.wav',
+    resolveStemPath(alsPath, '../Stems/x_Bass.wav'));
+
 
   const project = {
     creator: 'Live 12', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [],
@@ -729,6 +733,35 @@ group('ableton set import');
   check('the set names the artist', song.artist === 'Coldplay Covers Live Set');
   check('roles are assigned', song.variants.map((v) => v.role).join() === 'mix,stem');
   check('track numbers are tidied', song.variants[1].name === 'Bass');
+
+  {
+    // A set copied off another machine names stems by where they were there.
+    const moved = {
+      creator: 'Live 12', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [],
+      songs: [{
+        title: 'Cruel Summer', raw: 'Cruel Summer', startBar: 1, endBar: 100,
+        bpm: null, key: null, durationText: null, tags: [], sections: [], chords: [], lyrics: [],
+        tempoChanges: [],
+        stems: [
+          { name: 'Drums', path: '../../../alex/Desktop/Old Project/Stems/Cruel Summer Stems/Cruel Summer_Drums.wav' },
+          { name: 'Bass', path: '../../../alex/Desktop/Old Project/Stems/Cruel Summer Stems/Cruel Summer_Bass.wav' },
+          { name: 'Vox', path: '../../../alex/Desktop/Old Project/Stems/Cruel Summer Stems/Cruel Summer_Vocals.wav' },
+        ],
+      }],
+    };
+    const here = [
+      file('/Stems/Cruel Summer Stems/Cruel Summer_Drums.wav'),
+      file('/Stems/Cruel Summer Stems/Cruel Summer_Bass.wav'),
+      // Two of these, so the name alone cannot say which — and it is skipped.
+      file('/Stems/Cruel Summer Stems/Cruel Summer_Vocals.wav'),
+      file('/Stems/Old Take/Cruel Summer_Vocals.wav'),
+    ];
+    const found = songsFromProject(moved, '/TS TEST.als', here, new Map());
+    check('stems a set points elsewhere are found by name in the folder',
+      found.songs.length === 1 && found.songs[0].variants.length === 3, JSON.stringify(found.missing));
+    check('the same-named parent folder decides between two candidates',
+      found.songs[0]?.variants.find((v) => v.name === 'Vox')?.path === '/Stems/Cruel Summer Stems/Cruel Summer_Vocals.wav');
+  }
 
   // A re-scan must not lose what the user set by hand.
   const edited = { ...song, transpose: 3, notes: 'watch the key change', project: 'Live set' };

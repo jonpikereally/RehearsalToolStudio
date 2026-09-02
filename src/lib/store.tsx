@@ -22,6 +22,8 @@ const LS_REV = 'ls.libraryRev';
 const LS_SETTINGS = 'ls.settings';
 /** The set being worked on. Session-scoped: every launch asks again. */
 const SS_SET = 'ls.currentSet';
+/** Every set the last scan found, whether or not its songs have audio here. */
+const LS_SETS = 'ls.knownSets';
 const PUSH_DEBOUNCE_MS = 1500;
 
 export interface Settings {
@@ -189,6 +191,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  const [knownSets, setKnownSets] = useState<{ path: string; name: string }[]>(() =>
+    loadLocal(LS_SETS, []),
+  );
+  useEffect(() => {
+    localStorage.setItem(LS_SETS, JSON.stringify(knownSets));
+  }, [knownSets]);
+
   const chooseSet = useCallback((path: string | null) => {
     setCurrentSet(path);
     try {
@@ -199,15 +208,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /*
+   * A set is a set whether or not its stems are here: it can still be checked,
+   * given slates and chords, its setlist printed. So the list is what the
+   * scan found, with the songs that did get audio counted against each; a
+   * set the songs remember but the last scan did not see is kept too.
+   */
   const sets = useMemo<KnownSet[]>(() => {
     const counts = new Map<string, number>();
     for (const song of library.songs) {
       if (song.setPath) counts.set(song.setPath, (counts.get(song.setPath) ?? 0) + 1);
     }
-    return [...counts]
-      .map(([path, songs]) => ({ path, name: path.split('/').pop()!.replace(/\.als$/i, ''), songs }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [library.songs]);
+    const nameOf = (path: string) => path.split('/').pop()!.replace(/\.als$/i, '');
+    const all = new Map<string, KnownSet>();
+    for (const { path, name } of knownSets) all.set(path, { path, name, songs: counts.get(path) ?? 0 });
+    for (const [path, songs] of counts) {
+      if (!all.has(path)) all.set(path, { path, name: nameOf(path), songs });
+    }
+    return [...all.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [library.songs, knownSets]);
 
   const revRef = useRef<string | null>(localStorage.getItem(LS_REV));
   const pushTimer = useRef<number | null>(null);
@@ -514,6 +533,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Facts a prepared set's folder names have no room for.
       const manifests = files.filter((f) => isPreparedSet(f.path) && isManifestName(f.name));
       const setFiles = newestSetPerFolder(usable);
+      setKnownSets(setFiles.map((f) => ({ path: f.path, name: f.name.replace(/\.als$/i, '') })));
       /* Sets that couldn't be read at all; the rest of the notes come later. */
       const readErrors: string[] = [];
 
