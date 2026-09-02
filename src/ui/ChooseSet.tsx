@@ -69,8 +69,11 @@ export default function ChooseSet() {
             <div className="row-title">{set.name}</div>
             <div className="row-sub">
               {set.songs
-                ? `${set.songs} song${set.songs === 1 ? '' : 's'} with audio here`
-                : 'no audio here yet — the set tools still work'}
+                ? `${set.songs} song${set.songs === 1 ? '' : 's'}` +
+                  (set.withAudio < set.songs
+                    ? `, ${set.songs - set.withAudio} without audio here`
+                    : '')
+                : 'not read yet'}
               {' · '}
               {set.path.replace(/^\//, '')}
             </div>

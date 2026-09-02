@@ -719,8 +719,9 @@ group('ableton set import');
   ];
 
   const res = songsFromProject(project, alsPath, available, new Map());
-  check('only songs with audio are imported', res.songs.length === 1, String(res.songs.length));
+  check('every song in the set is imported, audio or not', res.songs.length === 2, String(res.songs.length));
   check('a song with no audio is reported', res.missing.join() === 'Not Synced', res.missing.join());
+  check('and keeps its place with nothing to play', res.songs[1].title === 'Not Synced' && res.songs[1].variants.length === 0);
   check('its files are claimed so the folder scan skips them', res.claimedPaths.size === 2);
 
   const song = res.songs[0];
@@ -1210,12 +1211,13 @@ group('a scan, end to end');
   check('scanning again keeps one', syncSetlists(setlists, alsSetlists, live).length === 1);
 
   /*
-   * The case this was getting wrong: the set's audio can't be reached this
-   * time, so nothing imports — but the library already knows these songs, and
-   * the running order is the set's to give either way.
+   * The set's audio can't be reached this time: every song still imports,
+   * with nothing to play, and the running order is the set's to give.
    */
   const nothingImported = songsFromProject(project, alsPath, [], new Map());
-  check('a set with no reachable audio imports nothing', nothingImported.songs.length === 0);
+  check('a set with no reachable audio still imports its songs, empty',
+    nothingImported.songs.length === 3 && nothingImported.songs.every((s) => s.variants.length === 0),
+    String(nothingImported.songs.length));
   const stillListed = setlistFromProject(alsPath, project, (id) => live.has(id));
   check('but the set still gives its order', stillListed.songIds.length === 3, stillListed.songIds.length);
 

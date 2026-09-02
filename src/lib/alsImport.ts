@@ -205,10 +205,13 @@ export function songsFromProject(
       claimedPaths.add(file.path);
     }
 
-    if (!variants.length) {
-      missing.push(alsSong.title);
-      continue;
-    }
+    /*
+     * A song whose audio is not here is still a song in the set: it keeps
+     * its place in the running order, its tempo, key and sections, and says
+     * plainly that its files are elsewhere. Reported, so the scan can say
+     * how many — but never dropped.
+     */
+    if (!variants.length) missing.push(alsSong.title);
 
     const id = songIdFor(alsPath, alsSong.title);
     const prev = existing.get(id);

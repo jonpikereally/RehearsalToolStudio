@@ -400,6 +400,12 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
+        {song.variants.length === 0 && (
+          <div className="notice">
+            None of this song's audio is in the folder. The set points at stems that aren't
+            here — copy them into the project (Live's Collect All and Save does it) and rescan.
+          </div>
+        )}
         {song.tempoUnset && (
           <div className="notice spread">
             <span>

@@ -117,6 +117,7 @@ function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
       <div className="row-right">
         {song.transpose !== 0 && <span className="badge warn">{formatSemitones(song.transpose)}</span>}
         {song.tempoUnset && <span className="badge warn">tempo</span>}
+        {song.variants.length === 0 && <span className="badge warn">no audio</span>}
         <span aria-hidden>›</span>
       </div>
     </button>
@@ -144,6 +145,7 @@ export function describeParts(song: Song): string {
 
   // Everything hidden: fall back to the raw file count so the row isn't blank.
   const total = song.variants.length;
+  if (!total) return 'no audio here';
   return `${total} file${total === 1 ? '' : 's'} hidden`;
 }
 

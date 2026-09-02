@@ -77,6 +77,8 @@ export interface KnownSet {
   path: string;
   name: string;
   songs: number;
+  /** How many of those have their audio in the folder. */
+  withAudio: number;
 }
 
 /** How the folder stands: none chosen, chosen but switched off, or reading. */
@@ -215,15 +217,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * set the songs remember but the last scan did not see is kept too.
    */
   const sets = useMemo<KnownSet[]>(() => {
-    const counts = new Map<string, number>();
+    const counts = new Map<string, { songs: number; withAudio: number }>();
     for (const song of library.songs) {
-      if (song.setPath) counts.set(song.setPath, (counts.get(song.setPath) ?? 0) + 1);
+      if (!song.setPath) continue;
+      const c = counts.get(song.setPath) ?? { songs: 0, withAudio: 0 };
+      c.songs += 1;
+      if (song.variants.length) c.withAudio += 1;
+      counts.set(song.setPath, c);
     }
     const nameOf = (path: string) => path.split('/').pop()!.replace(/\.als$/i, '');
     const all = new Map<string, KnownSet>();
-    for (const { path, name } of knownSets) all.set(path, { path, name, songs: counts.get(path) ?? 0 });
-    for (const [path, songs] of counts) {
-      if (!all.has(path)) all.set(path, { path, name: nameOf(path), songs });
+    for (const { path, name } of knownSets) {
+      all.set(path, { path, name, ...(counts.get(path) ?? { songs: 0, withAudio: 0 }) });
+    }
+    for (const [path, c] of counts) {
+      if (!all.has(path)) all.set(path, { path, name: nameOf(path), ...c });
     }
     return [...all.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [library.songs, knownSets]);
