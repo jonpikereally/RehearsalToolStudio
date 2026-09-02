@@ -3273,5 +3273,24 @@ group('rig tracks');
   check('nor is a stem inside a song', !yellow.rigTracks.some((t) => t.name === 'Bass'));
 }
 
+/* --------------------------- a plan for one song --------------------------- */
+
+group('a plan for one song');
+{
+  const { partsFor } = await import('../src/lib/prepare.ts');
+  const stem = (name, reference = false) => ({ name, reference, path: `${name}.wav`, regions: null, clips: [] });
+  const song = { title: 'Yellow', stems: [stem('REF SONG', true), stem('Drums'), stem('Bass'), stem('Keys'), stem('Vox')] };
+
+  const all = partsFor(song);
+  check('without a plan every track is a part of its own', all.length === 5 && all.every((p) => !p.combined));
+
+  const parts = partsFor(song, { print: ['Vox'], combine: [{ name: 'band', stems: ['Drums', 'Bass', 'Keys'] }] });
+  check('a plan prints what it names', parts[0].name === 'Vox' && parts[0].stems.length === 1);
+  check('and folds the rest into one part', parts[1].name === 'band' && parts[1].stems.length === 3 && parts[1].combined);
+  check('leaving out what it skipped', parts.length === 2 && !parts.some((p) => p.name === 'REF SONG'));
+  check('a name is matched however it was typed', partsFor(song, { print: ['drums '], combine: [] })[0]?.name === 'Drums');
+  check('a group with nothing in it writes nothing', partsFor(song, { print: [], combine: [{ name: 'band', stems: ['Nope'] }] }).length === 0);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

@@ -30,6 +30,7 @@ import ContextMenu, { type MenuAnchor } from './ContextMenu';
 import PatchDialog from './PatchDialog';
 import TempoDialog from './TempoDialog';
 import TimecodeDialog from './TimecodeDialog';
+import PrepareSongDialog from './PrepareSongDialog';
 import DownloadDialog from './DownloadDialog';
 import BlockHead from './BlockHead';
 import SetMenu from './SetMenu';
@@ -51,6 +52,7 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
   const [bigWords, setBigWords] = useState(false);
   const [setMenu, setSetMenu] = useState(false);
   const [timecode, setTimecode] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [cues, setCues] = useState(cuesEnabled);
   /*
    * Held in state rather than read while rendering. Settings opens as a panel
@@ -576,6 +578,14 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
           </button>
         </div>
 
+        {song.setPath && song.variants.length > 0 && (
+          <button className="btn primary prepare-btn" onClick={() => setPreparing(true)}>
+            Prepare song for Rehearsal Tool
+            <span className="unit">choose the parts, print them small, hand them to the band</span>
+          </button>
+        )}
+
+        {preparing && <PrepareSongDialog song={song} onClose={() => setPreparing(false)} />}
 
         <div className="blocks" onPointerMove={blocks.onMove} onPointerUp={blocks.endDrag} onPointerCancel={blocks.endDrag}>
           {blocks.order.map((id) => {

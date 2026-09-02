@@ -7,6 +7,7 @@ import { MANIFEST_NAME, type PreparedManifest, type PreparedSongInfo } from './p
 import { clipsFromMarks, laneList, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
+import { peakOf } from './bounce.ts';
 
 /**
  * Turning an Ableton set into a folder of songs anyone can play.
@@ -48,6 +49,11 @@ export interface PrepareOptions {
    */
   only?: string[];
   /**
+   * What to make of each song's tracks, by title. A song without a plan gets
+   * every track as its own part, which is the whole-set default.
+   */
+  plan?: Record<string, SongPlan>;
+  /**
    * The manifest already in the destination, when there is one.
    *
    * Preparing part of a set writes into the same folder as the rest of it, and
@@ -64,6 +70,50 @@ export interface PrepareOptions {
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
+}
+
+/**
+ * Which of a song's tracks become parts, and which are folded together.
+ *
+ * A rehearsal rarely wants every stem of the record. A band of four might
+ * want their own four parts, the click, and everything else summed into
+ * one "band" part to play along to — three files instead of eleven, and a
+ * folder a phone can hold.
+ */
+export interface SongPlan {
+  /** Track names to write as parts of their own. */
+  print: string[];
+  /** Groups of track names to sum into one part each, under the given name. */
+  combine: { name: string; stems: string[] }[];
+}
+
+/** One file to write: the tracks that go into it, and what to call it. */
+export interface PlannedPart {
+  name: string;
+  stems: AlsSong['stems'];
+  reference: boolean;
+  /** True for a sum of several tracks, which is pulled down if it clips. */
+  combined: boolean;
+}
+
+/** The parts a song will be written as, given its plan — or all of it without one. */
+export function partsFor(song: AlsSong, plan?: SongPlan): PlannedPart[] {
+  if (!plan) {
+    return song.stems.map((stem) => ({ name: stem.name, stems: [stem], reference: stem.reference, combined: false }));
+  }
+  const byName = new Map(song.stems.map((s) => [s.name.trim().toLowerCase(), s]));
+  const find = (name: string) => byName.get(name.trim().toLowerCase());
+  const out: PlannedPart[] = [];
+  for (const name of plan.print) {
+    const stem = find(name);
+    if (stem) out.push({ name: stem.name, stems: [stem], reference: stem.reference, combined: false });
+  }
+  for (const group of plan.combine) {
+    const stems = group.stems.map(find).filter((s): s is AlsSong['stems'][number] => !!s);
+    if (!stems.length || !group.name.trim()) continue;
+    out.push({ name: group.name.trim(), stems, reference: false, combined: true });
+  }
+  return out;
 }
 
 export interface PrepareResult {
@@ -90,7 +140,7 @@ function safeName(text: string): string {
  */
 export function songFolderName(song: AlsSong, project: AlsProject): string {
   const facts = [
-    String(Math.round((song.bpm ?? project.tempo) * 10) / 10),
+    String(Math.round(tempoOf(song, project) * 10) / 10),
     song.key ?? '',
     `${project.timeSigNum}-${project.timeSigDen}`,
   ].filter(Boolean);
@@ -114,6 +164,11 @@ export function partFileName(songTitle: string, partName: string, reference = fa
   const label = safeName(stemLabel(partName)).toLowerCase();
   const marked = reference && !/\bref(erence)?\b/.test(label) ? `ref ${label}` : label;
   return `${safeName(songTitle)} [${marked}].mp3`;
+}
+
+/** The tempo Live plays the song at: the automation's where there is any. */
+function tempoOf(song: AlsSong, project: AlsProject): number {
+  return song.startBpm ?? song.bpm ?? project.tempo;
 }
 
 function beatsPerBar(project: AlsProject): number {
@@ -183,12 +238,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   for (const [index, song] of chosen.entries()) {
     if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
-    const bpm = song.bpm ?? project.tempo;
+    const bpm = tempoOf(song, project);
     const durationSec = barToSeconds(song.endBar - song.startBar + 1, bpm, project);
     const songFolder = `${folder}/${songFolderName(song, project)}`;
     let wroteAny = false;
 
-    for (const stem of song.stems) {
+    for (const part of partsFor(song, opts.plan?.[song.title])) {
       if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
       const report = (stage: PrepareProgress['stage'], ratio: number) =>
@@ -196,37 +251,56 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           songIndex: index + 1,
           songCount: chosen.length,
           songTitle: song.title,
-          partName: stem.name,
+          partName: part.name,
           stage,
           ratio,
         });
 
       try {
         report('reading', 0);
-        const live = stem.clips.filter((c) => !c.disabled);
-        if (!live.length) {
-          skipped.push({ song: song.title, part: stem.name, reason: 'nothing playing in this song' });
-          continue;
-        }
-
+        // Every clip of every track in the part, placed; a combined part is
+        // simply all of its tracks' clips rendered into one buffer.
         const placements: ClipPlacement[] = [];
-        for (const clip of live) {
-          const buffer = await loadFile(clip.path);
-          if (!buffer) {
-            skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
+        for (const stem of part.stems) {
+          const live = stem.clips.filter((c) => !c.disabled);
+          if (!live.length) {
+            skipped.push({ song: song.title, part: stem.name, reason: 'nothing playing in this song' });
             continue;
           }
-          placements.push(placementOf(clip, buffer, bpm, project));
+          for (const clip of live) {
+            const buffer = await loadFile(clip.path);
+            if (!buffer) {
+              skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
+              continue;
+            }
+            placements.push(placementOf(clip, buffer, bpm, project));
+          }
         }
         if (!placements.length) continue;
 
         // One clip playing its file from the top for the whole song already is
         // the part; rendering would copy it for nothing.
         report('rendering', 0);
-        const flat = needsRender(placements, durationSec)
+        const flat = part.combined || needsRender(placements, durationSec)
           ? await renderTrack(placements, durationSec, placements[0].buffer.sampleRate,
               Math.min(2, Math.max(...placements.map((p) => p.buffer.numberOfChannels))))
           : placements[0].buffer;
+
+        /*
+         * Several tracks at unity can sum past full scale, and the encoder
+         * has nowhere to put it. A combined part that clips is pulled down
+         * as a whole — quieter, but faithful — and left alone otherwise.
+         */
+        if (part.combined) {
+          const peak = peakOf(flat);
+          if (peak > 1) {
+            const gain = 0.99 / peak;
+            for (let c = 0; c < flat.numberOfChannels; c++) {
+              const data = flat.getChannelData(c);
+              for (let i = 0; i < data.length; i++) data[i] *= gain;
+            }
+          }
+        }
 
         report('encoding', 0);
         const blob = await encodeMp3(flat, {
@@ -236,14 +310,14 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         });
 
         report('writing', 1);
-        await writeFile(`${songFolder}/${partFileName(song.title, stem.name, stem.reference)}`, blob);
+        await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
         partsWritten++;
         wroteAny = true;
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') throw err;
         skipped.push({
           song: song.title,
-          part: stem.name,
+          part: part.name,
           reason: err instanceof Error ? err.message : String(err),
         });
       }
@@ -351,7 +425,7 @@ export function lyricsFileFor(song: AlsSong, project: AlsProject): Blob | null {
    * halfway would otherwise have every later line drifting further out.
    */
   const timing = {
-    bpm: song.bpm ?? project.tempo,
+    bpm: tempoOf(song, project),
     timeSigNum: project.timeSigNum,
     timeSigDen: project.timeSigDen,
     firstBarOffsetSec: 0,

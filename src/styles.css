@@ -2186,3 +2186,52 @@ input[type='range'] {
 .rig-clip .mono {
   color: var(--text);
 }
+
+/* ----------------------------- prepare a song ----------------------------- */
+
+/* The one big thing to press once a song sounds right: hand it to the band. */
+.prepare-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: calc(100% - 32px);
+  max-width: 560px;
+  min-height: 60px;
+  margin: 4px auto 14px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.prepare-btn .unit {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.8;
+}
+
+.prepare-tracks {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.prepare-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prepare-track-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
