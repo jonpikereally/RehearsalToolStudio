@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
+import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -19,7 +20,7 @@ import SettingsSection from './SettingsSection';
  * files locally, not to opening the app.
  */
 export default function PrepareSet() {
-  const { currentSet, publishFolderName, pickPublishFolder, publishFolder } = useStore();
+  const { currentSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -118,6 +119,16 @@ export default function PrepareSet() {
         readFile: async (path) => (await readBytes(path)).bytes,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
+        shift: (buffer, semitones, speed) =>
+          getShiftedBuffer({
+            ctx,
+            path: `prepare:${semitones}:${speed}`,
+            rev: `${buffer.length}@${buffer.sampleRate}`,
+            semitones,
+            tempo: speed,
+            source: buffer,
+            budgetBytes: settings.cacheBudgetGB * 1e9,
+          }),
         onProgress: setProgress,
       });
       void ctx.close();

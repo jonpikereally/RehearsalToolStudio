@@ -113,6 +113,8 @@ interface RawClip {
   /** Beats of the file per second of it, or null when the clip isn't warped. */
   warpBps: number | null;
   sampleRate: number | null;
+  /** The clip's own transposition, in semitones, as set in Live. */
+  semitones: number;
 }
 
 /**
@@ -133,6 +135,14 @@ export interface AlsClip {
   fadeOutSec: number;
   /** False means the file plays at its own speed and ignores the set's tempo. */
   warped: boolean;
+  /** The clip's own transposition in Live, in semitones; 0 for none. */
+  semitones: number;
+  /**
+   * How much faster than its own file the clip plays, from its warp: 1 when
+   * the file was made at the song's tempo, which is the usual case for a
+   * stem; 1.1 for a file warped up a tenth to match.
+   */
+  speed: number;
 }
 
 export interface AlsLane {
@@ -413,6 +423,10 @@ function clipsOfTrack(track: Track): RawClip[] {
       fadeOutSec: fades && !Number.isNaN(fadeOut) ? fadeOut : 0,
       warpBps: warpRate(body),
       sampleRate: num(/<DefaultSampleRate Value="(\d+)"/) || null,
+      // Coarse in semitones, fine in cents — the clip's own transposition.
+      semitones:
+        (Number.isNaN(num(/<PitchCoarse Value="([-\d.]+)"/)) ? 0 : num(/<PitchCoarse Value="([-\d.]+)"/)) +
+        (Number.isNaN(num(/<PitchFine Value="([-\d.]+)"/)) ? 0 : num(/<PitchFine Value="([-\d.]+)"/) / 100),
     });
   }
   return clips.sort((a, b) => a.startBeat - b.startBeat);
@@ -422,10 +436,14 @@ function clipsOfTrack(track: Track): RawClip[] {
  * How many beats of the file pass per second of it, from the warp markers.
  *
  * Two markers describe a straight line, which is all a stem exported at the
- * song's own tempo needs — and in practice that is what they are. Ableton
- * appends a hairline marker at the very end, so markers a hair apart are
- * ignored rather than taken as the rate. Null means unwarped: the file plays at
- * its own speed and beats don't enter into it.
+ * song's own tempo needs — and in practice that is what they are. The widest
+ * pair is the truest; Live also writes a hairline pair a few milliseconds
+ * apart, and when that is all there is, it still states the clip's tempo
+ * exactly — a file dropped onto a warped track at 85 BPM carries 0.03125
+ * beats over 22 ms — so it is used rather than the clip taken as unwarped,
+ * which turned its beat offsets into seconds and started it in the wrong
+ * place. Null means unwarped: the file plays at its own speed and beats
+ * don't enter into it.
  */
 function warpRate(body: string): number | null {
   if (!/<IsWarped Value="true"/.test(body)) return null;
@@ -435,19 +453,17 @@ function warpRate(body: string): number | null {
   if (markers.length < 2) return null;
 
   const first = markers[0];
+  // The widest pair that isn't hairline, when there is one.
+  for (let i = markers.length - 1; i > 0; i--) {
+    const sec = markers[i].sec - first.sec;
+    const beat = markers[i].beat - first.beat;
+    if (sec >= 0.5 && beat > 0) return beat / sec;
+  }
+  // Only the hairline pair: still a rate, as long as it is one at all.
   const last = markers[markers.length - 1];
   const spanSec = last.sec - first.sec;
   const spanBeat = last.beat - first.beat;
-  if (spanSec < 0.5 || spanBeat <= 0) {
-    // Only the hairline pair: fall back to the widest pair that isn't hairline.
-    for (let i = markers.length - 1; i > 0; i--) {
-      const sec = markers[i].sec - first.sec;
-      const beat = markers[i].beat - first.beat;
-      if (sec >= 0.5 && beat > 0) return beat / sec;
-    }
-    return null;
-  }
-  return spanBeat / spanSec;
+  return spanSec > 1e-6 && spanBeat > 0 ? spanBeat / spanSec : null;
 }
 
 /**
@@ -850,6 +866,13 @@ export function parseAlsXml(xml: string): AlsProject {
               fadeInSec: c.fadeInSec,
               fadeOutSec: c.fadeOutSec,
               warped: c.warpBps !== null,
+              semitones: c.semitones,
+              // A warped file at another tempo is stretched to this song's:
+              // its beats per second against the song's, where they differ.
+              speed:
+                c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
+                  ? startBpm / 60 / c.warpBps
+                  : 1,
             }));
             const sounding = mine.find((c) => !c.disabled) ?? mine[0];
             return {

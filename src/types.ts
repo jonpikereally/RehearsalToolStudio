@@ -58,6 +58,13 @@ export interface Variant {
    */
   placement?: { bar: number; sourceSec: number };
   /**
+   * The clip's own transposition in Live, in semitones, mirrored here on
+   * top of whatever the player transposes; and how much faster than its
+   * file the clip plays, from its warp. Absent means none and 1.
+   */
+  pitch?: number;
+  speed?: number;
+  /**
    * The part as an arrangement of clips, when it is more than one file
    * played from one point: a phrase dropped in from another take, the
    * vocal picked up again ten seconds further in. Each names its file and
@@ -75,6 +82,10 @@ export interface VariantClip {
   sourceStartSec: number;
   fadeInSec: number;
   fadeOutSec: number;
+  /** The clip's own transposition in Live, in semitones. */
+  semitones: number;
+  /** How much faster than its file the clip plays, from its warp; 1 for as is. */
+  speed: number;
 }
 
 export interface Marker {

@@ -155,6 +155,15 @@ export function placementOf(clips: AlsClip[] | undefined): Variant['placement'] 
   return { bar: clip.startBar, sourceSec: clip.sourceStartSec };
 }
 
+/** A single-clip part's own transposition and warp speed, when it has any. */
+export function ownShift(clips: AlsClip[] | undefined): Pick<Variant, 'pitch' | 'speed'> {
+  const clip = clips?.find((c) => !c.disabled) ?? clips?.[0];
+  const out: Pick<Variant, 'pitch' | 'speed'> = {};
+  if (clip?.semitones) out.pitch = clip.semitones;
+  if (clip?.speed && Math.abs(clip.speed - 1) > 1e-6) out.speed = clip.speed;
+  return out;
+}
+
 export interface AlsImportResult {
   songs: Song[];
   /** Audio paths the set accounts for, so the folder scan can skip them. */
@@ -221,6 +230,7 @@ export function songsFromProject(
         // where its file begins.
         regions: stem.regions ?? undefined,
         placement: arranged.length > 1 ? undefined : placementOf(stem.clips),
+        ...(arranged.length > 1 ? {} : ownShift(stem.clips)),
         clips:
           arranged.length > 1
             ? arranged.map(({ clip, file: f }) => ({
@@ -230,6 +240,8 @@ export function songsFromProject(
                 sourceStartSec: clip.sourceStartSec,
                 fadeInSec: clip.fadeInSec,
                 fadeOutSec: clip.fadeOutSec,
+                semitones: clip.semitones ?? 0,
+                speed: clip.speed ?? 1,
               }))
             : undefined,
       });

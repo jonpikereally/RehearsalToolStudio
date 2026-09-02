@@ -3298,6 +3298,30 @@ group('rig tracks');
   </Ableton>`;
   const p = parseAlsXml(xml);
   const [yellow, clocks] = p.songs;
+  {
+    // A file dropped on a warped track at 85: Live writes only a hairline
+    // warp pair, which still states the tempo. Its beat offset is beats.
+    const hair = `<Ableton Creator="Live 12">
+      <Tempo><Manual Value="85" /><AutomationTarget Id="9" /></Tempo>
+      <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+      <Locator Id="1"><Time Value="0" /><Name Value="Cruel Summer" /></Locator>
+      <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Cruel Summer" /></GroupTrack>
+      <AudioTrack Id="11"><TrackGroupId Value="10" /><EffectiveName Value="REF VOX" />
+        <AudioClip Id="1" Time="18"><CurrentStart Value="18" /><CurrentEnd Value="256" />
+          <Loop><LoopStart Value="10.102452235264735" /><LoopEnd Value="249" /><StartRelative Value="0" /></Loop>
+          <Disabled Value="false" /><Fade Value="false" />
+          <IsWarped Value="true" /><PitchCoarse Value="-2" /><PitchFine Value="0" />
+          <WarpMarker Id="1" SecTime="0" BeatTime="0" /><WarpMarker Id="2" SecTime="0.0220588235294117661" BeatTime="0.03125" />
+          <SampleRef><FileRef><RelativePath Value="Stems/Cruel Summer_Vocals.wav" /></FileRef><DefaultSampleRate Value="48000" /></SampleRef>
+        </AudioClip>
+      </AudioTrack>
+    </Ableton>`;
+    const clip = parseAlsXml(hair).songs[0].stems[0].clips[0];
+    check('a hairline warp pair still gives the clip its tempo, so its offset is in beats',
+      Math.abs(clip.sourceStartSec - 10.102452235264735 / (85 / 60)) < 1e-6, String(clip.sourceStartSec));
+    check('a clip transposed in Live says by how much', clip.semitones === -2, String(clip.semitones));
+    check('a file at the song\'s own tempo plays at its own speed', clip.speed === 1, String(clip.speed));
+  }
   const rig = (song) => song.rigTracks.map((t) => `${t.kind}:${t.name}=${t.clips.map((c) => `${c.startBar}-${c.endBar} ${c.name}`).join(',')}`).join(' | ');
   check('a MIDI track outside the songs is the rig\'s, cut to each song',
     rig(yellow) === 'midi:MIDI - Quad Cortex=1-5 Clean,9-17 Crunch', rig(yellow));

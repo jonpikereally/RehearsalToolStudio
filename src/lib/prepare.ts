@@ -68,6 +68,11 @@ export interface PrepareOptions {
   readFile: (path: string) => Promise<ArrayBuffer>;
   writeFile: (path: string, data: Blob) => Promise<string>;
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
+  /**
+   * Transpose and stretch a decoded file, for a clip Live plays shifted or
+   * warped to another tempo. Without one, such clips print as their files.
+   */
+  shift?: (buffer: AudioBuffer, semitones: number, speed: number) => Promise<AudioBuffer>;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
 }
@@ -268,12 +273,17 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             continue;
           }
           for (const clip of live) {
-            const buffer = await loadFile(clip.path);
+            let buffer = await loadFile(clip.path);
             if (!buffer) {
               skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
               continue;
             }
-            placements.push(placementOf(clip, buffer, bpm, project));
+            // As Live plays it: the clip's own transposition and warp speed.
+            const speed = clip.speed ?? 1;
+            if (opts.shift && ((clip.semitones ?? 0) !== 0 || Math.abs(speed - 1) > 1e-6)) {
+              buffer = await opts.shift(buffer, clip.semitones ?? 0, speed);
+            }
+            placements.push(placementOf(clip, buffer, bpm, project, speed));
           }
         }
         if (!placements.length) continue;
@@ -399,12 +409,14 @@ function placementOf(
   buffer: AudioBuffer,
   bpm: number,
   project: AlsProject,
+  speed = 1,
 ): ClipPlacement {
   return {
     buffer,
     startSec: barToSeconds(clip.startBar, bpm, project),
     endSec: barToSeconds(clip.endBar, bpm, project),
-    sourceStartSec: clip.sourceStartSec,
+    // A stretched file's seconds are shorter by the same factor.
+    sourceStartSec: clip.sourceStartSec / speed,
     fadeInSec: clip.fadeInSec,
     fadeOutSec: clip.fadeOutSec,
   };

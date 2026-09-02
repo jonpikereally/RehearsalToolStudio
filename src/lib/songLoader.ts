@@ -215,11 +215,32 @@ export async function loadSong(
           buffer = await engine.decode(bytes);
           files.set(clip.path.toLowerCase(), buffer);
         }
+        /*
+         * Each clip is shifted by its own transposition in Live plus the
+         * player's, and stretched by its warp plus the player's speed, before
+         * it is placed — so the render below is already at pitch and speed,
+         * and the song-wide step afterwards is skipped for arranged parts.
+         */
+        const clipShift = (isUnpitched(variant.name) ? 0 : semitones) + clip.semitones;
+        const clipTempo = tempo * clip.speed;
+        if (clipShift !== 0 || clipTempo !== 1) {
+          report('transposing', i / arranged.length, true);
+          buffer = await getShiftedBuffer({
+            ctx,
+            path: clip.path,
+            rev: variant.rev,
+            semitones: clipShift,
+            tempo: clipTempo,
+            source: buffer,
+            budgetBytes,
+            signal,
+          });
+        }
         placements.push({
           buffer,
           startSec: barToSec(clip.startBar, song),
           endSec: barToSec(clip.endBar, song),
-          sourceStartSec: clip.sourceStartSec,
+          sourceStartSec: clip.sourceStartSec / clipTempo,
           fadeInSec: clip.fadeInSec,
           fadeOutSec: clip.fadeOutSec,
         });
@@ -243,15 +264,18 @@ export async function loadSong(
      * stretched, or it would drift out of time with everything else.
      */
     let buffer = original;
-    const shift = isUnpitched(variant.name) ? 0 : semitones;
-    if (shift !== 0 || tempo !== 1) {
+    // The clip's own transposition and warp speed in Live ride along with the
+    // player's; an arranged part had both applied clip by clip above.
+    const shift = arranged ? 0 : (isUnpitched(variant.name) ? 0 : semitones) + (variant.pitch ?? 0);
+    const speed = arranged ? 1 : tempo * (variant.speed ?? 1);
+    if (shift !== 0 || speed !== 1) {
       report('transposing', 0, true);
       buffer = await getShiftedBuffer({
         ctx,
         path: variant.path,
         rev,
         semitones: shift,
-        tempo,
+        tempo: speed,
         source: original,
         budgetBytes,
         onProgress: (ratio) => report('transposing', ratio, true),
@@ -305,7 +329,7 @@ export async function loadSong(
       // Where the file's start lands in the song. The bar follows the tempo
       // map; the seconds into the file stretch with the playback speed.
       fileStartSec: variant.placement
-        ? barToSec(variant.placement.bar, song) - variant.placement.sourceSec / tempo
+        ? barToSec(variant.placement.bar, song) - variant.placement.sourceSec / (tempo * (variant.speed ?? 1))
         : 0,
     });
   }

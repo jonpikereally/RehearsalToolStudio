@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Song } from '../types';
 import { useStore } from '../lib/store';
+import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -24,7 +25,7 @@ import { songKey } from '../lib/alsParser';
 type Choice = 'print' | 'combine' | 'skip';
 
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
-  const { publishFolderName, pickPublishFolder, publishFolder } = useStore();
+  const { publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [project, setProject] = useState<AlsProject | null>(null);
   const [alsSong, setAlsSong] = useState<AlsSong | null>(null);
   const [choice, setChoice] = useState<Record<string, Choice>>({});
@@ -112,6 +113,16 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         readFile: async (path) => (await readBytes(path)).bytes,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
+        shift: (buffer, semitones, speed) =>
+          getShiftedBuffer({
+            ctx,
+            path: `prepare:${semitones}:${speed}`,
+            rev: `${buffer.length}@${buffer.sampleRate}`,
+            semitones,
+            tempo: speed,
+            source: buffer,
+            budgetBytes: settings.cacheBudgetGB * 1e9,
+          }),
         onProgress: setProgress,
       });
       void ctx.close();
