@@ -50,12 +50,9 @@ function writeFxChoice(songId: string, choice: 'approx' | 'raw'): void {
   }
 }
 
-/** Whether a song's parts run through any device or bus in the set. */
+/** Whether any of a song's parts runs through a device on its own track or groups. */
 export function hasDevices(song: Song | null): boolean {
-  if (!song) return false;
-  return song.variants.some(
-    (v) => v.devices?.some((d) => d.on) || v.sends?.some((s) => song.buses?.[s.bus]?.devices.some((d) => d.on)),
-  );
+  return !!song && song.variants.some((v) => v.devices?.some((d) => d.on));
 }
 
 export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: boolean) {

@@ -1132,25 +1132,18 @@ function describeProgress(p: import('../lib/songLoader').LoadProgress): string {
 }
 
 /**
- * What the song's parts run through, bus by bus and track by track, and
- * what among it cannot be imitated — said before anyone chooses.
+ * What the song's parts run through, track by track, and what among it
+ * cannot be imitated — said before anyone chooses. A return bus's chain is
+ * output processing, the venue's rather than the song's, and is not listed.
  */
 function describeDevices(song: Song): string {
   const parts: string[] = [];
   const cannot = new Set<string>();
-  const busUsers = new Map<number, string[]>();
   for (const v of song.variants) {
     if (v.devices?.some((d) => d.on)) {
       parts.push(`${chainSummary(v.devices)} on ${v.name}`);
       for (const u of unsupportedIn(v.devices)) cannot.add(u);
     }
-    for (const s of v.sends ?? []) busUsers.set(s.bus, [...(busUsers.get(s.bus) ?? []), v.name]);
-  }
-  for (const [index, users] of busUsers) {
-    const bus = song.buses?.[index];
-    if (!bus?.devices.some((d) => d.on)) continue;
-    parts.push(`${chainSummary(bus.devices)} on the “${bus.name}” bus (${users.join(', ')})`);
-    for (const u of unsupportedIn(bus.devices)) cannot.add(u);
   }
   const list = parts.length ? `${parts.join('; ')}.` : '';
   const no = cannot.size ? ` Cannot be imitated at all: ${[...cannot].join(', ')}.` : '';

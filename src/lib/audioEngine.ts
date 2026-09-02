@@ -1,5 +1,5 @@
 import { buildChain } from './fx';
-import type { Bus, Device } from '../types';
+import type { Device } from '../types';
 /**
  * Multi-track transport.
  *
@@ -99,10 +99,6 @@ export interface TrackConfig {
   fileStartSec?: number;
   /** The set's devices on this track, imitated when effects are on. */
   devices?: Device[];
-  /** Return buses this track sends into, when effects are on. */
-  sends?: { bus: number; level: number }[];
-  /** Whether it reaches the output itself. Absent means yes. */
-  direct?: boolean;
   buffer: AudioBuffer;
   role: Exclude<TrackRole, 'click'>;
   level?: number;
@@ -129,8 +125,6 @@ export class SongEngine {
   /** Reused by every meter read, so metering allocates nothing per frame. */
   private meterBuffer = new Uint8Array(256);
   private tracks = new Map<string, Track>();
-  /** The set's return buses, built when effects are on. */
-  private buses: { input: AudioNode; out: AudioNode; direct: boolean; sends: { bus: number; level: number }[] }[] = [];
 
   private activeId: string | null = null;
   private playing = false;
@@ -275,43 +269,13 @@ export class SongEngine {
   async setTracks(
     configs: Map<string, TrackConfig>,
     activeMixId: string | null,
-    fx: { buses?: Bus[]; effects?: boolean } = {},
+    fx: { effects?: boolean } = {},
   ): Promise<void> {
     const ctx = await this.ensureContext();
     this.stopSources();
     for (const track of this.tracks.values()) this.disconnectTrack(track);
     this.tracks.clear();
-    for (const bus of this.buses) bus.input.disconnect();
-    this.buses = [];
-
-    /*
-     * The set's return buses, when effects are on: each sums what is sent
-     * to it, runs it through its devices, and goes to the output or on into
-     * another bus. Built before the tracks, which connect into them.
-     */
     const effects = !!fx.effects;
-    if (effects && fx.buses?.length) {
-      this.buses = fx.buses.map((bus) => {
-        const chain = buildChain(ctx, bus.devices);
-        const gain = ctx.createGain();
-        gain.gain.value = bus.gain;
-        chain.output.connect(gain);
-        const panner = this.createPanner(ctx, bus.pan);
-        if (panner) gain.connect(panner);
-        return { input: chain.input, out: panner ?? gain, direct: bus.direct, sends: bus.sends };
-      });
-      this.buses.forEach((bus, index) => {
-        if (bus.direct) bus.out.connect(this.master!);
-        for (const send of bus.sends) {
-          const target = this.buses[send.bus];
-          if (!target || send.bus === index) continue;
-          const level = ctx.createGain();
-          level.gain.value = send.level;
-          bus.out.connect(level);
-          level.connect(target.input);
-        }
-      });
-    }
 
     let maxDuration = 0;
     for (const [id, config] of configs) {
@@ -321,22 +285,11 @@ export class SongEngine {
       const regions = config.regions ?? null;
       const regionGain = regions ? ctx.createGain() : null;
       const panner = this.createPanner(ctx, config.pan ?? 0);
-      // source -> [regionGain] -> [devices] -> gain -> [panner] -> master and/or buses
+      // source -> [regionGain] -> [devices] -> gain -> [panner] -> master
       if (panner) gain.connect(panner);
-      const out: AudioNode = panner ?? gain;
-      const routed = effects && this.buses.length > 0 && !!config.sends?.length;
-      if (!routed || config.direct !== false) out.connect(this.master!);
-      if (routed) {
-        for (const send of config.sends!) {
-          const target = this.buses[send.bus];
-          if (!target) continue;
-          const level = ctx.createGain();
-          level.gain.value = send.level;
-          out.connect(level);
-          level.connect(target.input);
-        }
-      }
-      // The track's own devices sit before its fader, as in Live.
+      (panner ?? gain).connect(this.master!);
+      // The track's own devices sit before its fader, as in Live. Whatever a
+      // return bus does after the fader is the venue's, and is left out.
       const devices = effects && config.devices?.length ? buildChain(ctx, config.devices) : null;
       if (devices) devices.output.connect(gain);
 

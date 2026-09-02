@@ -121,12 +121,10 @@ export function checkSet(project: AlsProject): Finding[] {
      * mean the raw file is not what the song sounds like; worth a warning
      * before it is relied on.
      */
+    // Only the song's own tracks: a return bus is the venue's chain, not the song's.
     const cannot = new Set<string>();
     for (const stem of song.stems) {
       for (const d of stem.devices ?? []) if (d.on && !d.supported) cannot.add(d.name ? `${d.kind} “${d.name}”` : d.kind);
-      for (const s of stem.sends ?? []) {
-        for (const d of project.buses?.[s.bus]?.devices ?? []) if (d.on && !d.supported) cannot.add(d.name ? `${d.kind} “${d.name}”` : d.kind);
-      }
     }
     if (cannot.size) {
       out.push({

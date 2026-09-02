@@ -72,14 +72,11 @@ export interface Variant {
   gain?: number;
   pan?: number;
   /**
-   * How the track sits in the set's mix: the devices on it and on its
-   * groups, in order; the buses it sends to, and at what level; and
-   * whether it reaches an output on its own. Absent means a plain track
-   * straight to the output, which is what most stems are.
+   * The devices on the track and on its groups, in order, for the player
+   * to imitate. What a return bus does after that is the venue's business
+   * — output processing, not the song — and is left alone.
    */
   devices?: Device[];
-  sends?: { bus: number; level: number }[];
-  direct?: boolean;
   /**
    * The part as an arrangement of clips, when it is more than one file
    * played from one point: a phrase dropped in from another take, the
@@ -265,8 +262,6 @@ export interface Song {
    * partway through, say — read from the set and shown with the song.
    */
   caveats?: string[];
-  /** The set's return buses, for parts that send into them. */
-  buses?: Bus[];
 
   variants: Variant[];
   /**

@@ -174,19 +174,12 @@ export function mixOf(
 }
 
 /**
- * How the part sits in the set's mix: its devices, its sends, and whether it
- * reaches an output itself. Said only when there is something to say.
+ * The devices the part runs through on its own track and groups. Where it
+ * is sent after that — a return bus with the venue's EQ and compression
+ * on it — is output processing rather than the song, and is left alone.
  */
-export function routeOf(stem: {
-  devices?: Device[];
-  sends?: { bus: number; level: number }[];
-  direct?: boolean;
-}): Pick<Variant, 'devices' | 'sends' | 'direct'> {
-  const out: Pick<Variant, 'devices' | 'sends' | 'direct'> = {};
-  if (stem.devices?.length) out.devices = stem.devices;
-  if (stem.sends?.length) out.sends = stem.sends;
-  if (stem.direct === false) out.direct = false;
-  return out;
+export function routeOf(stem: { devices?: Device[] }): Pick<Variant, 'devices'> {
+  return stem.devices?.some((d) => d.on) ? { devices: stem.devices } : {};
 }
 
 /** A single-clip part's own transposition and warp speed, when it has any. */
@@ -337,8 +330,6 @@ export function songsFromProject(
       timeSigNum: alsSong.timeSigNum ?? project.timeSigNum,
       timeSigDen: alsSong.timeSigDen ?? project.timeSigDen,
       caveats: alsSong.caveats?.length ? alsSong.caveats : undefined,
-      // The buses only matter to a song whose parts send into one.
-      buses: variants.some((v) => v.sends?.length) ? project.buses : undefined,
       firstBarOffsetSec: prev?.firstBarOffsetSec ?? 0,
       originalKey: alsSong.key ?? prev?.originalKey,
       transpose: prev?.transpose ?? 0,

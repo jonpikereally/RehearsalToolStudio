@@ -3468,10 +3468,13 @@ group('devices and buses');
   check('a track that feeds its group reaches the output through it', vox.direct === true);
   check('a plugin is read as a device that cannot be imitated', vox.devices[0].kind === 'AuPluginDevice' && vox.devices[0].supported === false && vox.devices[0].name === 'FabFilter Pro-Q 3', JSON.stringify(vox.devices));
   check('the findings warn about it', checkSet(p).some((f) => f.song === 'Yellow' && /FabFilter/.test(f.message)));
-  check('a plain track says nothing about routing', JSON.stringify(routeOf({ devices: [], sends: [], direct: true })) === '{}');
+  check('a plain track says nothing about devices', JSON.stringify(routeOf({ devices: [] })) === '{}');
   const files = ['Bass', 'Vox'].map((n) => ({ path: `/Stems/${n}.wav`, name: `${n}.wav`, rev: 'r', size: 1 }));
   const imported = songsFromProject(p, '/Set.als', files, new Map()).songs[0];
-  check('the song carries the buses its parts send into', imported.buses?.length === 2 && imported.variants.find((v) => v.name === 'Bass')?.sends?.[0].bus === 1);
+  check('a part carries its own track\'s devices and nothing of the bus it is sent to',
+    imported.variants.find((v) => v.name === 'Vox')?.devices?.[0].kind === 'AuPluginDevice' &&
+      imported.variants.find((v) => v.name === 'Bass')?.devices === undefined &&
+      !('buses' in imported));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
