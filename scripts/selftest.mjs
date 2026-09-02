@@ -3197,6 +3197,25 @@ group('the file API');
   check('but its neighbours cannot', (await call('read', { dir: elsewhere, path: 'Neighbour.txt' })).status === 403);
   check('nor can its folder be listed', (await call('list', { dir: elsewhere })).status === 403);
 
+  // A set's samples outside the folder: readable once their folder is
+  // allowed, by absolute path, and never written.
+  const resources = join(scratch, 'Resources');
+  await mkdir(join(resources, 'Click'), { recursive: true });
+  await writeFile(join(resources, 'Click', 'MetronomeUp.wav'), 'tick');
+  check('an absolute path is refused until its folder is allowed',
+    (await call('read', { dir: songs, path: `abs:${join(resources, 'Click', 'MetronomeUp.wav')}` })).status === 403);
+  answer = resources;
+  const granted = await ask('pick', { kind: 'folder', slot: 'resources', startIn: resources });
+  check('a resources folder is a slot of its own, opened where the page suggests',
+    granted.dir === resources && asked.startIn === resources, JSON.stringify([granted, asked]));
+  check('and then a sample in it reads by absolute path',
+    (await (await call('read', { dir: songs, path: `abs:${join(resources, 'Click', 'MetronomeUp.wav')}` })).text()) === 'tick');
+  check('but is never written', (await fetch(`${base()}/__fs/write?${new URLSearchParams({ dir: songs, path: `abs:${join(resources, 'x.wav')}` })}`, {
+    method: 'POST', headers: { 'x-rehearsal-studio': 'test' }, body: 'x',
+  })).status === 400);
+  check('and a path outside every folder stays refused',
+    (await call('exists', { dir: songs, path: 'abs:/etc/hosts' })).status === 403);
+
   // A new server, the way tomorrow's launch makes one: the folder is still there.
   server.close();
   server = await serve(fileApi({ stateFile, pick }));
@@ -3520,6 +3539,48 @@ group("the set's click and cues");
   check('neither is ever transposed', isUnpitched('Cues') && isUnpitched('Click'));
   const files = ['Stems/Bass.wav', 'Click/yellow click.wav', 'Slates/Yellow.wav', 'Cues/yellow pitch.wav'].map((f) => ({ path: `/${f}`, name: f.split('/').pop(), rev: 'r', size: 1 }));
   const song = songsFromProject(p, '/Set.als', files, new Map()).songs[0];
+  {
+    // A click played by a drum rack: MIDI notes, each become its pad's sample,
+    // the clip's four-beat loop unrolled across its length. Live keeps a pad's
+    // note as 128 minus it, and these samples live outside the project.
+    const pad = (id, recv, name, db) => `<DrumBranch Id="${id}"><BranchInfo><ReceivingNote Value="${recv}" /></BranchInfo>
+      <DeviceChain><Devices><OriginalSimpler Id="1"><Volume><LomId Value="0" /><Manual Value="${db}" /></Volume>
+        <SampleStart Value="0" /><SampleEnd Value="5000" />
+        <SampleRef><FileRef><RelativePath Value="../../Resources/Click/${name}.wav" /><Path Value="/Users/x/Resources/Click/${name}.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </OriginalSimpler></Devices></DeviceChain></DrumBranch>`;
+    const note = (time, vel = 100) => `<MidiNoteEvent Time="${time}" Duration="0.25" Velocity="${vel}" IsEnabled="true" />`;
+    const rackXml = `<Ableton Creator="Live 12">
+      <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+      <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+      <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+      <Locator Id="2"><Time Value="16" /><Name Value="AUTOSTOP" /></Locator>
+      <GroupTrack Id="90"><TrackGroupId Value="-1" /><EffectiveName Value="CLICK" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+      <MidiTrack Id="91"><TrackGroupId Value="90" /><EffectiveName Value="CLICK MIDI" />
+        <DeviceChain>${mixer(1)}<Devices><DrumGroupDevice Id="5">${pad(1, 84, 'MetronomeUp', 4)}${pad(2, 82, 'MetronomeDown', -4)}</DrumGroupDevice></Devices></DeviceChain>
+        <MidiClip Id="1" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="16" /><LoopStart Value="0" /><LoopEnd Value="4" /><LoopOn Value="true" /><StartRelative Value="0" /><Disabled Value="false" />
+          <KeyTrack Id="1"><Notes>${note(0)}</Notes><MidiKey Value="44" /></KeyTrack>
+          <KeyTrack Id="2"><Notes>${note(1)}${note(2)}${note(3, 60)}</Notes><MidiKey Value="46" /></KeyTrack>
+        </MidiClip>
+      </MidiTrack>
+      <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+      ${audio(11, 10, 'Bass', 1, clip(1, 0, 16, 'Stems/Bass.wav'))}
+    </Ableton>`;
+    const rp = parseAlsXml(rackXml);
+    const click = rp.songs[0].stems.find((s) => s.name === 'Click');
+    check('a drum rack click becomes one clip per note, the loop unrolled', click?.clips.length === 16, String(click?.clips.length));
+    check('each note plays its pad\'s sample where the note falls',
+      click?.clips[0].path.endsWith('MetronomeUp.wav') && click?.clips[1].path.endsWith('MetronomeDown.wav') && click?.clips[4].startBar === 2 && click?.clips[4].path.endsWith('MetronomeUp.wav'),
+      JSON.stringify(click?.clips.slice(0, 5).map((c) => [c.startBar, c.path.split('/').pop()])));
+    check('at the pad\'s level, scaled a little by velocity',
+      Math.abs(click.clips[0].gain - 10 ** (4 / 20) * (0.65 + (0.35 * 100) / 127)) < 1e-6 && click.clips[3].gain < click.clips[1].gain,
+      JSON.stringify(click.clips.slice(0, 4).map((c) => c.gain)));
+    check('and remembers the sample\'s absolute path', click.clips[0].absPath === '/Users/x/Resources/Click/MetronomeUp.wav');
+    const imported = songsFromProject(rp, '/Set.als', [{ path: '/Stems/Bass.wav', name: 'Bass.wav', rev: 'r', size: 1 }], new Map()).songs[0];
+    const part = imported.variants.find((v) => v.name === 'Click');
+    check('a sample outside the folder is named absolutely, read-only, when the folder has no copy',
+      part?.clips?.length === 16 && part.clips[0].path === 'abs:/Users/x/Resources/Click/MetronomeUp.wav' && part.path.startsWith('abs:'),
+      JSON.stringify([part?.path, part?.clips?.[0]?.path]));
+  }
   check('and they import as parts of the song, the cues as one arrangement',
     song.variants.map((v) => v.name).join() === 'Bass,Click,Cues' && song.variants[2].clips?.length === 2 && song.variants[2].role === 'stem',
     JSON.stringify(song.variants.map((v) => [v.name, v.role, v.clips?.length])));

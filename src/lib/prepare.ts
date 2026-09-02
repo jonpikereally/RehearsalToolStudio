@@ -230,15 +230,24 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
    * at the same file, and decoding a 50 MB WAV twice is pure waste.
    */
   const decoded = new Map<string, AudioBuffer>();
-  const loadFile = async (relative: string): Promise<AudioBuffer | null> => {
+  const loadFile = async (relative: string, absPath?: string): Promise<AudioBuffer | null> => {
     const path = resolvePath(relative);
-    if (!path) return null;
-    const already = decoded.get(path.toLowerCase());
-    if (already) return already;
-    const bytes = await readFile(path);
-    const buffer = await decode(bytes);
-    decoded.set(path.toLowerCase(), buffer);
-    return buffer;
+    const candidates = [path, absPath ? `abs:${absPath}` : null].filter((p): p is string => !!p);
+    for (const [i, candidate] of candidates.entries()) {
+      const already = decoded.get(candidate.toLowerCase());
+      if (already) return already;
+      try {
+        const bytes = await readFile(candidate);
+        const buffer = await decode(bytes);
+        decoded.set(candidate.toLowerCase(), buffer);
+        return buffer;
+      } catch (err) {
+        // Not in the folder under that name: a sample the set keeps
+        // elsewhere is tried by its absolute path next.
+        if (i === candidates.length - 1) throw err;
+      }
+    }
+    return null;
   };
 
   const paddingSec = await measurePadding();
@@ -276,7 +285,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             continue;
           }
           for (const clip of live) {
-            let buffer = await loadFile(clip.path);
+            let buffer = await loadFile(clip.path, clip.absPath);
             if (!buffer) {
               skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
               continue;

@@ -21,7 +21,10 @@ import { normalisePath } from './paths.ts';
  * by the desktop client, and the only place their app can read from — so
  * what the studio prepares is written there rather than beside its source.
  */
-export type FolderSlot = 'songs' | 'publish';
+export type FolderSlot = 'songs' | 'publish' | 'resources';
+
+/** A path a set names absolutely, outside the folder: sent as it is, read only. */
+export const isAbsoluteRef = (path: string): boolean => path.startsWith('abs:');
 
 declare const opaque: unique symbol;
 
@@ -108,16 +111,21 @@ async function post(op: string, body: BodyInit, type: string): Promise<Response>
 const PROMPTS: Record<FolderSlot, string> = {
   songs: 'Choose the folder your Ableton sets and stems live in',
   publish: "Choose the band's folder — the one Rehearsal Tool reads",
+  resources: "Allow the folder the set's samples live in — read only",
 };
 
 /* --------------------------------- picking -------------------------------- */
 
 /** Prompt for a folder. Named slots are remembered; `null` is a one-off, forgotten with the page. */
-export async function pickFolder(slot: FolderSlot | null = 'songs'): Promise<LocalFolder> {
+export async function pickFolder(
+  slot: FolderSlot | null = 'songs',
+  opts: { startIn?: string } = {},
+): Promise<LocalFolder> {
   const picked = await call<{ cancelled?: true; dir: string; name: string }>('pick', {
     kind: 'folder',
     slot: slot ?? undefined,
     prompt: slot ? PROMPTS[slot] : 'Choose where to put what comes out',
+    startIn: opts.startIn,
   });
   if (picked.cancelled) throw aborted();
   return { handle: wrap({ dir: picked.dir, name: picked.name }), name: picked.name };
@@ -152,6 +160,8 @@ export async function forgetFolder(slot: FolderSlot = 'songs'): Promise<void> {
 
 /** The part of a path below the root: what the folder itself holds. */
 function below(root: string, path: string): string {
+  // A sample outside the folder, named absolutely by the set: as it is.
+  if (isAbsoluteRef(path)) return path;
   const prefix = normalisePath(root);
   const lower = path.toLowerCase();
   return prefix && lower.startsWith(prefix.toLowerCase() + '/')

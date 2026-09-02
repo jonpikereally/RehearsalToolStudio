@@ -32,6 +32,7 @@ export function setName(alsPath: string): string {
 
 /** Resolve a path stored in the set against the folder the set lives in. */
 export function resolveStemPath(alsPath: string, stemPath: string): string {
+  if (stemPath.startsWith('abs:')) return stemPath;
   const raw = stemPath.startsWith('/') ? stemPath : `${projectFolder(alsPath)}/${stemPath}`;
   // Live writes stems outside the project as `../../Stems/x.wav`; a path with
   // the dots still in it matches nothing, so they are folded away here.
@@ -42,6 +43,16 @@ export function resolveStemPath(alsPath: string, stemPath: string): string {
     else out.push(part);
   }
   return `/${out.join('/')}`;
+}
+
+/**
+ * A file the set names outside the folder, as the library refers to it: by
+ * its absolute path, marked so every reader knows to ask for it as such.
+ * Only once the folder itself has been searched — a copy inside it wins.
+ */
+export function externalEntry(absPath: string | undefined): FileEntry | undefined {
+  if (!absPath || !absPath.startsWith('/')) return undefined;
+  return { path: `abs:${absPath}`, name: absPath.split('/').pop() ?? absPath, rev: 'external', size: 0, modified: 0 };
 }
 
 /**
@@ -223,7 +234,9 @@ export function songsFromProject(
 
     for (const stem of alsSong.stems) {
       const full = resolveStemPath(alsPath, stem.path);
-      const file = byPath.get(full.toLowerCase()) ?? findByName(stem.path, available);
+      const first = (stem.clips ?? []).find((c) => !c.disabled) ?? stem.clips?.[0];
+      const file =
+        byPath.get(full.toLowerCase()) ?? findByName(stem.path, available) ?? externalEntry(first?.absPath);
       if (!file) continue;
 
       /*
@@ -237,7 +250,10 @@ export function songsFromProject(
         ? live
             .map((clip) => ({
               clip,
-              file: byPath.get(resolveStemPath(alsPath, clip.path).toLowerCase()) ?? findByName(clip.path, available),
+              file:
+                byPath.get(resolveStemPath(alsPath, clip.path).toLowerCase()) ??
+                findByName(clip.path, available) ??
+                externalEntry(clip.absPath),
             }))
             .filter((x): x is { clip: AlsClip; file: FileEntry } => !!x.file)
         : [];

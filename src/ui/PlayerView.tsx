@@ -32,6 +32,7 @@ import TempoDialog from './TempoDialog';
 import TimecodeDialog from './TimecodeDialog';
 import PrepareSongDialog from './PrepareSongDialog';
 import { hasDevices } from '../lib/usePlayer';
+import { isAbsoluteRef } from '../lib/localSource';
 import { chainSummary, unsupportedIn } from '../lib/fx';
 import DownloadDialog from './DownloadDialog';
 import BlockHead from './BlockHead';
@@ -45,7 +46,8 @@ import type { Marker, Song } from '../types';
 const LOOP_LENGTHS = [2, 4, 8, 16];
 
 export default function PlayerView({ songId, setlistId }: { songId: string; setlistId: string | null }) {
-  const { library, settings, updateSong } = useStore();
+  const { library, settings, updateSong, resourcesFolderName, pickResourcesFolder } = useStore();
+  const [resourcesError, setResourcesError] = useState<string | null>(null);
   const song = library.songs.find((s) => s.id === songId) ?? null;
   const player = usePlayer(song, settings.cacheBudgetGB, settings.keepAwake);
   const [jump, setJump] = useState(settings.jumpSizes[1] ?? 4);
@@ -404,6 +406,28 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
+        {externalRoot(song) && !resourcesFolderName && (
+          <div className="notice stack">
+            <span>
+              <strong>The click and cues are samples outside your folder</strong>, in{' '}
+              <span className="code">{externalRoot(song)}</span>. Allow the studio to read that
+              folder — read only — and they play as in Live.
+            </span>
+            {resourcesError && <span style={{ color: 'var(--bad)' }}>{resourcesError}</span>}
+            <div className="btn-row">
+              <button
+                className="btn primary"
+                onClick={() =>
+                  void pickResourcesFolder(externalRoot(song) ?? undefined).catch((err) => {
+                    if (!/abort/i.test(String(err?.message ?? err))) setResourcesError(String(err?.message ?? err));
+                  })
+                }
+              >
+                Allow that folder
+              </button>
+            </div>
+          </div>
+        )}
         {hasDevices(song) && !player.effectsDecided && (
           <div className="notice stack">
             <span>
@@ -1148,6 +1172,27 @@ function describeDevices(song: Song): string {
   const list = parts.length ? `${parts.join('; ')}.` : '';
   const no = cannot.size ? ` Cannot be imitated at all: ${[...cannot].join(', ')}.` : '';
   return `${list}${no}`;
+}
+
+/**
+ * The folder the song's outside samples share, when it has any: the longest
+ * path every one of them starts with, offered as the folder to allow.
+ */
+function externalRoot(song: Song): string | null {
+  const paths: string[] = [];
+  for (const v of song.variants) {
+    if (isAbsoluteRef(v.path)) paths.push(v.path.slice(4));
+    for (const c of v.clips ?? []) if (isAbsoluteRef(c.path)) paths.push(c.path.slice(4));
+  }
+  if (!paths.length) return null;
+  let parts = paths[0].split('/').slice(0, -1);
+  for (const p of paths.slice(1)) {
+    const other = p.split('/').slice(0, -1);
+    let i = 0;
+    while (i < parts.length && i < other.length && parts[i] === other[i]) i++;
+    parts = parts.slice(0, i);
+  }
+  return parts.length > 1 ? parts.join('/') : null;
 }
 
 /** A bar for a rig clip: whole when it is, else to a tenth. */

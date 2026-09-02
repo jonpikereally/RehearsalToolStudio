@@ -136,6 +136,8 @@ interface RawClip {
   semitones: number;
   /** The clip's own gain, linear: 1 for none. */
   gain: number;
+  /** The file's absolute path as Live also writes it, for one outside the project. */
+  absPath: string | null;
 }
 
 /**
@@ -166,6 +168,12 @@ export interface AlsClip {
   speed: number;
   /** The clip's own gain in Live, linear; 1 for none. */
   gain: number;
+  /**
+   * The file's absolute path, when Live wrote one. A sample outside the
+   * project — a click, a bank of cues — is found by this when the relative
+   * path leads out of the folder.
+   */
+  absPath?: string;
 }
 
 export interface AlsLane {
@@ -418,6 +426,88 @@ function routingOf(chunk: string): { output: 'main' | 'group' | 'none' | 'extern
   return { output, sends };
 }
 
+/**
+ * A drum rack's pads: which note plays which sample, at what level and
+ * from where in the file. Live stores the pad's note as 128 minus it.
+ */
+interface Pad {
+  path: string;
+  absPath: string | null;
+  gain: number;
+  startSec: number;
+}
+
+function drumPads(chunk: string): Map<number, Pad> {
+  const pads = new Map<number, Pad>();
+  const rack = chunk.match(/<DrumGroupDevice Id="\d+">[\s\S]*?<\/DrumGroupDevice>/)?.[0];
+  if (!rack) return pads;
+  for (const m of rack.matchAll(/<DrumBranch Id="\d+">([\s\S]*?)<\/DrumBranch>/g)) {
+    const body = m[1];
+    const recv = parseInt(body.match(/<ReceivingNote Value="(\d+)"/)?.[1] ?? '', 10);
+    const sample = body.match(/<SampleRef>[\s\S]*?<\/SampleRef>/)?.[0];
+    if (!Number.isFinite(recv) || !sample) continue;
+    const path = decodeXml(sample.match(/<RelativePath Value="([^"]+)"/)?.[1] ?? sample.match(/<Path Value="([^"]+)"/)?.[1] ?? '');
+    if (!path) continue;
+    const absPath = decodeXml(sample.match(/<Path Value="([^"]+)"/)?.[1] ?? '') || null;
+    const rate = parseFloat(sample.match(/<DefaultSampleRate Value="(\d+)"/)?.[1] ?? '44100') || 44100;
+    const startFrames = parseFloat(body.match(/<SampleStart Value="([-\d.]+)"/)?.[1] ?? '0') || 0;
+    // The pad's Simpler has its own volume, in dB.
+    const db = parseFloat(body.match(/<Volume>\s*<LomId[^>]*>\s*<Manual Value="([-\d.]+)"/)?.[1] ?? '0') || 0;
+    pads.set(128 - recv, { path, absPath, gain: 10 ** (db / 20), startSec: startFrames / rate });
+  }
+  return pads;
+}
+
+/**
+ * The notes a MIDI track plays, laid out in set beats: each clip's notes,
+ * repeated through its loop for as long as the clip runs. A rack track's
+ * whole part is these, each note become its pad's sample.
+ */
+function midiNotes(chunk: string): { beat: number; key: number; velocity: number }[] {
+  const out: { beat: number; key: number; velocity: number }[] = [];
+  for (const m of chunk.matchAll(/<MidiClip Id="\d+"[^>]*>([\s\S]*?)<\/MidiClip>/g)) {
+    const body = m[1];
+    const num = (re: RegExp, fallback: number) => {
+      const v = parseFloat(body.match(re)?.[1] ?? '');
+      return Number.isFinite(v) ? v : fallback;
+    };
+    if (/<Disabled Value="true"/.test(body)) continue;
+    const start = num(/<CurrentStart Value="([-\d.]+)"/, NaN);
+    const end = num(/<CurrentEnd Value="([-\d.]+)"/, NaN);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const loopStart = num(/<LoopStart Value="([-\d.]+)"/, 0);
+    const loopEnd = num(/<LoopEnd Value="([-\d.]+)"/, end - start + loopStart);
+    const loopOn = /<LoopOn Value="true"/.test(body);
+    const startRel = num(/<StartRelative Value="([-\d.]+)"/, 0);
+    const length = loopEnd - loopStart;
+    if (length <= 0) continue;
+    const notes: { time: number; key: number; velocity: number }[] = [];
+    for (const k of body.matchAll(/<KeyTrack Id="\d+">([\s\S]*?)<\/KeyTrack>/g)) {
+      const key = parseInt(k[1].match(/<MidiKey Value="(\d+)"/)?.[1] ?? '', 10);
+      if (!Number.isFinite(key)) continue;
+      for (const n of k[1].matchAll(/<MidiNoteEvent ([^>]*)\/>/g)) {
+        const attrs = n[1];
+        if (/IsEnabled="false"/.test(attrs)) continue;
+        const time = parseFloat(attrs.match(/\bTime="([-\d.]+)"/)?.[1] ?? '');
+        const velocity = parseFloat(attrs.match(/Velocity="([-\d.]+)"/)?.[1] ?? '100');
+        if (Number.isFinite(time)) notes.push({ time, key, velocity: Number.isFinite(velocity) ? velocity : 100 });
+      }
+    }
+    if (!notes.length) continue;
+    // The clip shows its loop from `startRel` in; a looping clip goes round
+    // until it ends, a one-shot clip plays its loop once.
+    const passes = loopOn ? Math.ceil((end - start + startRel) / length) + 1 : 1;
+    for (let pass = 0; pass < passes; pass++) {
+      for (const note of notes) {
+        const beat = start + pass * length + (note.time - loopStart) - startRel;
+        if (beat < start - 1e-6 || beat >= end - 1e-6) continue;
+        out.push({ beat, key: note.key, velocity: note.velocity });
+      }
+    }
+  }
+  return out.sort((a, b) => a.beat - b.beat);
+}
+
 /** A track's own fader and pan, from its mixer section. */
 function mixerOf(chunk: string): { gain: number; pan: number } {
   const mixer = chunk.match(/<Mixer>[\s\S]*?<\/Mixer>/)?.[0] ?? '';
@@ -541,6 +631,7 @@ function clipsOfTrack(track: Track): RawClip[] {
         body.match(/<Path Value="([^"]+)"/) ??
         [])[1] ?? '',
     );
+    const absPath = decodeXml((body.match(/<Path Value="([^"]+)"/) ?? [])[1] ?? '') || null;
 
     /*
      * Which slice of the file plays. Ableton counts this in beats from the
@@ -571,6 +662,7 @@ function clipsOfTrack(track: Track): RawClip[] {
         const g = num(/<SampleVolume Value="([-\d.]+)"/);
         return Number.isNaN(g) ? 1 : g;
       })(),
+      absPath,
       // Coarse in semitones, fine in cents — the clip's own transposition.
       semitones:
         (Number.isNaN(num(/<PitchCoarse Value="([-\d.]+)"/)) ? 0 : num(/<PitchCoarse Value="([-\d.]+)"/)) +
@@ -1087,6 +1179,7 @@ export function parseAlsXml(xml: string): AlsProject {
               warped: c.warpBps !== null,
               semitones: c.semitones,
               gain: c.gain,
+              absPath: c.absPath ?? undefined,
               // A warped file at another tempo is stretched to this song's:
               // its beats per second against the song's, where they differ.
               speed:
@@ -1127,7 +1220,7 @@ export function parseAlsXml(xml: string): AlsProject {
       const groups = tracks.filter((t) => t.kind === 'GroupTrack' && t.groupId === '-1' && match.test(t.name.trim()));
       const members = tracks.filter(
         (t) =>
-          t.kind === 'AudioTrack' &&
+          (t.kind === 'AudioTrack' || t.kind === 'MidiTrack') &&
           !trackIsMuted(t) &&
           (groups.some((g) => rootOf(t) === g) || (t.groupId === '-1' && match.test(t.name.trim()))),
       );
@@ -1137,6 +1230,38 @@ export function parseAlsXml(xml: string): AlsProject {
         for (let c = byId.get(t.groupId), i = 0; c && i < 8; i++) {
           level *= c.gain;
           c = byId.get(c.groupId);
+        }
+        /*
+         * A MIDI track playing a drum rack: every note becomes its pad's
+         * sample, laid at the note, at the pad's level scaled a little by
+         * velocity. A one-shot plays the whole sample whatever the note's
+         * length, so each is given room and the render stops at the file's
+         * end.
+         */
+        if (t.kind === 'MidiTrack') {
+          const pads = drumPads(t.chunk);
+          if (!pads.size) continue;
+          for (const note of midiNotes(t.chunk)) {
+            if (note.beat < loc.beat - 1e-6 || note.beat >= endBeat) continue;
+            const pad = pads.get(note.key);
+            if (!pad) continue;
+            const bar = relBar(note.beat);
+            clips.push({
+              path: pad.path,
+              absPath: pad.absPath ?? undefined,
+              startBar: bar,
+              endBar: bar + 16,
+              sourceStartSec: pad.startSec,
+              disabled: false,
+              fadeInSec: 0,
+              fadeOutSec: 0,
+              warped: false,
+              semitones: 0,
+              gain: pad.gain * level * (0.65 + (0.35 * Math.min(127, Math.max(1, note.velocity))) / 127),
+              speed: 1,
+            });
+          }
+          continue;
         }
         for (const c of clipsOfTrack(t)) {
           if (c.disabled || c.endBeat <= loc.beat || c.startBeat >= endBeat) continue;
@@ -1151,6 +1276,7 @@ export function parseAlsXml(xml: string): AlsProject {
             warped: c.warpBps !== null,
             semitones: c.semitones,
             gain: c.gain * level,
+            absPath: c.absPath ?? undefined,
             speed: c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005 ? startBpm / 60 / c.warpBps : 1,
           });
         }

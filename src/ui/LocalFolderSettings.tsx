@@ -13,6 +13,7 @@ export default function LocalFolderSettings() {
   const {
     settings, saveSettings, rescan, scanning, scanProgress,
     localStatus, localFolderName, pickLocalFolder, forgetLocalFolder,
+    resourcesFolderName, pickResourcesFolder,
   } = useStore();
 
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +82,21 @@ export default function LocalFolderSettings() {
       </div>
       <div style={{ color: '#6b7789', fontSize: 12.5 }}>
         A rescan opens every set in the folder and drops a song whose files have gone.
+      </div>
+
+      <div className="field">
+        <label>
+          Samples elsewhere
+          <span className="hint">
+            A folder a set's click or cue samples live in outside the project. Read only, never written.
+          </span>
+        </label>
+        <div className="btn-row">
+          <span className="code">{resourcesFolderName ?? 'none allowed'}</span>
+          <button className="btn" onClick={() => void run(() => pickResourcesFolder())}>
+            {resourcesFolderName ? 'Change' : 'Allow a folder'}
+          </button>
+        </div>
       </div>
     </SettingsSection>
   );

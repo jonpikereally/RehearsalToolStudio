@@ -51,7 +51,12 @@ import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
-export const SLOTS = new Set(['songs', 'publish']);
+/**
+ * `songs` is read and written; `publish` is the band's folder; `resources`
+ * is a folder a set's samples live in when they are not inside the project
+ * — a click, a bank of spoken cues — and is only ever read.
+ */
+export const SLOTS = new Set(['songs', 'publish', 'resources']);
 
 /**
  * Besides its own page, the one other place a call may come from: the dev
@@ -147,6 +152,18 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   /** The absolute path of `rel` inside `dir`, refusing anything that climbs out. */
   const inside = (dir, rel, { file = false } = {}) => {
     if (typeof rel !== 'string' || !rel) throw new Refusal(400, 'path is required');
+    /*
+     * A set names a sample outside its project by its absolute path. Such a
+     * path can be read — never written — when it lies inside any folder the
+     * user has picked, the resources folder being the one meant for it.
+     */
+    if (rel.startsWith('abs:')) {
+      if (!file) throw new Refusal(400, 'only a folder of your own can be written to');
+      const full = resolve(rel.slice(4));
+      for (const root of roots) if (full === root || full.startsWith(root + sep)) return full;
+      if (files.has(full)) return full;
+      throw new Refusal(403, `${dirname(full)} is not a folder the studio was given`);
+    }
     const clean = rel.replace(/^\/+/, '');
     // A lone file was picked on its own: its folder was never granted, only it.
     if (file) {
@@ -163,11 +180,13 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   const rev = (st) => `${modified(st)}-${st.size}`;
 
   const ops = {
-    async pick({ kind = 'folder', slot, prompt, extensions }) {
+    async pick({ kind = 'folder', slot, prompt, extensions, startIn: suggested }) {
       if (slot !== undefined && !SLOTS.has(slot)) throw new Refusal(400, 'no such slot');
-      // Open where that slot was last chosen, when that is still a folder.
+      // Open where the page suggests, else where that slot was last chosen,
+      // when that is still a folder.
+      const isDir = async (p) => typeof p === 'string' && !!(await stat(p).catch(() => null))?.isDirectory();
       const last = slot && slots[slot];
-      const startIn = last && (await stat(last).catch(() => null))?.isDirectory() ? last : undefined;
+      const startIn = (await isDir(suggested)) ? suggested : (await isDir(last)) ? last : undefined;
       const chosen = await pick({
         kind,
         prompt: prompt || (kind === 'file' ? 'Choose a file' : 'Choose a folder'),

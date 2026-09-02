@@ -40,7 +40,7 @@ function useNewerBuild(): string | null {
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName } = useStore();
   const newerBuild = useNewerBuild();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
@@ -49,7 +49,9 @@ export default function App() {
 
   let body: JSX.Element;
   if (section === 'song' && songId) {
-    body = <PlayerView songId={songId} setlistId={route.query.get('sl')} />;
+    // Keyed on the resources folder: granting one is what makes the outside
+    // samples readable, and the song is opened again to pick them up.
+    body = <PlayerView key={resourcesFolderName ?? ''} songId={songId} setlistId={route.query.get('sl')} />;
     // Set tools work on a lone .als with no folder at all, so they stay
     // reachable before a folder is chosen — as Settings always has.
   } else if (!usingLocalFolder && section !== 'settings' && section !== 'tools') {
