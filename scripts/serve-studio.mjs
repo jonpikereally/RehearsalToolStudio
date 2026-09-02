@@ -43,6 +43,16 @@ const MIME = {
 
 // STUDIO_STATE_FILE points the remembered folders somewhere else — for trying
 // the server against a scratch folder without touching the real ones.
+/** The build this server *is*: the stamp on disk when it started. */
+const readStamp = () => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, 'build.json'), 'utf8')).build ?? null;
+  } catch {
+    return null;
+  }
+};
+const STARTED_WITH = readStamp();
+
 const files = fileApi(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {});
 
 const server = createServer(async (req, res) => {
@@ -50,18 +60,20 @@ const server = createServer(async (req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
 
   if (path === '/__rehearsal-studio') {
-    // Which build sits on disk right now — read fresh each time, because the
-    // launcher rebuilds underneath a running server and the answer must move
-    // with it. An open page compares this against its own stamp to learn it
-    // has gone stale.
-    let build = null;
-    try {
-      build = JSON.parse(readFileSync(join(ROOT, 'build.json'), 'utf8')).build ?? null;
-    } catch {
-      // An old build without the stamp still deserves a healthy answer.
-    }
+    /*
+     * Two builds: `build` is what sits on disk right now, read fresh, and
+     * `server` is what this process started with. They part when the
+     * launcher rebuilds underneath a running server — and this server's
+     * own code, the file API included, is as old as `server`. The launcher
+     * replaces a server whose `server` is behind the disk; an open page
+     * compares `server` with its own stamp to learn it has gone stale.
+     * Answering only with the fresh stamp once let a server with a
+     * year-old file API look current forever.
+     */
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    return res.end(JSON.stringify({ ok: true, serving: 'rehearsal-tool-studio', build, files: true }));
+    return res.end(
+      JSON.stringify({ ok: true, serving: 'rehearsal-tool-studio', build: readStamp(), server: STARTED_WITH, files: true }),
+    );
   }
 
   // Normalised and rooted, so no path can climb out of the build folder.

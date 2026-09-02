@@ -26,7 +26,10 @@ function useNewerBuild(): string | null {
       try {
         const res = await fetch('/__rehearsal-studio', { signal: AbortSignal.timeout(2000) });
         const info = await res.json();
-        if (info.build && info.build !== __BUILD__) setNewer(info.build);
+        // What the server *is*, not what sits on disk: a rebuilt bundle behind
+        // a server still running old code is not a newer studio yet.
+        const running = info.server ?? info.build;
+        if (running && running !== __BUILD__) setNewer(running);
       } catch {
         // The dev server has no such route; there is nothing to say.
       }

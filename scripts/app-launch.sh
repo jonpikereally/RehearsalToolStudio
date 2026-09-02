@@ -89,12 +89,13 @@ start_studio_server() {
       *) echo "port 5177 is taken by something else" >>"$REPO/.studio-build.log"; return ;;
     esac
     # It is ours — but a long-lived server keeps running the code it started
-    # with, and an old one answers without today's build. When its answer
-    # disagrees with what sits on disk, replace it rather than trust it. No
-    # stamp on disk means there is nothing to disagree with.
+    # with, file API included, and answers with the build it started as. When
+    # that is behind what sits on disk, replace it rather than trust it. No
+    # stamp on disk means there is nothing to disagree with. (An answer with
+    # no "server" at all is a server from before it said, and is replaced.)
     [ -z "$stamped" ] && return
     case "$answer" in
-      *"\"build\":\"$stamped\""*) return ;;
+      *"\"server\":\"$stamped\""*) return ;;
     esac
     echo "replacing an outdated studio server" >>"$REPO/.studio-build.log"
     /bin/kill $(/usr/sbin/lsof -ti tcp:5177 2>/dev/null) 2>/dev/null
