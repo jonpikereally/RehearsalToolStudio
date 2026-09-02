@@ -14,7 +14,7 @@ import { isReferenceName } from '../lib/scan';
 function Availability({ item }: { item: DownloadItem }) {
   if (item.where === 'disk') return <span className="badge ok">on disk</span>;
   if (item.where === 'cache') return <span className="badge ok">on device</span>;
-  return <span className="pick-size mono">{formatBytes(item.variant.sizeBytes ?? 0)}</span>;
+  return <span className="badge warn">not in the folder</span>;
 }
 
 /**
@@ -134,12 +134,12 @@ export default function DownloadDialog({
    */
   const summary =
     onDisk === items.length
-      ? 'Every part is in your folder, so nothing needs fetching — this is just which ones to load.'
+      ? 'Every part is in your folder — this is just which ones to load.'
       : explainMissing
-        ? `${onDisk} of ${items.length} parts are in your folder. The rest aren't at these paths — turn them off to open the song without them.`
+        ? `${onDisk} of ${items.length} parts are in your folder. The rest aren't at these paths, so they are left out until they are.`
         : cachedCount > 0
-          ? `${cachedCount} of ${items.length} parts are here already. Choose what else to fetch.`
-          : 'Choose which parts to fetch. You can change this later from the mixer.';
+          ? `${cachedCount} of ${items.length} parts are here. The rest aren't in the folder.`
+          : 'None of these parts are in the folder yet. Copy them in and rescan.';
 
   /** The version stays whatever it is; only the stems move. */
   const setAllStems = (on: boolean) =>
@@ -273,11 +273,11 @@ export default function DownloadDialog({
         <p className="dialog-note">
           {bytes > 0 ? (
             <>
-              <strong>{formatBytes(bytes)}</strong> to download
-              {toDownload.length > 1 ? ` across ${toDownload.length} files` : ''}.
+              {toDownload.length} part{toDownload.length === 1 ? '' : 's'} ({formatBytes(bytes)}) not in the folder — the song opens
+              without {toDownload.length === 1 ? 'it' : 'them'}.
             </>
           ) : (
-            <>Nothing to download — everything chosen is already here.</>
+            <>Everything chosen is here.</>
           )}
         </p>
 
@@ -285,9 +285,12 @@ export default function DownloadDialog({
           <button
             className="btn primary"
             disabled={chosen.size === 0}
-            onClick={() => onConfirm(items.filter((i) => !chosen.has(i.variant.id)).map((i) => i.variant.id))}
+            onClick={() =>
+              // Nothing is fetched here: a part that isn't in the folder is skipped whatever the tick says.
+              onConfirm(items.filter((i) => !chosen.has(i.variant.id) || !i.cached).map((i) => i.variant.id))
+            }
           >
-            {bytes > 0 ? `Download ${formatBytes(bytes)}` : 'Open song'}
+            {bytes > 0 ? 'Open without them' : 'Open song'}
           </button>
         </div>
         {chosen.size === 0 && <p className="dialog-note">Pick at least one part to play.</p>}

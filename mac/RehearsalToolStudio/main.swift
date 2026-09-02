@@ -138,22 +138,14 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
 
     /*
      * The launcher rebuilds on every click, but a window left open keeps the
-     * page it loaded. Coming back to the app is the moment to check: when the
-     * server now holds a newer build than the page came from, the page is
-     * reloaded rather than left to offer a banner it may never show. The
-     * studio writes edits within a couple of seconds, so nothing is lost.
+     * page it loaded. The page checks for a newer build whenever it gains
+     * focus and offers a reload — a WebKit window does not reliably send that
+     * focus event, so coming back to the app sends one. The page decides; a
+     * reload forced from here once landed in the middle of preparing a song.
      */
     func applicationDidBecomeActive(_ notification: Notification) {
         guard loadedBuild != nil else { return }
-        DispatchQueue.global(qos: .utility).async {
-            guard let build = self.studioBuild() else { return }
-            DispatchQueue.main.async {
-                if build != self.loadedBuild {
-                    self.loadedBuild = build
-                    self.web.reloadFromOrigin()
-                }
-            }
-        }
+        web.evaluateJavaScript("window.dispatchEvent(new Event('focus'))", completionHandler: nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

@@ -72,16 +72,27 @@ async function call<T>(op: string, body: unknown): Promise<T> {
 }
 
 async function post(op: string, body: BodyInit, type: string): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(`/__fs/${op}`, {
-      method: 'POST',
-      headers: { ...STUDIO_HEADER, 'content-type': type },
-      body,
-    });
-  } catch {
-    throw new Error("The studio's server isn't answering — start it with `npm run serve`.");
+  let res: Response | null = null;
+  /*
+   * The launcher replaces an outdated server under a running page, which
+   * takes a second. A request that fails to connect is tried again a few
+   * times before it counts as the server being gone — a folder was once
+   * reported "not chosen" and a file "not on disk" for the length of that
+   * gap.
+   */
+  for (let attempt = 0; attempt < 6 && !res; attempt++) {
+    try {
+      res = await fetch(`/__fs/${op}`, {
+        method: 'POST',
+        headers: { ...STUDIO_HEADER, 'content-type': type },
+        body,
+      });
+    } catch {
+      if (attempt === 5) throw new Error("The studio's server isn't answering — start it with `npm run serve`.");
+      await new Promise((r) => setTimeout(r, 600));
+    }
   }
+  if (!res) throw new Error("The studio's server isn't answering — start it with `npm run serve`.");
   if (!res.ok) {
     let message = `${res.status} from the studio's server`;
     try {

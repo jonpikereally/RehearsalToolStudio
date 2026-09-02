@@ -48,7 +48,12 @@ export async function listAll(onProgress?: (count: number) => void): Promise<Fil
 /** True when this file is in the folder. */
 export async function isLocal(path: string): Promise<boolean> {
   if (!localReady()) return false;
-  return local.exists(config.folder!, config.root, path);
+  // A check that could not be made is not a file that is not there.
+  try {
+    return await local.exists(config.folder!, config.root, path);
+  } catch {
+    return true;
+  }
 }
 
 export async function readBytes(
