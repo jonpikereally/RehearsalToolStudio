@@ -251,16 +251,20 @@ export async function loadSong(
       report('downloading', 0, false);
       const files = new Map<string, AudioBuffer>();
       const placements: ClipPlacement[] = [];
+      const unread = new Map<string, string>();
       for (const [i, clip] of arranged.entries()) {
         let buffer = files.get(clip.path.toLowerCase());
         if (!buffer) {
+          if (unread.has(clip.path.toLowerCase())) continue;
           try {
             const { bytes } = await readBytes(clip.path, undefined, signal);
             report('decoding', i / arranged.length, true);
             buffer = await engine.decode(bytes);
           } catch (err) {
             if ((err as { name?: string })?.name === 'AbortError') throw err;
-            // One clip whose file is not to be had: the rest still play.
+            // One clip whose file is not to be had, or will not decode: the
+            // rest still play, and the page says which was left out.
+            unread.set(clip.path.toLowerCase(), err instanceof Error ? err.message : String(err));
             continue;
           }
           files.set(clip.path.toLowerCase(), buffer);
@@ -296,7 +300,16 @@ export async function loadSong(
           gain: clip.gain,
         });
       }
-      if (!placements.length) throw new Error('none of its files are here');
+      if (!placements.length) throw new Error('none of its files could be read');
+      if (unread.size) {
+        opts.onSkip?.(
+          variant,
+          `${unread.size} of its files could not be read — ${[...unread]
+            .slice(0, 3)
+            .map(([p, why]) => `${p.split('/').pop()}: ${why}`)
+            .join('; ')}${unread.size > 3 ? '…' : ''}`,
+        );
+      }
       const durationSec = Math.max(...placements.map((p) => p.endSec));
       const channels = Math.min(2, Math.max(...placements.map((p) => p.buffer.numberOfChannels)));
       original = await renderTrack(placements, durationSec, ctx.sampleRate, channels);
