@@ -235,7 +235,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         {published && (
           <div className="notice">
             The band's library now names it — {published.songs} song{published.songs === 1 ? '' : 's'} in{' '}
-            <span className="code">{published.folderName}</span>. Dropbox carries it to them.
+            <span className="code">{published.folderName}</span>.
           </div>
         )}
 

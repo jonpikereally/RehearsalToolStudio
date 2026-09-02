@@ -45,8 +45,7 @@ export default function Onboarding() {
       <div className="empty">
         <h2>Where are your sets?</h2>
         <p>
-          Point this at the folder your Ableton sets and their stems live in — the one inside
-          Dropbox, so what you prepare here reaches the band.
+          Point this at the folder your Ableton sets and their stems live in.
         </p>
       </div>
 

@@ -45,7 +45,7 @@ export default function LocalFolderSettings() {
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         {ready
           ? `Reading “${localFolderName}” straight off disk — every Ableton set in it, and everything written back beside them.`
-          : 'Point it at the folder your Ableton sets and stems live in — the one inside Dropbox, so what you prepare here reaches the band.'}
+          : 'Point it at the folder your Ableton sets and stems live in.'}
       </div>
 
       {error && <div className="notice error">{error}</div>}

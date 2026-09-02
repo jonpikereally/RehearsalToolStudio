@@ -226,7 +226,7 @@ export default function PrepareSet() {
       {published && (
         <div className="notice">
           Published to <span className="code">{published.folderName}</span> — the band now sees{' '}
-          {published.songs} song{published.songs === 1 ? '' : 's'}. Dropbox will carry it to them.
+          {published.songs} song{published.songs === 1 ? '' : 's'}.
         </div>
       )}
 
