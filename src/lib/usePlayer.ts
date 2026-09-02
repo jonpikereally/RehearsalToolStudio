@@ -29,6 +29,35 @@ export interface PlayerState {
   audioState: AudioContextState | 'uninitialised';
 }
 
+/** What was chosen for a song's devices on this device: imitate them, or play raw. */
+const LS_FX = 'ls.fx';
+function readFxChoice(songId: string | null): 'approx' | 'raw' | null {
+  if (!songId) return null;
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_FX) ?? '{}') as Record<string, 'approx' | 'raw'>;
+    return all[songId] ?? null;
+  } catch {
+    return null;
+  }
+}
+function writeFxChoice(songId: string, choice: 'approx' | 'raw'): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_FX) ?? '{}') as Record<string, 'approx' | 'raw'>;
+    all[songId] = choice;
+    localStorage.setItem(LS_FX, JSON.stringify(all));
+  } catch {
+    /* a choice that does not persist still holds for the session */
+  }
+}
+
+/** Whether a song's parts run through any device or bus in the set. */
+export function hasDevices(song: Song | null): boolean {
+  if (!song) return false;
+  return song.variants.some(
+    (v) => v.devices?.some((d) => d.on) || v.sends?.some((s) => song.buses?.[s.bus]?.devices.some((d) => d.on)),
+  );
+}
+
 export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: boolean) {
   const [state, setState] = useState<PlayerState>({
     loading: false,
@@ -59,6 +88,26 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
    * change when the set of parts does.
    */
   const loadKey = song ? variantsToLoad(song).map((v) => v.id).join('|') : '';
+
+  /*
+   * The set's devices, imitated or not. Asked once per song and remembered
+   * on this device; until it is answered a song with devices plays raw, and
+   * the page says so.
+   */
+  const [fxChoice, setFxChoice] = useState<'approx' | 'raw' | null>(() => readFxChoice(songId));
+  useEffect(() => {
+    setFxChoice(readFxChoice(songId));
+  }, [songId]);
+  const effects = fxChoice === 'approx';
+  const setEffects = useCallback(
+    (on: boolean) => {
+      if (!songId) return;
+      const choice = on ? 'approx' : 'raw';
+      writeFxChoice(songId, choice);
+      setFxChoice(choice);
+    },
+    [songId],
+  );
 
   /*
    * Parts to be asked about before anything is fetched.
@@ -168,6 +217,7 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
           semitones: song.transpose,
           tempoScale: song.tempoScale ?? 1,
           budgetBytes: Math.max(0.1, cacheBudgetGB) * 1024 * 1024 * 1024,
+          effects,
           signal: controller.signal,
           onProgress: reportProgress,
         });
@@ -195,7 +245,7 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     return () => controller.abort();
     // Reload only when the song or its key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, choosing]);
+  }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, choosing, effects]);
 
   // Free decoded audio when leaving a song entirely.
   useEffect(() => {
@@ -575,6 +625,10 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     setSwitched,
     audioReport,
     showAudioReport,
+    /** The set's devices: imitated in Web Audio, or not. */
+    effects,
+    effectsDecided: fxChoice !== null,
+    setEffects,
     resetStemMix,
     supportsPanning: engine.supportsPanning,
     unlock: () => engine.unlock().then(() => setState((s) => ({ ...s, audioState: engine.state }))),

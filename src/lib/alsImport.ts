@@ -1,6 +1,7 @@
 import type { AlsClip, AlsProject, AlsSong } from './alsParser';
 import type { FileEntry } from './files';
 import type {
+  Device,
   ChartLane, Marker, PatchClip, Setlist, Song, TimedText, Variant, VariantRole,
 } from '../types';
 import { isAudio, parseFileName, parseNameMeta } from './scan.ts';
@@ -172,6 +173,22 @@ export function mixOf(
   return out;
 }
 
+/**
+ * How the part sits in the set's mix: its devices, its sends, and whether it
+ * reaches an output itself. Said only when there is something to say.
+ */
+export function routeOf(stem: {
+  devices?: Device[];
+  sends?: { bus: number; level: number }[];
+  direct?: boolean;
+}): Pick<Variant, 'devices' | 'sends' | 'direct'> {
+  const out: Pick<Variant, 'devices' | 'sends' | 'direct'> = {};
+  if (stem.devices?.length) out.devices = stem.devices;
+  if (stem.sends?.length) out.sends = stem.sends;
+  if (stem.direct === false) out.direct = false;
+  return out;
+}
+
 /** A single-clip part's own transposition and warp speed, when it has any. */
 export function ownShift(clips: AlsClip[] | undefined): Pick<Variant, 'pitch' | 'speed'> {
   const clip = clips?.find((c) => !c.disabled) ?? clips?.[0];
@@ -249,6 +266,7 @@ export function songsFromProject(
         placement: arranged.length > 1 ? undefined : placementOf(stem.clips),
         ...(arranged.length > 1 ? {} : ownShift(stem.clips)),
         ...mixOf(stem, arranged.length > 1 ? undefined : stem.clips),
+        ...routeOf(stem),
         clips:
           arranged.length > 1
             ? arranged.map(({ clip, file: f }) => ({
@@ -319,6 +337,8 @@ export function songsFromProject(
       timeSigNum: alsSong.timeSigNum ?? project.timeSigNum,
       timeSigDen: alsSong.timeSigDen ?? project.timeSigDen,
       caveats: alsSong.caveats?.length ? alsSong.caveats : undefined,
+      // The buses only matter to a song whose parts send into one.
+      buses: variants.some((v) => v.sends?.length) ? project.buses : undefined,
       firstBarOffsetSec: prev?.firstBarOffsetSec ?? 0,
       originalKey: alsSong.key ?? prev?.originalKey,
       transpose: prev?.transpose ?? 0,

@@ -3416,5 +3416,63 @@ group('the mix, as the set has it');
     imported[1].timeSigNum === 3 && imported[0].caveats?.length === 1 && imported[1].caveats === undefined);
 }
 
+/* ------------------------ devices and buses, as the set has them ------------------------ */
+
+group('devices and buses');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { routeOf, songsFromProject } = await import('../src/lib/alsImport.ts');
+  const { checkSet } = await import('../src/lib/setReview.ts');
+  const knob = (name, value) => `<${name}><LomId Value="0" /><Manual Value="${value}" /></${name}>`;
+  const band = (i, on, mode, freq, gain) =>
+    `<Bands.${i}><ParameterA>${knob('IsOn', on)}${knob('Mode', mode)}${knob('Freq', freq)}${knob('Gain', gain)}${knob('Q', 0.7071)}</ParameterA></Bands.${i}>`;
+  const eq = `<Eq8 Id="1">${knob('On', true)}${band(0, true, 1, 30, 0)}${band(1, true, 3, 200, -3)}${band(2, false, 3, 1000, 6)}${knob('GlobalGain', 0)}</Eq8>`;
+  const glue = `<GlueCompressor Id="2">${knob('On', true)}${knob('Threshold', -18)}${knob('Ratio', 1)}${knob('Attack', 3)}${knob('Release', 2)}${knob('Makeup', 2)}${knob('DryWet', 1)}<SideChain>${knob('On', false)}</SideChain></GlueCompressor>`;
+  const plugin = `<AuPluginDevice Id="3">${knob('On', true)}<PluginDesc><AuPluginInfo><Name Value="FabFilter Pro-Q 3" /></AuPluginInfo></PluginDesc></AuPluginDevice>`;
+  const send = (levels) => `<Sends>${levels.map((l, i) => `<TrackSendHolder Id="${i}"><Send><LomId Value="0" /><Manual Value="${l}" /></Send><Active Value="true" /></TrackSendHolder>`).join('')}</Sends>`;
+  const out = (target) => `<AudioOutputRouting><Target Value="${target}" /></AudioOutputRouting>`;
+  const mixer = `<Mixer><Volume><LomId Value="0" /><Manual Value="1" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const audio = (id, group, name, target, sends, devices = '') => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      <DeviceChain>${mixer}<Devices>${devices}</Devices>${out(target)}${send(sends)}</DeviceChain>
+      <AudioClip Id="1" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="64" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/${name}.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /><DeviceChain>${mixer}<Devices></Devices>${out('AudioOut/Main')}${send([0, 0])}</DeviceChain></GroupTrack>
+    ${audio(11, 10, 'Bass', 'AudioOut/None', [0, 1])}
+    ${audio(12, 10, 'Vox', 'AudioOut/GroupTrack', [0, 0], plugin)}
+    <ReturnTrack Id="50"><EffectiveName Value="A-EDIT" /><DeviceChain>${mixer}<Devices></Devices>${out('AudioOut/External/S0')}${send([0, 0])}</DeviceChain></ReturnTrack>
+    <ReturnTrack Id="51"><EffectiveName Value="F-BASS" /><DeviceChain>${mixer}<Devices>${eq}${glue}</Devices>${out('AudioOut/External/S0')}${send([0.5, 0])}</DeviceChain></ReturnTrack>
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  check('the return buses are read in order', p.buses.map((b) => b.name).join() === 'A-EDIT,F-BASS', p.buses.map((b) => b.name).join());
+  const fBass = p.buses[1];
+  check('with their devices and knobs',
+    fBass.devices.map((d) => d.kind).join() === 'Eq8,GlueCompressor' && fBass.devices[1].params.Threshold === -18 && fBass.devices[1].params.Ratio === 1,
+    JSON.stringify(fBass.devices.map((d) => [d.kind, d.params])));
+  check('the device\'s own On is read, not its sidechain\'s', fBass.devices[1].on === true);
+  check('EQ Eight\'s bands come through', fBass.devices[0].bands.length === 3 && fBass.devices[0].bands[1].gain === -3 && fBass.devices[0].bands[2].on === false,
+    JSON.stringify(fBass.devices[0].bands));
+  check('a bus that reaches an output says so, and its own sends', fBass.direct && fBass.sends[0].bus === 0 && fBass.sends[0].level === 0.5);
+  const [song] = p.songs;
+  const bass = song.stems.find((s) => s.name === 'Bass');
+  const vox = song.stems.find((s) => s.name === 'Vox');
+  check('a track sent to a bus with no output of its own is not direct', bass.direct === false && bass.sends[0].bus === 1 && bass.sends[0].level === 1, JSON.stringify([bass.direct, bass.sends]));
+  check('a track that feeds its group reaches the output through it', vox.direct === true);
+  check('a plugin is read as a device that cannot be imitated', vox.devices[0].kind === 'AuPluginDevice' && vox.devices[0].supported === false && vox.devices[0].name === 'FabFilter Pro-Q 3', JSON.stringify(vox.devices));
+  check('the findings warn about it', checkSet(p).some((f) => f.song === 'Yellow' && /FabFilter/.test(f.message)));
+  check('a plain track says nothing about routing', JSON.stringify(routeOf({ devices: [], sends: [], direct: true })) === '{}');
+  const files = ['Bass', 'Vox'].map((n) => ({ path: `/Stems/${n}.wav`, name: `${n}.wav`, rev: 'r', size: 1 }));
+  const imported = songsFromProject(p, '/Set.als', files, new Map()).songs[0];
+  check('the song carries the buses its parts send into', imported.buses?.length === 2 && imported.variants.find((v) => v.name === 'Bass')?.sends?.[0].bus === 1);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

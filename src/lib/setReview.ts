@@ -116,6 +116,25 @@ export function checkSet(project: AlsProject): Finding[] {
   // What the player cannot follow, said before the gig rather than at it.
   for (const song of project.songs) {
     for (const caveat of song.caveats ?? []) out.push({ severity: 'warning', song: song.title, message: caveat });
+    /*
+     * Devices are imitated at best. Any that cannot be — a plugin, a rack —
+     * mean the raw file is not what the song sounds like; worth a warning
+     * before it is relied on.
+     */
+    const cannot = new Set<string>();
+    for (const stem of song.stems) {
+      for (const d of stem.devices ?? []) if (d.on && !d.supported) cannot.add(d.name ? `${d.kind} “${d.name}”` : d.kind);
+      for (const s of stem.sends ?? []) {
+        for (const d of project.buses?.[s.bus]?.devices ?? []) if (d.on && !d.supported) cannot.add(d.name ? `${d.kind} “${d.name}”` : d.kind);
+      }
+    }
+    if (cannot.size) {
+      out.push({
+        severity: 'warning',
+        song: song.title,
+        message: `Runs through devices this app cannot imitate — ${[...cannot].join(', ')} — so it will not sound as it does in Live.`,
+      });
+    }
   }
 
   for (const warning of project.warnings) {

@@ -153,6 +153,8 @@ export interface LoadOptions {
   /** Playback speed vs the recording: 1 untouched, 0.9 a tenth slower. */
   tempoScale?: number;
   budgetBytes: number;
+  /** Imitate the set's devices and buses in Web Audio. Off plays the files raw. */
+  effects?: boolean;
   onProgress?: (p: LoadProgress) => void;
   signal?: AbortSignal;
 }
@@ -340,6 +342,9 @@ export async function loadSong(
       fileStartSec: variant.placement
         ? barToSec(variant.placement.bar, song) - variant.placement.sourceSec / (tempo * (variant.speed ?? 1))
         : 0,
+      devices: variant.devices,
+      sends: variant.sends,
+      direct: variant.direct,
     });
   }
 
@@ -347,7 +352,7 @@ export async function loadSong(
   const preferred = engine.activeVariantId;
   const activeId =
     preferred && configs.get(preferred)?.role === 'mix' ? preferred : mixes[0]?.id ?? null;
-  await engine.setTracks(configs, activeId);
+  await engine.setTracks(configs, activeId, { buses: song.buses, effects: !!opts.effects });
 
   /*
    * Transposing leaves two full copies of every part in memory — the original

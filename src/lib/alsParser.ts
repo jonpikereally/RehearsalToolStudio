@@ -1,3 +1,4 @@
+import type { Bus, Device } from '../types';
 /**
  * Reading an Ableton Live set.
  *
@@ -90,6 +91,12 @@ export interface AlsSong {
     gain: number;
     /** The track's pan with its groups' added, -1..1. */
     pan: number;
+    /** The devices on the track and then on each group above it, in order. */
+    devices: Device[];
+    /** Return buses the signal is sent into on its way, by index. */
+    sends: { bus: number; level: number }[];
+    /** Whether the signal reaches an output on its own, or only through sends. */
+    direct: boolean;
     path: string;
     regions: { startBar: number; endBar: number }[] | null;
     /** Every clip this track plays inside this song, in order. */
@@ -171,6 +178,8 @@ export interface AlsLane {
 }
 
 export interface AlsProject {
+  /** The set's return buses, in order; what a track's sends name. */
+  buses?: Bus[];
   creator: string;
   tempo: number;
   timeSigNum: number;
@@ -308,6 +317,105 @@ interface Track {
   gain: number;
   /** -1 hard left, 0 centre, 1 hard right. */
   pan: number;
+  devices: Device[];
+  output: 'main' | 'group' | 'none' | 'external';
+  sends: { bus: number; level: number }[];
+}
+
+/**
+ * The devices on a track, in order, with the knobs this app can read.
+ *
+ * Only the track's own chain is read — a rack's inner chains are flattened
+ * into it, which is a rough reading of a rack but a true list of what is
+ * on the track. Every device is named, so what cannot be imitated is still
+ * said; the imitation itself lives in fx.ts.
+ */
+const DEVICE_KINDS =
+  'Eq8|GlueCompressor|Compressor2|Limiter|Utility|Reverb|HybridReverb|Delay|Echo|AutoFilter|Saturator|Gate|MultibandDynamics|AudioEffectGroupDevice|MxDeviceAudioEffect|PluginDevice|AuPluginDevice|Vst3PluginDevice|Vst2PluginDevice|Overdrive|Pedal|Redux|Erosion|Amp|Cabinet|Chorus2|PhaserNew|FlangerNew|Corpus|Resonator|Vocoder|Roar|DrumBuss|Shifter|AutoPan|BeatRepeat|FilterDelay|GrainDelay|Looper|Tuner|Spectrum|StereoGain|ChannelEq|Eq3';
+const SUPPORTED_KINDS = new Set(['Eq8', 'GlueCompressor', 'Compressor2', 'Limiter', 'Utility', 'Reverb', 'AutoFilter', 'Saturator']);
+const DEVICE_PARAMS: Record<string, string[]> = {
+  Eq8: ['GlobalGain', 'Scale'],
+  GlueCompressor: ['Threshold', 'Ratio', 'Attack', 'Release', 'Makeup', 'DryWet', 'Range'],
+  Compressor2: ['Threshold', 'Ratio', 'Attack', 'Release', 'Knee', 'Gain', 'DryWet', 'Model'],
+  Limiter: ['Gain', 'Ceiling', 'Release'],
+  Utility: ['Gain', 'Mute', 'StereoWidth'],
+  Reverb: ['DecayTime', 'PreDelay', 'RoomSize', 'DryWet'],
+  AutoFilter: ['Cutoff', 'Frequency', 'Resonance', 'FilterType'],
+  Saturator: ['PreDrive', 'DryWet'],
+};
+
+function devicesOf(chunk: string): Device[] {
+  const chain = chunk.match(/<DeviceChain>[\s\S]*?<Devices>([\s\S]*?)<\/Devices>/)?.[1] ?? '';
+  const out: Device[] = [];
+  const re = new RegExp(`<(${DEVICE_KINDS}) Id="\\d+">([\\s\\S]*?)</\\1>`, 'g');
+  for (const m of chain.matchAll(re)) {
+    const kind = m[1];
+    const body = m[2];
+    const manual = (name: string): number | boolean | null => {
+      const raw = body.match(new RegExp(`<${name}>\\s*<LomId[^>]*>\\s*<Manual Value="([^"]*)"`))?.[1];
+      if (raw === undefined) return null;
+      if (raw === 'true' || raw === 'false') return raw === 'true';
+      const n = parseFloat(raw);
+      return Number.isFinite(n) ? n : null;
+    };
+    const params: Record<string, number | boolean> = {};
+    for (const key of DEVICE_PARAMS[kind] ?? []) {
+      const v = manual(key);
+      if (v !== null) params[key] = v;
+    }
+    const on = manual('On');
+    let name = '';
+    if (/Plugin/.test(kind)) {
+      name = decodeXml(body.match(/<(?:Name|PlugName) Value="([^"]+)"/)?.[1] ?? '');
+    } else if (kind === 'MxDeviceAudioEffect') {
+      const file = body.match(/<RelativePath Value="([^"]+)"/)?.[1] ?? '';
+      name = decodeXml(file.split('/').pop()?.replace(/\.amxd$/i, '') ?? '');
+    } else {
+      name = decodeXml(body.match(/<UserName Value="([^"]+)"/)?.[1] ?? '');
+    }
+    const device: Device = { kind, name, on: on === null ? true : on === true, supported: SUPPORTED_KINDS.has(kind), params };
+    if (kind === 'Eq8') {
+      device.bands = [];
+      for (let b = 0; b < 8; b++) {
+        const band = body.match(new RegExp(`<Bands\\.${b}>[\\s\\S]*?<ParameterA>([\\s\\S]*?)</ParameterA>`))?.[1];
+        if (!band) continue;
+        const read = (key: string, fallback: number) => {
+          const v = parseFloat(band.match(new RegExp(`<${key}>\\s*<LomId[^>]*>\\s*<Manual Value="([^"]*)"`))?.[1] ?? '');
+          return Number.isFinite(v) ? v : fallback;
+        };
+        device.bands.push({
+          on: /<IsOn>\s*<LomId[^>]*>\s*<Manual Value="true"/.test(band),
+          mode: read('Mode', 3),
+          freq: read('Freq', 1000),
+          gain: read('Gain', 0),
+          q: read('Q', 0.7071),
+        });
+      }
+    }
+    out.push(device);
+  }
+  return out;
+}
+
+/** Where a track's output goes, and what it sends to the return buses. */
+function routingOf(chunk: string): { output: 'main' | 'group' | 'none' | 'external'; sends: { bus: number; level: number }[] } {
+  const target = chunk.match(/<AudioOutputRouting>[\s\S]*?<Target Value="([^"]*)"/)?.[1] ?? 'AudioOut/Main';
+  const output = /GroupTrack/.test(target)
+    ? 'group'
+    : /None/.test(target)
+      ? 'none'
+      : /External/.test(target)
+        ? 'external'
+        : 'main';
+  const block = chunk.match(/<Sends>([\s\S]*?)<\/Sends>/)?.[1] ?? '';
+  const sends: { bus: number; level: number }[] = [];
+  [...block.matchAll(/<TrackSendHolder Id="\d+">([\s\S]*?)<\/TrackSendHolder>/g)].forEach((m, index) => {
+    const level = parseFloat(m[1].match(/<Send>\s*<LomId[^>]*>\s*<Manual Value="([^"]*)"/)?.[1] ?? '0');
+    const active = !/<Active Value="false"/.test(m[1]);
+    // Live's send floor is -70 dB, written as 0.000316: off, not a whisper.
+    if (active && Number.isFinite(level) && level > 0.002) sends.push({ bus: index, level });
+  });
+  return { output, sends };
 }
 
 /** A track's own fader and pan, from its mixer section. */
@@ -682,7 +790,26 @@ export function parseAlsXml(xml: string): AlsProject {
       name: decodeXml((chunk.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? ''),
       chunk,
       ...mixerOf(chunk),
+      devices: devicesOf(chunk),
+      ...routingOf(chunk),
     }));
+
+  /*
+   * The return buses, in order — which is how a track's sends name them.
+   * A bus sums whatever is sent to it, runs it through its own devices,
+   * and goes to an output or on into another bus.
+   */
+  const buses: Bus[] = [...xml.matchAll(/<ReturnTrack Id="\d+"[^>]*>([\s\S]*?)<\/ReturnTrack>/g)].map((m) => {
+    const body = m[1];
+    const routing = routingOf(body);
+    return {
+      name: decodeXml(body.match(/<EffectiveName Value="([^"]*)"/)?.[1] ?? ''),
+      ...mixerOf(body),
+      devices: devicesOf(body),
+      direct: routing.output === 'main' || routing.output === 'external',
+      sends: routing.sends,
+    };
+  });
 
   // Tempo automation, so a song that changes tempo can be described honestly.
   const targetId = (xml.match(/<Tempo>[\s\S]*?<AutomationTarget Id="(\d+)"/) ?? [])[1];
@@ -915,15 +1042,30 @@ export function parseAlsXml(xml: string): AlsProject {
             const folders: string[] = [];
             let gain = t.gain;
             let pan = t.pan;
+            const devices: Device[] = [...t.devices];
+            const sends = [...t.sends];
+            let output = t.output;
             for (let c = byId.get(t.groupId), i = 0; c && c !== group && i < 8; i++) {
               folders.push(c.name);
               gain *= c.gain;
               pan += c.pan;
+              // The signal only carries on up when the track feeds its group.
+              if (output === 'group') {
+                devices.push(...c.devices);
+                sends.push(...c.sends);
+                output = c.output;
+              }
               c = byId.get(c.groupId);
             }
             // The song's own group is a fader over everything in it, too.
             gain *= group.gain;
             pan = Math.max(-1, Math.min(1, pan + group.pan));
+            if (output === 'group') {
+              devices.push(...group.devices);
+              sends.push(...group.sends);
+              output = group.output;
+            }
+            const direct = output === 'main' || output === 'external' || output === 'group';
             const reference = REF_RE.test(t.name) || folders.some((f) => REF_RE.test(f));
             const all = clipsOfTrack(t);
             const muted = trackIsMuted(t);
@@ -958,6 +1100,9 @@ export function parseAlsXml(xml: string): AlsProject {
               reference,
               gain,
               pan,
+              devices,
+              sends,
+              direct,
               path: sounding?.path ?? '',
               regions: audibleRegions(mine, muted, loc.beat, endBeat, relBar),
               clips,
@@ -1042,5 +1187,5 @@ export function parseAlsXml(xml: string): AlsProject {
     };
   });
 
-  return { creator, tempo, timeSigNum, timeSigDen, songs, warnings };
+  return { creator, tempo, timeSigNum, timeSigDen, songs, warnings, buses };
 }

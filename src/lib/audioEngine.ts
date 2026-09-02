@@ -1,3 +1,5 @@
+import { buildChain } from './fx';
+import type { Bus, Device } from '../types';
 /**
  * Multi-track transport.
  *
@@ -63,6 +65,8 @@ interface Track {
   fileStartSec: number;
   /** Null on browsers without StereoPannerNode; panning is then a no-op. */
   panner: StereoPannerNode | null;
+  /** Where the source feeds in: the device chain when there is one, else the fader. */
+  into: AudioNode;
   source: AudioBufferSourceNode | null;
   role: TrackRole;
   /** Fader position. Stems are user-controlled; mixes sit at unity. */
@@ -93,6 +97,12 @@ export interface TrackConfig {
   regions?: { startSec: number; endSec: number }[];
   /** Song time at which the file's first sample plays. Absent means bar 1. */
   fileStartSec?: number;
+  /** The set's devices on this track, imitated when effects are on. */
+  devices?: Device[];
+  /** Return buses this track sends into, when effects are on. */
+  sends?: { bus: number; level: number }[];
+  /** Whether it reaches the output itself. Absent means yes. */
+  direct?: boolean;
   buffer: AudioBuffer;
   role: Exclude<TrackRole, 'click'>;
   level?: number;
@@ -119,6 +129,8 @@ export class SongEngine {
   /** Reused by every meter read, so metering allocates nothing per frame. */
   private meterBuffer = new Uint8Array(256);
   private tracks = new Map<string, Track>();
+  /** The set's return buses, built when effects are on. */
+  private buses: { input: AudioNode; out: AudioNode; direct: boolean; sends: { bus: number; level: number }[] }[] = [];
 
   private activeId: string | null = null;
   private playing = false;
@@ -260,11 +272,46 @@ export class SongEngine {
    * Install the full set of tracks, replacing anything loaded before.
    * Playback is stopped; call `seek` + `play` afterwards to resume in place.
    */
-  async setTracks(configs: Map<string, TrackConfig>, activeMixId: string | null): Promise<void> {
+  async setTracks(
+    configs: Map<string, TrackConfig>,
+    activeMixId: string | null,
+    fx: { buses?: Bus[]; effects?: boolean } = {},
+  ): Promise<void> {
     const ctx = await this.ensureContext();
     this.stopSources();
     for (const track of this.tracks.values()) this.disconnectTrack(track);
     this.tracks.clear();
+    for (const bus of this.buses) bus.input.disconnect();
+    this.buses = [];
+
+    /*
+     * The set's return buses, when effects are on: each sums what is sent
+     * to it, runs it through its devices, and goes to the output or on into
+     * another bus. Built before the tracks, which connect into them.
+     */
+    const effects = !!fx.effects;
+    if (effects && fx.buses?.length) {
+      this.buses = fx.buses.map((bus) => {
+        const chain = buildChain(ctx, bus.devices);
+        const gain = ctx.createGain();
+        gain.gain.value = bus.gain;
+        chain.output.connect(gain);
+        const panner = this.createPanner(ctx, bus.pan);
+        if (panner) gain.connect(panner);
+        return { input: chain.input, out: panner ?? gain, direct: bus.direct, sends: bus.sends };
+      });
+      this.buses.forEach((bus, index) => {
+        if (bus.direct) bus.out.connect(this.master!);
+        for (const send of bus.sends) {
+          const target = this.buses[send.bus];
+          if (!target || send.bus === index) continue;
+          const level = ctx.createGain();
+          level.gain.value = send.level;
+          bus.out.connect(level);
+          level.connect(target.input);
+        }
+      });
+    }
 
     let maxDuration = 0;
     for (const [id, config] of configs) {
@@ -274,13 +321,24 @@ export class SongEngine {
       const regions = config.regions ?? null;
       const regionGain = regions ? ctx.createGain() : null;
       const panner = this.createPanner(ctx, config.pan ?? 0);
-      // source -> [regionGain] -> gain -> [panner] -> master
-      if (panner) {
-        gain.connect(panner);
-        panner.connect(this.master!);
-      } else {
-        gain.connect(this.master!);
+      // source -> [regionGain] -> [devices] -> gain -> [panner] -> master and/or buses
+      if (panner) gain.connect(panner);
+      const out: AudioNode = panner ?? gain;
+      const routed = effects && this.buses.length > 0 && !!config.sends?.length;
+      if (!routed || config.direct !== false) out.connect(this.master!);
+      if (routed) {
+        for (const send of config.sends!) {
+          const target = this.buses[send.bus];
+          if (!target) continue;
+          const level = ctx.createGain();
+          level.gain.value = send.level;
+          out.connect(level);
+          level.connect(target.input);
+        }
       }
+      // The track's own devices sit before its fader, as in Live.
+      const devices = effects && config.devices?.length ? buildChain(ctx, config.devices) : null;
+      if (devices) devices.output.connect(gain);
 
       /*
        * A meter tap, hung off the fader rather than the source, so muting or
@@ -298,6 +356,7 @@ export class SongEngine {
         id,
         buffer: config.buffer,
         gain,
+        into: devices ? devices.input : gain,
         analyser,
         regionGain,
         regions,
@@ -720,6 +779,7 @@ export class SongEngine {
       regionGain: null,
       regions: null,
       fileStartSec: 0,
+      into: gain,
       level: this.clickGain,
       muted: !this.clickOn,
       soloed: false,
@@ -750,7 +810,7 @@ export class SongEngine {
     this.stopTrackSource(track);
     const source = ctx.createBufferSource();
     source.buffer = track.buffer;
-    source.connect(track.regionGain ?? track.gain);
+    source.connect(track.regionGain ?? track.into);
     this.scheduleRegions(track, when, offset);
     this.applyLoop(source, track.fileStartSec);
 
@@ -854,7 +914,7 @@ export class SongEngine {
         if (closeAt > when) g.setValueAtTime(0, closeAt);
       }
     }
-    node.connect(track.gain);
+    node.connect(track.into);
   }
 
   private stopTrackSource(track: Track): void {

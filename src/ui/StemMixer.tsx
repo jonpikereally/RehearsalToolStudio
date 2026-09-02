@@ -3,6 +3,7 @@ import type { Song } from '../types';
 import type { Player } from '../lib/usePlayer';
 import { mixesOf, stemsOf } from '../lib/stemMix';
 import { isReferenceName } from '../lib/scan';
+import { hasDevices } from '../lib/usePlayer';
 import { useStore } from '../lib/store';
 import BlockHead, { type BlockChrome } from './BlockHead';
 import { SongEngine } from '../lib/audioEngine';
@@ -244,6 +245,19 @@ export default function StemMixer({
             >
               Print mix…
             </button>
+            {hasDevices(song) && (
+              <button
+                className={player.effects ? 'chip on' : 'chip'}
+                onClick={() => player.setEffects(!player.effects)}
+                title={
+                  player.effects
+                    ? "The set's devices are imitated in Web Audio — tap to play the files raw"
+                    : "The files play raw — tap to imitate the set's devices in Web Audio"
+                }
+              >
+                {player.effects ? 'Devices: imitated' : 'Devices: off'}
+              </button>
+            )}
             {player.anySoloed && (
               <button className="chip on" onClick={player.clearSolos}>
                 Clear solo

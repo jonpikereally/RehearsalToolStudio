@@ -31,6 +31,8 @@ import PatchDialog from './PatchDialog';
 import TempoDialog from './TempoDialog';
 import TimecodeDialog from './TimecodeDialog';
 import PrepareSongDialog from './PrepareSongDialog';
+import { hasDevices } from '../lib/usePlayer';
+import { chainSummary, unsupportedIn } from '../lib/fx';
 import DownloadDialog from './DownloadDialog';
 import BlockHead from './BlockHead';
 import SetMenu from './SetMenu';
@@ -38,7 +40,7 @@ import { allSets, currentSet, otherSetsInProject } from '../lib/songSets';
 import { usePlayerBlocks } from '../lib/usePlayerBlocks';
 import { hasChart } from '../lib/chart';
 import { stemsOf, versionButtons } from '../lib/stemMix';
-import type { Marker } from '../types';
+import type { Marker, Song } from '../types';
 
 const LOOP_LENGTHS = [2, 4, 8, 16];
 
@@ -402,6 +404,22 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
       )}
 
       <div className="player-scroll">
+        {hasDevices(song) && !player.effectsDecided && (
+          <div className="notice stack">
+            <span>
+              <strong>This song runs through devices in Live.</strong> {describeDevices(song)}{' '}
+              Imitate them here with Web Audio — a likeness, not a match — or play the files raw?
+            </span>
+            <div className="btn-row">
+              <button className="btn primary" onClick={() => player.setEffects(true)}>
+                Imitate the devices
+              </button>
+              <button className="btn" onClick={() => player.setEffects(false)}>
+                Play raw
+              </button>
+            </div>
+          </div>
+        )}
         {song.caveats?.length ? (
           <div className="notice">
             <strong>Not quite as Ableton plays it.</strong> {song.caveats.join(' ')}
@@ -1111,6 +1129,32 @@ function describeProgress(p: import('../lib/songLoader').LoadProgress): string {
     default:
       return 'Ready';
   }
+}
+
+/**
+ * What the song's parts run through, bus by bus and track by track, and
+ * what among it cannot be imitated — said before anyone chooses.
+ */
+function describeDevices(song: Song): string {
+  const parts: string[] = [];
+  const cannot = new Set<string>();
+  const busUsers = new Map<number, string[]>();
+  for (const v of song.variants) {
+    if (v.devices?.some((d) => d.on)) {
+      parts.push(`${chainSummary(v.devices)} on ${v.name}`);
+      for (const u of unsupportedIn(v.devices)) cannot.add(u);
+    }
+    for (const s of v.sends ?? []) busUsers.set(s.bus, [...(busUsers.get(s.bus) ?? []), v.name]);
+  }
+  for (const [index, users] of busUsers) {
+    const bus = song.buses?.[index];
+    if (!bus?.devices.some((d) => d.on)) continue;
+    parts.push(`${chainSummary(bus.devices)} on the “${bus.name}” bus (${users.join(', ')})`);
+    for (const u of unsupportedIn(bus.devices)) cannot.add(u);
+  }
+  const list = parts.length ? `${parts.join('; ')}.` : '';
+  const no = cannot.size ? ` Cannot be imitated at all: ${[...cannot].join(', ')}.` : '';
+  return `${list}${no}`;
 }
 
 /** A bar for a rig clip: whole when it is, else to a tenth. */

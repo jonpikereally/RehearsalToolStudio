@@ -72,6 +72,15 @@ export interface Variant {
   gain?: number;
   pan?: number;
   /**
+   * How the track sits in the set's mix: the devices on it and on its
+   * groups, in order; the buses it sends to, and at what level; and
+   * whether it reaches an output on its own. Absent means a plain track
+   * straight to the output, which is what most stems are.
+   */
+  devices?: Device[];
+  sends?: { bus: number; level: number }[];
+  direct?: boolean;
+  /**
    * The part as an arrangement of clips, when it is more than one file
    * played from one point: a phrase dropped in from another take, the
    * vocal picked up again ten seconds further in. Each names its file and
@@ -161,6 +170,32 @@ export interface ChartLane {
   items: TimedText[];
 }
 
+/**
+ * A device on a track or a bus in Live, as far as it can be read: which
+ * device, whether it is on, its main knobs, and for EQ Eight its bands.
+ * `supported` says whether this app can imitate it in Web Audio.
+ */
+export interface Device {
+  kind: string;
+  name: string;
+  on: boolean;
+  supported: boolean;
+  params: Record<string, number | boolean>;
+  bands?: { on: boolean; mode: number; freq: number; gain: number; q: number }[];
+}
+
+/** A return bus in the set: what feeds it is summed, run through its devices, and sent on. */
+export interface Bus {
+  name: string;
+  gain: number;
+  pan: number;
+  devices: Device[];
+  /** Whether the bus reaches an output itself. */
+  direct: boolean;
+  /** Its own sends into other buses, by index. */
+  sends: { bus: number; level: number }[];
+}
+
 /** One of the set's rig tracks, cut down to one song. */
 export interface RigTrack {
   name: string;
@@ -230,6 +265,8 @@ export interface Song {
    * partway through, say — read from the set and shown with the song.
    */
   caveats?: string[];
+  /** The set's return buses, for parts that send into them. */
+  buses?: Bus[];
 
   variants: Variant[];
   /**
