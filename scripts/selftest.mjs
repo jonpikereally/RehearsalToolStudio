@@ -3215,6 +3215,8 @@ group('the file API');
   })).status === 400);
   check('and a path outside every folder stays refused',
     (await call('exists', { dir: songs, path: 'abs:/etc/hosts' })).status === 403);
+  check('but a file that is nowhere is simply missing, allowed folder or not',
+    (await ask('exists', { dir: songs, path: 'abs:/nowhere/at/all.wav' })).exists === false);
 
   // A new server, the way tomorrow's launch makes one: the folder is still there.
   server.close();

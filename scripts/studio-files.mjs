@@ -256,6 +256,13 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
     },
 
     async exists({ dir, path }) {
+      // A file that is nowhere is missing, whether or not its folder was
+      // ever allowed — a set's stale path to another machine says "missing",
+      // not "allow that folder". Reading it would still be refused.
+      if (typeof path === 'string' && path.startsWith('abs:')) {
+        const there = await stat(resolve(path.slice(4))).catch(() => null);
+        if (!there?.isFile()) return { exists: false };
+      }
       const st = await stat(inside(dir, path, { file: true })).catch(() => null);
       return { exists: !!st?.isFile() };
     },
