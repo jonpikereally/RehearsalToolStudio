@@ -57,6 +57,24 @@ export interface Variant {
    * early, and the region gate would swallow its intro.
    */
   placement?: { bar: number; sourceSec: number };
+  /**
+   * The part as an arrangement of clips, when it is more than one file
+   * played from one point: a phrase dropped in from another take, the
+   * vocal picked up again ten seconds further in. Each names its file and
+   * where it sits; the player renders them flat before it plays. Absent for
+   * the ordinary part, which is `path` placed once.
+   */
+  clips?: VariantClip[];
+}
+
+/** One clip of an arranged part: which file, where in the song, where in the file. */
+export interface VariantClip {
+  path: string;
+  startBar: number;
+  endBar: number;
+  sourceStartSec: number;
+  fadeInSec: number;
+  fadeOutSec: number;
 }
 
 export interface Marker {

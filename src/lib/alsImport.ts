@@ -190,6 +190,23 @@ export function songsFromProject(
       const file = byPath.get(full.toLowerCase()) ?? findByName(stem.path, available);
       if (!file) continue;
 
+      /*
+       * A track playing more than one clip — another file dropped in, the
+       * same file picked up again elsewhere — is an arrangement, and the
+       * part carries every clip whose file is here so the player can lay
+       * it out. One clip is the ordinary part: the file, placed once.
+       */
+      const live = (stem.clips ?? []).filter((c) => !c.disabled);
+      const arranged = live.length > 1
+        ? live
+            .map((clip) => ({
+              clip,
+              file: byPath.get(resolveStemPath(alsPath, clip.path).toLowerCase()) ?? findByName(clip.path, available),
+            }))
+            .filter((x): x is { clip: AlsClip; file: FileEntry } => !!x.file)
+        : [];
+      for (const { file: f } of arranged) claimedPaths.add(f.path.toLowerCase());
+
       claimedPaths.add(file.path.toLowerCase());
       const label = stemLabel(stem.name);
       variants.push({
@@ -203,7 +220,18 @@ export function songsFromProject(
         // The arrangement, not the file, decides where a part sounds — and
         // where its file begins.
         regions: stem.regions ?? undefined,
-        placement: placementOf(stem.clips),
+        placement: arranged.length > 1 ? undefined : placementOf(stem.clips),
+        clips:
+          arranged.length > 1
+            ? arranged.map(({ clip, file: f }) => ({
+                path: f.path,
+                startBar: clip.startBar,
+                endBar: clip.endBar,
+                sourceStartSec: clip.sourceStartSec,
+                fadeInSec: clip.fadeInSec,
+                fadeOutSec: clip.fadeOutSec,
+              }))
+            : undefined,
       });
     }
 

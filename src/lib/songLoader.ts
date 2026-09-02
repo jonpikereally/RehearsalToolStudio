@@ -6,6 +6,7 @@ import type { SongEngine, TrackConfig } from './audioEngine';
 import { loadMix, loadedVariants, settingFor } from './stemMix';
 import { skippedFor } from './loadPrefs';
 import { isReferenceName, isUnpitched } from './scan';
+import { renderTrack, type ClipPlacement } from './arrangement.ts';
 import { barToSec } from './bars';
 
 /**
@@ -186,19 +187,53 @@ export async function loadSong(
         cached,
       });
 
-    // 1. bytes
-    report('downloading', 0, false);
-    const bytes = await bytesFor(variant, (ratio, cached) => report('downloading', ratio, cached), signal);
+    /*
+     * The part's clips, when it is an arrangement rather than one file: the
+     * same renderer the preparer uses lays them out flat, so a phrase dropped
+     * in from another take plays where the set put it. The result is one
+     * buffer from bar 1, memoised under the arrangement's own signature.
+     */
+    const arranged = variant.clips && variant.clips.length > 1 ? variant.clips : null;
+    const rev = arranged
+      ? `${variant.rev}|${arranged.map((c) => `${c.path}@${c.startBar}-${c.endBar}+${c.sourceStartSec}`).join(';')}`
+      : variant.rev;
 
-    // 2. decode (memoised across key changes)
+    // 1 + 2. bytes and decode (memoised across key changes)
     let original: AudioBuffer;
     const cachedDecode = decodedCache.get(variant.id);
-    if (cachedDecode && cachedDecode.rev === variant.rev && cachedDecode.buffer.sampleRate === ctx.sampleRate) {
+    if (cachedDecode && cachedDecode.rev === rev && cachedDecode.buffer.sampleRate === ctx.sampleRate) {
       original = cachedDecode.buffer;
+    } else if (arranged) {
+      report('downloading', 0, false);
+      const files = new Map<string, AudioBuffer>();
+      const placements: ClipPlacement[] = [];
+      for (const [i, clip] of arranged.entries()) {
+        let buffer = files.get(clip.path.toLowerCase());
+        if (!buffer) {
+          const { bytes } = await readBytes(clip.path, undefined, signal);
+          report('decoding', i / arranged.length, true);
+          buffer = await engine.decode(bytes);
+          files.set(clip.path.toLowerCase(), buffer);
+        }
+        placements.push({
+          buffer,
+          startSec: barToSec(clip.startBar, song),
+          endSec: barToSec(clip.endBar, song),
+          sourceStartSec: clip.sourceStartSec,
+          fadeInSec: clip.fadeInSec,
+          fadeOutSec: clip.fadeOutSec,
+        });
+      }
+      const durationSec = Math.max(...placements.map((p) => p.endSec));
+      const channels = Math.min(2, Math.max(...placements.map((p) => p.buffer.numberOfChannels)));
+      original = await renderTrack(placements, durationSec, ctx.sampleRate, channels);
+      decodedCache.set(variant.id, { rev, buffer: original });
     } else {
+      report('downloading', 0, false);
+      const bytes = await bytesFor(variant, (ratio, cached) => report('downloading', ratio, cached), signal);
       report('decoding', 0, true);
       original = await engine.decode(bytes);
-      decodedCache.set(variant.id, { rev: variant.rev, buffer: original });
+      decodedCache.set(variant.id, { rev, buffer: original });
     }
 
     /*
@@ -214,7 +249,7 @@ export async function loadSong(
       buffer = await getShiftedBuffer({
         ctx,
         path: variant.path,
-        rev: variant.rev,
+        rev,
         semitones: shift,
         tempo,
         source: original,

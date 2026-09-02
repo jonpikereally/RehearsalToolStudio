@@ -686,6 +686,7 @@ group('ableton set import');
     JSON.stringify(placementOf([clip(1, 3.5)])) === '{"bar":1,"sourceSec":3.5}');
   check('a disabled clip does not decide it', placementOf([clip(9, 0, true), clip(2, 1)])?.bar === 2);
 
+
   check('a duplicate track number is dropped', stemLabel('Lead Vox 1') === 'Lead Vox');
   check('a name without one is untouched', stemLabel('Drums') === 'Drums');
 
@@ -782,6 +783,39 @@ group('ableton set import');
       found.songs.length === 1 && found.songs[0].variants.length === 3, JSON.stringify(found.missing));
     check('the same-named parent folder decides between two candidates',
       found.songs[0]?.variants.find((v) => v.name === 'Vox')?.path === '/Stems/Cruel Summer Stems/Cruel Summer_Vocals.wav');
+  }
+
+  {
+    // A vocal with a phrase from another take dropped in: three clips, two files.
+    const arranged = {
+      creator: 'Live 12', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [],
+      songs: [{
+        title: 'Cruel Summer', raw: 'Cruel Summer', startBar: 1, endBar: 66,
+        bpm: null, key: null, durationText: null, tags: [], sections: [], chords: [], lyrics: [],
+        tempoChanges: [],
+        stems: [{
+          name: 'REF VOX', reference: true, path: 'Stems/Cruel Summer_Vocals.wav', regions: null,
+          clips: [
+            { path: 'Stems/Cruel Summer_Vocals.wav', startBar: 2.97, endBar: 5.25, sourceStartSec: 0, disabled: false, fadeInSec: 0, fadeOutSec: 0, warped: false },
+            { path: 'Stems/august.wav', startBar: 5.25, endBar: 5.5, sourceStartSec: 0, disabled: false, fadeInSec: 0, fadeOutSec: 0, warped: false },
+            { path: 'Stems/Cruel Summer_Vocals.wav', startBar: 5.5, endBar: 65.4, sourceStartSec: 10.1, disabled: false, fadeInSec: 0, fadeOutSec: 0, warped: false },
+          ],
+        }, {
+          name: 'Bass', reference: false, path: 'Stems/Bass.wav', regions: null,
+          clips: [{ path: 'Stems/Bass.wav', startBar: 2.97, endBar: 65.4, sourceStartSec: 0, disabled: false, fadeInSec: 0, fadeOutSec: 0, warped: false }],
+        }],
+      }],
+    };
+    const here = [file('/Stems/Cruel Summer_Vocals.wav'), file('/Stems/august.wav'), file('/Stems/Bass.wav')];
+    const got = songsFromProject(arranged, '/Set.als', here, new Map()).songs[0];
+    const vox = got.variants.find((v) => v.name === 'REF VOX');
+    check('a track playing several clips carries them all, with their files',
+      vox?.clips?.length === 3 && vox.clips[1].path === '/Stems/august.wav' && vox.clips[2].sourceStartSec === 10.1,
+      JSON.stringify(vox?.clips));
+    check('and is placed by the render, not a single offset', vox?.placement === undefined);
+    check('a track playing one clip stays a file placed once',
+      got.variants.find((v) => v.name === 'Bass')?.clips === undefined && got.variants.find((v) => v.name === 'Bass')?.placement?.bar === 2.97);
+    check('every file an arrangement plays is claimed by the set', got.variants.length === 2);
   }
 
   // A re-scan must not lose what the user set by hand.
