@@ -126,11 +126,22 @@ export function setlistFromProject(
 /**
  * Every track inside a song's group is a part of that song, so the default is
  * "stem" — the opposite of the file-name convention, where an unrecognised
- * label is more likely to be a complete mix. Only a reference or full mix
- * track is exclusive.
+ * label is more likely to be a complete mix. Only the reference *song* is
+ * exclusive: "REF SONG", "Ref Master", "Full Mix", a bare "Reference". A REF
+ * folder also holds the record's own parts — "REF DRUMS", "REF VOX", "REF
+ * LV" — and those are parts to blend in like any other, not a mix to switch
+ * to; naming a part after the word is what makes them so.
  */
 export function roleForTrack(label: string): VariantRole {
-  return /\b(ref|reference|master|full|mix)\b/i.test(label) ? 'mix' : 'stem';
+  const l = label.trim().toLowerCase();
+  if (!/\b(ref|reference|master|full|mix)\b/.test(l)) return 'stem';
+  // What is left once the reference words are gone: nothing, or a whole-song
+  // word, means the song itself; anything else names a part of it.
+  const rest = l
+    .replace(/\b(ref|reference|master|full|mix|song|track|main|record|original)\b/g, ' ')
+    .replace(/[\d\s._-]+/g, ' ')
+    .trim();
+  return rest ? 'stem' : 'mix';
 }
 
 export interface AlsImportResult {

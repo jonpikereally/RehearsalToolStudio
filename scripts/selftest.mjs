@@ -678,8 +678,11 @@ group('ableton set import');
   // Inside a song group everything is a part unless it says otherwise.
   for (const l of ['Bass', 'Drums', 'Guitars', 'Music', 'Keys', 'Lead Vox', 'BGVS', 'Strings 2'])
     check(`"${l}" is a stem`, roleForTrack(l) === 'stem', roleForTrack(l));
-  for (const l of ['Ref Master', 'Full Mix', 'Reference'])
+  for (const l of ['Ref Master', 'Full Mix', 'Reference', 'REF SONG', 'Ref 1', 'REF MIX'])
     check(`"${l}" is a mix`, roleForTrack(l) === 'mix', roleForTrack(l));
+  // The record's own parts, filed under REF: parts to blend in, not mixes to switch to.
+  for (const l of ['REF DRUMS', 'REF VOX', 'REF LV', 'REF GTR', 'Ref Piano', 'REF BGVS 2'])
+    check(`"${l}" is a stem, not a switch`, roleForTrack(l) === 'stem', roleForTrack(l));
 
   const alsPath = '/Sets/Coldplay Covers Live Set/Coldplay.als';
   check('the set names the artist', setName(alsPath) === 'Coldplay Covers Live Set');
