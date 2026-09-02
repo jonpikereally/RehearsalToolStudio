@@ -3477,5 +3477,53 @@ group('devices and buses');
       !('buses' in imported));
 }
 
+/* ----------------------------- the set's click and cues ----------------------------- */
+
+group("the set's click and cues");
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { songsFromProject } = await import('../src/lib/alsImport.ts');
+  const { isUnpitched } = await import('../src/lib/scan.ts');
+  const mixer = (gain) => `<Mixer><Volume><LomId Value="0" /><Manual Value="${gain}" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const clip = (id, start, end, file) => `<AudioClip Id="${id}" Time="${start}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="${file}" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef></AudioClip>`;
+  const audio = (id, group, name, gain, clips) => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" /><DeviceChain>${mixer(gain)}</DeviceChain>${clips}</AudioTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="3"><Time Value="128" /><Name Value="Clocks" /></Locator>
+    <Locator Id="4"><Time Value="192" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="90"><TrackGroupId Value="-1" /><EffectiveName Value="CLICK" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+    ${audio(91, 90, 'CLICK', 0.5, clip(1, 0, 64, 'Click/yellow click.wav') + clip(2, 128, 192, 'Click/clocks click.wav'))}
+    <GroupTrack Id="92"><TrackGroupId Value="-1" /><EffectiveName Value="CUE" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+    ${audio(93, 92, 'Slates', 1, clip(1, 0, 2, 'Slates/Yellow.wav') + clip(2, 128, 130, 'Slates/Clocks.wav'))}
+    ${audio(94, 92, 'Pitch Ref', 1, clip(1, 2, 4, 'Cues/yellow pitch.wav'))}
+    <MidiTrack Id="95"><TrackGroupId Value="92" /><EffectiveName Value="CUES MIDI" /></MidiTrack>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+    ${audio(11, 10, 'Bass', 1, clip(1, 0, 64, 'Stems/Bass.wav'))}
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Clocks" /><DeviceChain>${mixer(1)}</DeviceChain></GroupTrack>
+    ${audio(21, 20, 'Drums', 1, clip(1, 128, 192, 'Stems/Drums.wav'))}
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const [yellow, clocks] = p.songs;
+  const names = (s) => s.stems.map((x) => x.name).join(',');
+  check("the set's click and cues join each song as parts", names(yellow) === 'Bass,Click (set),Cues', names(yellow));
+  const cues = yellow.stems.find((s) => s.name === 'Cues');
+  check('every cue track is summed into one part, cut to the song',
+    cues.clips.length === 2 && cues.clips.map((c) => c.path.split('/').pop()).join() === 'Yellow.wav,yellow pitch.wav', JSON.stringify(cues.clips.map((c) => c.path)));
+  check("the next song gets its own", clocks.stems.find((s) => s.name === 'Cues')?.clips.length === 1 && clocks.stems.find((s) => s.name === 'Click (set)')?.clips[0].path === 'Click/clocks click.wav');
+  check("the click track's fader rides into its clips", yellow.stems.find((s) => s.name === 'Click (set)')?.clips[0].gain === 0.5);
+  check('neither is ever transposed', isUnpitched('Cues') && isUnpitched('Click (set)'));
+  const files = ['Stems/Bass.wav', 'Click/yellow click.wav', 'Slates/Yellow.wav', 'Cues/yellow pitch.wav'].map((f) => ({ path: `/${f}`, name: f.split('/').pop(), rev: 'r', size: 1 }));
+  const song = songsFromProject(p, '/Set.als', files, new Map()).songs[0];
+  check('and they import as parts of the song, the cues as one arrangement',
+    song.variants.map((v) => v.name).join() === 'Bass,Click (set),Cues' && song.variants[2].clips?.length === 2 && song.variants[2].role === 'stem',
+    JSON.stringify(song.variants.map((v) => [v.name, v.role, v.clips?.length])));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

@@ -400,7 +400,8 @@ function extrasFor(
   const wanted = title.trim().toLowerCase();
 
   return files.filter((file) => {
-    if (claimed.has(file.path)) return false;
+    // Claimed paths are kept lowercased by the set's stems and as written by extras.
+    if (claimed.has(file.path) || claimed.has(file.path.toLowerCase())) return false;
     if (!isAudio(file.name)) return false;
     const folder = file.path.slice(0, file.path.lastIndexOf('/')).toLowerCase();
     if (!folders.has(folder)) return false;

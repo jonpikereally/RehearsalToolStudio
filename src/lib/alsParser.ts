@@ -1111,6 +1111,64 @@ export function parseAlsXml(xml: string): AlsProject {
           .filter((s) => s.path)
       : [];
 
+    /*
+     * The set's own click and cues, which live outside any song's group and
+     * run the length of the set. Each becomes one part of every song they
+     * play in — every cue track summed into "Cues", every click track into
+     * one click — cut to the clips inside the song, with each track's fader
+     * folded into its clips. A MIDI click makes no audio and adds nothing.
+     */
+    for (const [label, match] of [
+      ['Click (set)', /^click/i],
+      ['Cues', /^cues?$/i],
+    ] as const) {
+      const groups = tracks.filter((t) => t.kind === 'GroupTrack' && t.groupId === '-1' && match.test(t.name.trim()));
+      const members = tracks.filter(
+        (t) =>
+          t.kind === 'AudioTrack' &&
+          !trackIsMuted(t) &&
+          (groups.some((g) => rootOf(t) === g) || (t.groupId === '-1' && match.test(t.name.trim()))),
+      );
+      const clips: AlsClip[] = [];
+      for (const t of members) {
+        let level = t.gain;
+        for (let c = byId.get(t.groupId), i = 0; c && i < 8; i++) {
+          level *= c.gain;
+          c = byId.get(c.groupId);
+        }
+        for (const c of clipsOfTrack(t)) {
+          if (c.disabled || c.endBeat <= loc.beat || c.startBeat >= endBeat) continue;
+          clips.push({
+            path: c.path,
+            startBar: relBar(Math.max(c.startBeat, loc.beat)),
+            endBar: relBar(Math.min(c.endBeat, endBeat)),
+            sourceStartSec: sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
+            disabled: false,
+            fadeInSec: c.fadeInSec,
+            fadeOutSec: c.fadeOutSec,
+            warped: c.warpBps !== null,
+            semitones: c.semitones,
+            gain: c.gain * level,
+            speed: c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005 ? startBpm / 60 / c.warpBps : 1,
+          });
+        }
+      }
+      if (!clips.length) continue;
+      clips.sort((a, b) => a.startBar - b.startBar);
+      stems.push({
+        name: label,
+        reference: false,
+        gain: 1,
+        pan: 0,
+        devices: [],
+        sends: [],
+        direct: true,
+        path: clips[0].path,
+        regions: null,
+        clips,
+      });
+    }
+
     if (!stems.length) warnings.push(`No audio tracks found for “${meta.title}”.`);
 
     /*
