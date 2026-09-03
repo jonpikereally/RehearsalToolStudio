@@ -44,6 +44,7 @@
  * reopened": a path remembered by the server is a path it can still open
  * tomorrow, where a browser handle had to be granted afresh each session.
  */
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -68,9 +69,24 @@ export const STATE_FILE = join(
   homedir(),
   'Library',
   'Application Support',
-  'Rehearsal Tool Suite',
+  'Rehearsal Tool Studio',
   'studio-folders.json',
 );
+
+/*
+ * Where the folders were remembered before the studio had a folder of its
+ * own name. Carried over once, so nobody has to pick their folders again
+ * for the sake of a rename; the old file is left where it was.
+ */
+const LEGACY_STATE_FILE = join(homedir(), 'Library', 'Application Support', 'Rehearsal Tool Suite', 'studio-folders.json');
+try {
+  if (!existsSync(STATE_FILE) && existsSync(LEGACY_STATE_FILE)) {
+    mkdirSync(dirname(STATE_FILE), { recursive: true });
+    copyFileSync(LEGACY_STATE_FILE, STATE_FILE);
+  }
+} catch {
+  // Nowhere to write, as under a sandbox: the folders are simply asked for again.
+}
 
 const MIME = {
   '.json': 'application/json',

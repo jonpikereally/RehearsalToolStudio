@@ -11,7 +11,7 @@
 #        nothing; the native Studio app calls this before showing its window.
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PROFILE="$HOME/Library/Application Support/Rehearsal Tool Suite"
+PROFILE="$HOME/Library/Application Support/Rehearsal Tool Studio"
 
 # Apps launch with a bare PATH, so the tools node and uv are found the long way.
 find_bin() {

@@ -7,8 +7,8 @@ them itself — songs, stems, versions, loops, charts. Nothing here deploys,
 signs in, or talks to Dropbox's API; the folder it reads is inside Dropbox,
 and the desktop client carries what it writes to the band.
 
-The band's own player is a separate codebase, the website in the *Rehearsal
-Tool Suite* repo. This repo is only the studio.
+The band's own player, Rehearsal Tool, is a separate but connected project
+with its own repo. This one is only Rehearsal Tool Studio.
 
 ## What it does
 
@@ -62,7 +62,7 @@ disk itself. It asks its own server, which runs on the same machine as the
 files. The server answers only the page it served, only for folders picked
 through its dialog, and never for a path that climbs out of one. The folders
 it remembers live in `~/Library/Application Support/Rehearsal Tool
-Suite/studio-folders.json`, which is why nothing ever has to be "reopened".
+Studio/studio-folders.json`, which is why nothing ever has to be "reopened".
 
 `build.json` in `dist/` carries the commit the build came from. The launcher
 holds it against git and rebuilds when they differ; an open window notices a
