@@ -350,6 +350,27 @@ button {
   background: var(--bg-raised);
 }
 
+/* The tick box shown down the list while several songs are being picked. */
+.tick {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  color: transparent;
+}
+
+.tick.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #12100c;
+}
+
 .row-main {
   flex: 1;
   min-width: 0;
@@ -1182,6 +1203,11 @@ button {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(255, 176, 58, 0.1);
+}
+
+/* Same as a disabled button: a chip that does nothing should not look ready to. */
+.chip[disabled] {
+  opacity: 0.45;
 }
 
 /* jump-size picker */

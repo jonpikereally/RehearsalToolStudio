@@ -38,6 +38,15 @@ export interface Settings {
   root: string;
   /** Render cache budget in GB. */
   cacheBudgetGB: number;
+  /**
+   * How much memory the songs of a run may hold between them, in GB.
+   *
+   * Decoded audio is far larger than the files it came from, so keeping a
+   * whole set ready is the one thing in the studio that can exhaust a machine.
+   * Past this, the songs least recently played are let go and built again if
+   * the run comes back round to them.
+   */
+  runMemoryGB: number;
   /** Bar jump sizes offered in the transport. */
   jumpSizes: number[];
   /** Keep the screen awake while playing. */
@@ -49,6 +58,7 @@ export interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   root: '',
   cacheBudgetGB: 1,
+  runMemoryGB: 4,
   jumpSizes: [1, 4, 8, 16],
   keepAwake: true,
   useLocal: false,

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRoute, navigate, songUrl } from './lib/router';
+import { closeRun, useRun } from './lib/run';
+import { releaseReady } from './lib/songLoader';
 import { useStore } from './lib/store';
 import LibraryView from './ui/LibraryView';
 import PlayerView from './ui/PlayerView';
@@ -45,6 +47,7 @@ export default function App() {
   const route = useRoute();
   const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library } = useStore();
   const newerBuild = useNewerBuild();
+  const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
 
@@ -127,6 +130,37 @@ export default function App() {
           <button className="chip" onClick={() => chooseSet(null)}>
             Change set
           </button>
+        </div>
+      )}
+      {/*
+        A run is held in memory and governs Previous and Next, so it says so
+        wherever you are — state that changes what buttons do should never be
+        invisible. Not in the player, where the song count already says it, nor
+        behind Settings, where the bar below is already offering the way back.
+      */}
+      {run.songIds.length > 0 && section !== 'song' && !held && (
+        <div className="setbar">
+          <span>
+            <strong>{run.songIds.length} songs</strong> open together
+          </span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="chip"
+              onClick={() => navigate(songUrl(run.songIds[0], run.setlistId ?? undefined))}
+            >
+              Back to the first
+            </button>
+            <button
+              className="chip"
+              onClick={() => {
+                closeRun();
+                // The player isn't mounted to notice, so let the audio go here.
+                releaseReady();
+              }}
+            >
+              Close
+            </button>
+          </span>
         </div>
       )}
       {heldSong && (

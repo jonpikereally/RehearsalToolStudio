@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { groupSongs } from '../lib/songSets';
 import { navigate, songUrl } from '../lib/router';
+import { openRun, orderForRun, useRun } from '../lib/run';
 import { formatSemitones } from '../lib/pitchService';
 import { mixesOf, stemsOf } from '../lib/stemMix';
 import { useMissingAudio } from '../lib/useMissingAudio';
@@ -13,6 +14,45 @@ export default function LibraryView() {
     library, rescan, scanning, scanProgress, lastScan, dismissScanResult, syncError, currentSet,
   } = useStore();
   const [filter, setFilter] = useState('');
+
+  /*
+   * Picking several songs to open together.
+   *
+   * Off by default, and deliberately a mode you turn on: a list where one tap
+   * sometimes opens a song and sometimes ticks it is a list you can't trust.
+   * With it on, nothing opens until you say so.
+   */
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const run = useRun();
+
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPicking(false);
+        setPicked([]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [picking]);
+
+  const togglePick = (id: string) =>
+    setPicked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  /*
+   * Open them together, in the order they are played rather than the order
+   * they were ticked — which is the whole point of picking more than one.
+   */
+  const openPicked = () => {
+    const { songIds, setlistId } = orderForRun(library, currentSet, picked);
+    if (songIds.length < 2) return;
+    openRun(songIds, setlistId);
+    setPicking(false);
+    setPicked([]);
+    navigate(songUrl(songIds[0], setlistId ?? undefined));
+  };
 
   // Only the set being worked on; the rest of the folder is not on screen.
   const inSet = useMemo(
@@ -45,10 +85,43 @@ export default function LibraryView() {
             {needTempo > 0 && ` · ${needTempo} need a tempo`}
           </span>
         </h1>
+        {inSet.length > 1 && (
+          <button
+            className={picking ? 'icon-btn on' : 'icon-btn'}
+            onClick={() => {
+              setPicking((on) => !on);
+              setPicked([]);
+            }}
+            aria-pressed={picking}
+            aria-label="Select several songs"
+            title="Select several songs and open them together"
+          >
+            ☑
+          </button>
+        )}
         <button className="icon-btn" onClick={() => void rescan()} disabled={scanning} title="Rescan the folder">
           {scanning ? '…' : '⟳'}
         </button>
       </div>
+
+      {picking && (
+        <div className="setbar">
+          <span>
+            {picked.length === 0
+              ? 'Tap the songs to open together.'
+              : `${picked.length} song${picked.length === 1 ? '' : 's'} picked`}
+            {picked.length === 1 && ' — one song is not a run; pick another.'}
+          </span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button className="chip" onClick={() => setPicked([])} disabled={picked.length === 0}>
+              Clear
+            </button>
+            <button className="chip on" onClick={openPicked} disabled={picked.length < 2}>
+              Open {picked.length > 1 ? `these ${picked.length}` : 'together'}
+            </button>
+          </span>
+        </div>
+      )}
 
       {scanning && <div className="notice">{scanProgress || 'Scanning…'}</div>}
       {syncError && <div className="notice error">{syncError}</div>}
@@ -93,7 +166,14 @@ export default function LibraryView() {
             {group.artist}
           </div>
           {group.songs.map((song) => (
-            <SongRow key={song.id} song={song} />
+            <SongRow
+              key={song.id}
+              song={song}
+              picking={picking}
+              picked={picked.includes(song.id)}
+              open={run.songIds.includes(song.id)}
+              onPick={() => togglePick(song.id)}
+            />
           ))}
         </section>
       ))}
@@ -103,10 +183,35 @@ export default function LibraryView() {
   );
 }
 
-function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
+function SongRow({
+  song,
+  setlistId,
+  picking = false,
+  picked = false,
+  open = false,
+  onPick,
+}: {
+  song: Song;
+  setlistId?: string;
+  /** Tapping the row ticks it rather than opening it. */
+  picking?: boolean;
+  picked?: boolean;
+  /** Already one of the songs a run is holding. */
+  open?: boolean;
+  onPick?: () => void;
+}) {
   const missing = useMissingAudio(song);
   return (
-    <button className="row" onClick={() => navigate(songUrl(song.id, setlistId))}>
+    <button
+      className="row"
+      aria-pressed={picking ? picked : undefined}
+      onClick={() => (picking ? onPick?.() : navigate(songUrl(song.id, setlistId)))}
+    >
+      {picking && (
+        <span className={picked ? 'tick on' : 'tick'} aria-hidden>
+          {picked ? '✓' : ''}
+        </span>
+      )}
       <div className="row-main">
         <div className="row-title">{song.title}</div>
         <div className="row-sub">
@@ -117,6 +222,7 @@ function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
         </div>
       </div>
       <div className="row-right">
+        {open && !picking && <span className="badge ok">open</span>}
         {song.transpose !== 0 && <span className="badge warn">{formatSemitones(song.transpose)}</span>}
         {song.tempoUnset && <span className="badge warn">tempo</span>}
         {song.variants.length === 0 && <span className="badge warn">no audio</span>}
@@ -125,7 +231,7 @@ function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
             {missing} file{missing === 1 ? '' : 's'} missing
           </span>
         )}
-        <span aria-hidden>›</span>
+        <span aria-hidden>{picking ? '' : '›'}</span>
       </div>
     </button>
   );

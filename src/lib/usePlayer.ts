@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { SongEngine, type LoopRegion } from './audioEngine';
-import { clearDecodedCache, filesReport, loadSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
+import { clearDecodedCache, filesReport, heldSongIds, keepReady, loadSong, prepareSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
 import { barToSec, clickBeats, nudgeBars, secToBar } from './bars';
 import { resetMix, saveSetting } from './stemMix';
 
@@ -54,7 +54,18 @@ export function hasDevices(song: Song | null): boolean {
   return !!song && song.variants.some((v) => v.devices?.some((d) => d.on));
 }
 
-export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: boolean) {
+/**
+ * @param ahead The other songs of the run this one is part of, in the order
+ *   they will be played. They are built in the background once this song is
+ *   playing and held ready, which is what makes Next instant.
+ */
+export function usePlayer(
+  song: Song | null,
+  cacheBudgetGB: number,
+  keepAwake: boolean,
+  ahead: Song[] = [],
+  runMemoryGB = 4,
+) {
   const [state, setState] = useState<PlayerState>({
     loading: false,
     progress: null,
@@ -127,6 +138,26 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
       cancelled = true;
     };
   }, [song?.id]);
+
+  /* ---------------------------------- a run --------------------------------- */
+
+  /*
+   * Which songs are held decoded, and how many of the run are ready.
+   *
+   * `keepReady` runs before the load below, so this song is held from the
+   * moment it is built rather than from the next render — and it names the
+   * whole run, so stepping to the next song doesn't drop the one behind.
+   * Without a run nothing is named and nothing is held, which is what a lone
+   * song has always done.
+   */
+  const aheadKey = ahead.map((s) => s.id).join('|');
+  const [readyIds, setReadyIds] = useState<string[]>([]);
+  useEffect(() => {
+    const run = ahead.length && songId ? [songId, ...ahead.map((s) => s.id)] : [];
+    keepReady(run, Math.max(1, runMemoryGB) * 1024 * 1024 * 1024);
+    setReadyIds(heldSongIds());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songId, aheadKey, runMemoryGB]);
 
   /* --------------------------------- loading -------------------------------- */
 
@@ -209,7 +240,8 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, effects]);
 
-  // Free decoded audio when leaving a song entirely.
+  // Free decoded audio when leaving a song entirely. What a run is holding is
+  // kept elsewhere, and survives this.
   useEffect(() => {
     return () => {
       if (!songId) return;
@@ -217,6 +249,44 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
       clearDecodedCache();
     };
   }, [songId]);
+
+  /*
+   * Build the rest of the run, one song at a time, once this one is loaded.
+   *
+   * No abort signal goes with it: the work is worth finishing even when you
+   * have already moved on — you moved on *to* one of these songs — and the
+   * loader hands the same piece of work to both of us rather than doing it
+   * twice. Between songs it checks whether the run has changed under it.
+   */
+  useEffect(() => {
+    if (!state.ready) return;
+    // This song is held the moment it is built, whether or not there is more
+    // of a run to go and get.
+    setReadyIds(heldSongIds());
+    if (!ahead.length) return;
+    let cancelled = false;
+    void (async () => {
+      for (const other of ahead) {
+        if (cancelled) return;
+        try {
+          await prepareSong(engine, other, {
+            semitones: other.transpose,
+            tempoScale: other.tempoScale ?? 1,
+            budgetBytes: Math.max(0.1, cacheBudgetGB) * 1024 * 1024 * 1024,
+            effects: readFxChoice(other.id) === 'approx',
+          });
+        } catch {
+          // A song of the run that will not build is not this song's problem;
+          // opening it will say why, in its own time.
+        }
+        if (!cancelled) setReadyIds(heldSongIds());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.ready, songId, aheadKey, cacheBudgetGB]);
 
   /* ------------------------------- click track ------------------------------ */
 
@@ -590,6 +660,8 @@ export function usePlayer(song: Song | null, cacheBudgetGB: number, keepAwake: b
     effectsDecided: fxChoice !== null,
     setEffects,
     resetStemMix,
+    /** The songs of the run that are decoded and would open instantly. */
+    readySongIds: readyIds,
     supportsPanning: engine.supportsPanning,
     unlock: () => engine.unlock().then(() => setState((s) => ({ ...s, audioState: engine.state }))),
   };

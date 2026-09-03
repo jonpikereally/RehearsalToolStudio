@@ -41,6 +41,7 @@ import { allSets, currentSet, otherSetsInProject } from '../lib/songSets';
 import { usePlayerBlocks } from '../lib/usePlayerBlocks';
 import { hasChart } from '../lib/chart';
 import { stemsOf, versionButtons } from '../lib/stemMix';
+import { closeRun, positionIn, useRun } from '../lib/run';
 import type { Marker, Song } from '../types';
 
 const LOOP_LENGTHS = [2, 4, 8, 16];
@@ -54,7 +55,32 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
   const { library, settings, updateSong, pickResourcesFolder } = useStore();
   const [resourcesError, setResourcesError] = useState<string | null>(null);
   const song = library.songs.find((s) => s.id === songId) ?? null;
-  const player = usePlayer(song, settings.cacheBudgetGB, settings.keepAwake);
+
+  /*
+   * The run this song belongs to: the songs someone opened together, kept
+   * decoded so stepping between them costs nothing. Opening a song that isn't
+   * one of them ends it — a run you didn't ask for quietly governing Next is
+   * worse than no run at all.
+   */
+  const run = useRun();
+  const runAt = positionIn(run, songId);
+  useEffect(() => {
+    if (run.songIds.length && !run.songIds.includes(songId)) closeRun();
+  }, [songId, run]);
+
+  /*
+   * The rest of the run, in the order it will be wanted: what is still to come
+   * first, then what is behind, so Next is ready before Previous is.
+   */
+  const ahead = useMemo(() => {
+    if (!runAt) return [];
+    const ids = [...run.songIds.slice(runAt.index + 1), ...run.songIds.slice(0, runAt.index).reverse()];
+    return ids
+      .map((id) => library.songs.find((s) => s.id === id))
+      .filter((s): s is Song => !!s);
+  }, [run, runAt?.index, library.songs]);
+
+  const player = usePlayer(song, settings.cacheBudgetGB, settings.keepAwake, ahead, settings.runMemoryGB);
   const [jump, setJump] = useState(settings.jumpSizes[1] ?? 4);
   const [editing, setEditing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -131,11 +157,28 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
 
   const setlist = setlistId ? library.setlists.find((s) => s.id === setlistId) ?? null : null;
   const setlistIndex = setlist ? setlist.songIds.indexOf(songId) : -1;
-  const prevSongId = setlistIndex > 0 ? setlist!.songIds[setlistIndex - 1] : null;
-  const nextSongId =
-    setlist && setlistIndex >= 0 && setlistIndex < setlist.songIds.length - 1
-      ? setlist.songIds[setlistIndex + 1]
-      : null;
+
+  /*
+   * What Previous and Next walk along: the run when this song is in one, and
+   * otherwise the setlist it was opened from. A run outranks the setlist,
+   * being the songs actually chosen to work through.
+   */
+  const step =
+    runAt ??
+    (setlist && setlistIndex >= 0
+      ? {
+          index: setlistIndex,
+          total: setlist.songIds.length,
+          prev: setlistIndex > 0 ? setlist.songIds[setlistIndex - 1] : null,
+          next:
+            setlistIndex < setlist.songIds.length - 1 ? setlist.songIds[setlistIndex + 1] : null,
+        }
+      : null);
+  const prevSongId = step?.prev ?? null;
+  const nextSongId = step?.next ?? null;
+  const goToSong = (id: string) => navigate(songUrl(id, setlistId ?? run.setlistId ?? undefined));
+  /** A song already decoded opens the moment you ask for it. */
+  const heldReady = (id: string | null) => !!id && player.readySongIds.includes(id);
 
   const variants = useMemo(() => (song ? visibleVariants(song) : []), [song]);
   const allStems = useMemo(() => (song ? stemsOf(song) : []), [song]);
@@ -254,8 +297,8 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
     pause: player.pause,
     seek: player.seek,
     jumpBars: player.jumpBars,
-    onPrevious: prevSongId ? () => navigate(songUrl(prevSongId, setlistId!)) : undefined,
-    onNext: nextSongId ? () => navigate(songUrl(nextSongId, setlistId!)) : undefined,
+    onPrevious: prevSongId ? () => goToSong(prevSongId) : undefined,
+    onNext: nextSongId ? () => goToSong(nextSongId) : undefined,
   });
 
   /* ------------------------------- shortcuts ------------------------------- */
@@ -372,7 +415,7 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
           <span className="sub" style={{ display: 'block' }}>
             {song.tempoUnset ? 'tempo not set' : tempoSummary(song)} · {song.timeSigNum}/{song.timeSigDen}
             {displayKey ? ` · ${displayKey}` : song.transpose ? ` · ${formatSemitones(song.transpose)}` : ''}
-            {setlist ? ` · ${setlistIndex + 1}/${setlist.songIds.length}` : ''}
+            {step ? ` · ${step.index + 1}/${step.total}` : ''}
           </span>
         </h1>
         {canEditLibrary && (
@@ -928,12 +971,19 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
 
         {(prevSongId || nextSongId) && (
           <div className="controls">
-            <button className="chip" disabled={!prevSongId} onClick={() => prevSongId && navigate(songUrl(prevSongId, setlistId!))}>
+            <button className="chip" disabled={!prevSongId} onClick={() => prevSongId && goToSong(prevSongId)}>
               ‹ Previous
+              {heldReady(prevSongId) && <span className="chip-note">ready</span>}
             </button>
-            <button className="chip" disabled={!nextSongId} onClick={() => nextSongId && navigate(songUrl(nextSongId, setlistId!))}>
+            <button className="chip" disabled={!nextSongId} onClick={() => nextSongId && goToSong(nextSongId)}>
               Next ›
+              {heldReady(nextSongId) && <span className="chip-note">ready</span>}
             </button>
+            {runAt && (
+              <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+                {player.readySongIds.length} of {runAt.total} held ready
+              </span>
+            )}
           </div>
         )}
 

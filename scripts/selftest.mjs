@@ -3594,5 +3594,46 @@ group("the set's click and cues");
     JSON.stringify(song.variants.map((v) => [v.name, v.role, v.clips?.length])));
 }
 
+/* ------------------------------ opening a run ----------------------------- */
+
+group('opening several songs together');
+{
+  const { orderForRun } = await import('../src/lib/run.ts');
+  const song = (id) => ({ id, title: id });
+  const library = {
+    ...emptyLibrary(),
+    songs: ['a', 'b', 'c', 'd', 'e'].map(song),
+    setlists: [
+      // What an Ableton set gives: its id is the set's own path.
+      { id: 'als:/Sets/Friday.als', name: 'Friday', songIds: ['c', 'a', 'd'] },
+      { id: 'other', name: 'Another night', songIds: ['a', 'c', 'd'] },
+      { id: 'hand', name: 'By hand', songIds: ['b', 'a'] },
+    ],
+  };
+  const set = '/Sets/Friday.als';
+
+  const run = orderForRun(library, set, ['d', 'a', 'c']);
+  check('picked songs open in the set\'s running order, not the order ticked',
+    run.songIds.join() === 'c,a,d', run.songIds.join());
+  check('the set\'s own order wins over another list holding the same songs',
+    run.setlistId === 'als:/Sets/Friday.als', String(run.setlistId));
+
+  const partial = orderForRun(library, set, ['d', 'e', 'c']);
+  check('a song no setlist knows follows on the end, never dropped',
+    partial.songIds.join() === 'c,d,e', partial.songIds.join());
+
+  const noSet = orderForRun(library, null, ['a', 'b']);
+  check('with no set open, whichever list accounts for most of them decides',
+    noSet.songIds.join() === 'b,a' && noSet.setlistId === 'hand', JSON.stringify(noSet));
+
+  const loose = orderForRun({ ...library, setlists: [] }, null, ['e', 'd']);
+  check('and with no setlist at all they keep the order they were picked in',
+    loose.songIds.join() === 'e,d' && loose.setlistId === null, JSON.stringify(loose));
+
+  check('one song is no run', orderForRun(library, set, ['a']).songIds.join() === 'a');
+  check('the same song ticked twice is one song',
+    orderForRun(library, set, ['a', 'a']).songIds.join() === 'a', orderForRun(library, set, ['a', 'a']).songIds.join());
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

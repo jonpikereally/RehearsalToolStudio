@@ -19,6 +19,10 @@ with its own repo. This one is only Rehearsal Tool Studio.
   audible, so switching is instant and sample-accurate. Bar-accurate jumps and
   loops, transposition rendered offline and cached, a metronome, markers,
   setlists, a mixer over the stems.
+- **Opens a run of songs.** Tick several on the Songs page and they open
+  together, in the order the setlist plays them. They are decoded and held
+  that way, so Previous and Next between them are instant instead of a wait
+  per song. How much memory the held songs may take is in Settings.
 - **Prepares a set for the band.** Each song written out as small files into
   the band's folder, with a library naming them, so their app has tempos, keys,
   sections and a running order — not just audio.

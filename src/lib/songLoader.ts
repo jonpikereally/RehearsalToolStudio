@@ -34,6 +34,149 @@ export function clearDecodedCache(): void {
   decodedCache.clear();
 }
 
+/* ----------------------------- songs held ready ---------------------------- */
+
+/**
+ * A song made ready to play: every part fetched, decoded, placed and rendered,
+ * in the shape the engine takes them.
+ *
+ * Held on to so a run can step between songs without doing any of that twice.
+ * What the mixer says is deliberately not part of it — that is read afresh
+ * every time a song is installed, so a fader moved in song three is still
+ * where you left it when song three comes round again.
+ */
+export interface ReadySong {
+  /** Everything that decides what the buffers are. A change means rebuild. */
+  key: string;
+  tracks: Map<string, ReadyTrack>;
+  /** The part that stands in for the metronome, when the set brought its own. */
+  clickId: string | null;
+  /** Which whole mix sounds when nothing carries over from the song before. */
+  defaultActiveId: string | null;
+  /** Every variant id in display order, whether or not it could be loaded. */
+  order: string[];
+  /** Parts that could not be loaded, so re-opening says so too. */
+  skipped: { variant: Variant; reason: string }[];
+  bytes: number;
+  /** Least recently installed goes first when memory runs short. */
+  touched: number;
+}
+
+export interface ReadyTrack {
+  buffer: AudioBuffer;
+  role: TrackConfig['role'];
+  regions: TrackConfig['regions'];
+  fileStartSec: number;
+  devices: Variant['devices'];
+  /** Where the set has this fader and pan, for a device that never touched them. */
+  setLevel: number | undefined;
+  setPan: number | undefined;
+}
+
+const heldSongs = new Map<string, ReadySong>();
+let keptSongIds: string[] = [];
+let heldBudget = 0;
+let installClock = 0;
+
+/**
+ * The songs a run wants kept ready, and how much memory they may have between
+ * them. Anything not named is let go at once; with no run at all nothing is
+ * held, which is how a single song has always behaved.
+ *
+ * Decoded audio is enormous — a five-minute song of eight WAV stems is most of
+ * a gigabyte — so holding a whole set is not free, and the budget is not a
+ * formality. When it is reached the songs least recently played are dropped
+ * and built again if they come round; slower than holding them, but not a
+ * window that has run out of memory.
+ */
+export function keepReady(songIds: string[], budgetBytes: number): void {
+  keptSongIds = [...songIds];
+  heldBudget = budgetBytes;
+  const wanted = new Set(songIds);
+  for (const id of [...heldSongs.keys()]) if (!wanted.has(id)) releaseSong(id);
+  makeRoom(null);
+}
+
+/** Let every held song go: the run is over, or was never wanted. */
+export function releaseReady(): void {
+  keepReady([], 0);
+}
+
+/** Which songs are ready to play this instant. */
+export function heldSongIds(): string[] {
+  return [...heldSongs.keys()];
+}
+
+export function heldBytes(): number {
+  let total = 0;
+  for (const song of heldSongs.values()) total += song.bytes;
+  return total;
+}
+
+function releaseSong(songId: string): void {
+  const ready = heldSongs.get(songId);
+  if (!ready) return;
+  heldSongs.delete(songId);
+  // The originals it was rendered from are scratch, and nothing else's.
+  for (const id of ready.order) decodedCache.delete(id);
+}
+
+function makeRoom(keepId: string | null): void {
+  let total = heldBytes();
+  if (total <= heldBudget) return;
+  const stalest = [...heldSongs.entries()]
+    // Never the song that is playing, and never the one just built.
+    .filter(([id]) => id !== keepId && id !== installedSongId)
+    .sort((a, b) => a[1].touched - b[1].touched);
+  for (const [id, ready] of stalest) {
+    if (total <= heldBudget) return;
+    total -= ready.bytes;
+    releaseSong(id);
+  }
+}
+
+/** The song in the engine now, so making room never throws it away. */
+let installedSongId: string | null = null;
+
+/**
+ * Songs being made ready right now.
+ *
+ * The run builds the songs ahead while one plays, so opening the next song can
+ * walk into one already half built; both callers wait on the one piece of work
+ * rather than doing it twice.
+ *
+ * A build carries the signal of whoever started it, so it is only worth
+ * joining while that signal still stands. One already given up on is a
+ * rejection waiting to happen — which is not the same as "this song will not
+ * load", and must not be handed to somebody who still wants the song.
+ */
+const building = new Map<string, { key: string; work: Promise<ReadySong>; signal?: AbortSignal }>();
+
+function bufferBytes(buffer: AudioBuffer): number {
+  return buffer.length * buffer.numberOfChannels * 4;
+}
+
+/**
+ * What a song's buffers depend on. The parts and their revisions, the key and
+ * speed they are rendered at, whether the set's devices are imitated, the
+ * context's own sample rate — and the tempo map, since where every clip is
+ * placed is worked out in bars.
+ */
+function readyKey(song: Song, opts: LoadOptions, sampleRate: number): string {
+  return JSON.stringify([
+    variantsToLoad(song).map((v) => `${v.id}@${v.rev}`),
+    opts.semitones,
+    opts.tempoScale ?? 1,
+    !!opts.effects,
+    sampleRate,
+    song.bpm,
+    song.timeSigNum,
+    song.timeSigDen,
+    song.firstBarOffsetSec,
+    song.tempoMap ?? null,
+  ]);
+}
+
 export function visibleVariants(song: Song): Variant[] {
   const shown = song.variants.filter((v) => !v.hidden);
   return shown.length ? shown : song.variants;
@@ -181,21 +324,62 @@ export interface LoadOptions {
 }
 
 /**
- * Load every visible variant and install them in the engine.
- * Returns the ids in display order.
+ * Make every visible variant of a song ready to play, without touching what
+ * the engine is playing now.
+ *
+ * This is the whole cost of opening a song — fetching, decoding, arranging,
+ * transposing — and it is separate from installing the result so a run can pay
+ * it for the song after next while this one plays. A song the run is holding
+ * that is already ready is returned as it stands.
  */
-export async function loadSong(
+export async function prepareSong(
   engine: SongEngine,
   song: Song,
   opts: LoadOptions,
-): Promise<string[]> {
+): Promise<ReadySong> {
+  const ctx = await engine.ensureContext();
+  const key = readyKey(song, opts, ctx.sampleRate);
+  const standing = heldSongs.get(song.id);
+  if (standing && standing.key === key) {
+    // Say again what could not be loaded: the page asks the song, not the load.
+    for (const { variant, reason } of standing.skipped) opts.onSkip?.(variant, reason);
+    opts.onProgress?.({ phase: 'ready', variantName: '', index: standing.order.length, total: standing.order.length, ratio: 1, cached: true });
+    return standing;
+  }
+
+  const busy = building.get(song.id);
+  if (busy && busy.key === key && !busy.signal?.aborted) return busy.work;
+
+  const work = buildSong(engine, song, opts, ctx, key);
+  building.set(song.id, { key, work, signal: opts.signal });
+  try {
+    return await work;
+  } finally {
+    if (building.get(song.id)?.work === work) building.delete(song.id);
+  }
+}
+
+async function buildSong(
+  engine: SongEngine,
+  song: Song,
+  opts: LoadOptions,
+  ctx: AudioContext,
+  key: string,
+): Promise<ReadySong> {
   const { semitones, budgetBytes, onProgress, signal } = opts;
   const tempo = opts.tempoScale && opts.tempoScale > 0 ? opts.tempoScale : 1;
   const variants = variantsToLoad(song);
-  const ctx = await engine.ensureContext();
+
+  const skipped: { variant: Variant; reason: string }[] = [];
   const buffers = new Map<string, AudioBuffer>();
 
   let done = 0;
+
+  /** A part left out, said now and remembered for the next time it is opened. */
+  const note = (variant: Variant, reason: string) => {
+    skipped.push({ variant, reason });
+    opts.onSkip?.(variant, reason);
+  };
 
   const loadOne = async (variant: Variant): Promise<void> => {
     if (signal?.aborted) throw new DOMException('Load cancelled', 'AbortError');
@@ -281,7 +465,7 @@ export async function loadSong(
       }
       if (!placements.length) throw new Error('none of its files could be read');
       if (unread.size) {
-        opts.onSkip?.(
+        note(
           variant,
           `${unread.size} of its files could not be read — ${[...unread]
             .slice(0, 3)
@@ -341,7 +525,7 @@ export async function loadSong(
       await loadOne(variant);
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') throw err;
-      opts.onSkip?.(variant, err instanceof Error ? err.message : String(err));
+      note(variant, err instanceof Error ? err.message : String(err));
       done++;
     }
   };
@@ -349,10 +533,8 @@ export async function loadSong(
 
   if (signal?.aborted) throw new DOMException('Load cancelled', 'AbortError');
 
-  // Attach each file's role and this device's saved fader position.
-  const savedMix = loadMix(song.id);
-
-  const configs = new Map<string, TrackConfig>();
+  const tracks = new Map<string, ReadyTrack>();
+  let bytes = 0;
   for (const variant of variants) {
     const buffer = buffers.get(variant.id);
     if (!buffer) continue;
@@ -362,27 +544,9 @@ export async function loadSong(
      */
     const role =
       variant.role === 'stem' ? 'stem' : isReferenceName(variant.name) ? 'reference' : 'mix';
-    /*
-     * Where the fader and pan start: where you left them on this device, or
-     * failing that where the set has them — the track's fader times its
-     * groups', which is what Live plays.
-     */
-    const saved = settingFor(savedMix, variant.id);
-    const touched = variant.id in savedMix;
-    const level = touched ? saved.level : (variant.gain ?? saved.level);
-    const pan = touched ? saved.pan : (variant.pan ?? saved.pan);
-    /*
-     * No special casing for the reference any more: beside stems it is silent
-     * until SWITCH brings it in, which the engine enforces, so its fader is
-     * free to mean what it says — the level it plays at when it is the one
-     * playing.
-     */
-    configs.set(variant.id, {
+    tracks.set(variant.id, {
       buffer,
       role,
-      level,
-      muted: saved.muted,
-      pan,
       /*
        * Bars, not seconds, come out of the set — so they follow the tempo map
        * and any stretch applied here, and a part still drops out on the right
@@ -398,16 +562,25 @@ export async function loadSong(
         ? barToSec(variant.placement.bar, song) - variant.placement.sourceSec / (tempo * (variant.speed ?? 1))
         : 0,
       devices: variant.devices,
+      // Where the set has the fader and pan — the track's times its groups',
+      // which is what Live plays. Only used until this device moves them.
+      setLevel: variant.gain,
+      setPan: variant.pan,
     });
+    bytes += bufferBytes(buffer);
   }
 
-  const mixes = variants.filter((v) => v.role !== 'stem');
-  const preferred = engine.activeVariantId;
-  const activeId =
-    preferred && configs.get(preferred)?.role === 'mix' ? preferred : mixes[0]?.id ?? null;
-  await engine.setTracks(configs, activeId, { effects: !!opts.effects });
-  // A set's click track takes the metronome's place, so there is one click.
-  engine.useClickTrack(variants.find((v) => isSetClick(song, v))?.id ?? null);
+  const ready: ReadySong = {
+    key,
+    tracks,
+    // A set's click track takes the metronome's place, so there is one click.
+    clickId: variants.find((v) => isSetClick(song, v))?.id ?? null,
+    defaultActiveId: variants.find((v) => v.role !== 'stem')?.id ?? null,
+    order: variants.map((v) => v.id),
+    skipped,
+    bytes,
+    touched: ++installClock,
+  };
 
   /*
    * Transposing leaves two full copies of every part in memory — the original
@@ -418,8 +591,74 @@ export async function loadSong(
    */
   if (semitones !== 0 || tempo !== 1) decodedCache.clear();
 
+  // Only a run holds songs; on its own a song is built, played and let go.
+  if (keptSongIds.includes(song.id)) {
+    heldSongs.set(song.id, ready);
+    makeRoom(song.id);
+  }
+
   onProgress?.({ phase: 'ready', variantName: '', index: variants.length, total: variants.length, ratio: 1, cached: true });
-  return variants.map((v) => v.id);
+  return ready;
+}
+
+/**
+ * Put a ready song into the engine, replacing whatever was playing.
+ *
+ * Cheap by design — building the audio graph and nothing else — which is what
+ * makes stepping between the songs of a run instant.
+ */
+export async function installSong(
+  engine: SongEngine,
+  song: Song,
+  ready: ReadySong,
+  opts: { effects?: boolean } = {},
+): Promise<void> {
+  ready.touched = ++installClock;
+  installedSongId = song.id;
+
+  // This device's saved fader positions, read now rather than when the buffers
+  // were made, so a mix set on the last pass through the set is still there.
+  const savedMix = loadMix(song.id);
+  const configs = new Map<string, TrackConfig>();
+  for (const [id, track] of ready.tracks) {
+    const saved = settingFor(savedMix, id);
+    const touched = id in savedMix;
+    /*
+     * No special casing for the reference: beside stems it is silent until
+     * SWITCH brings it in, which the engine enforces, so its fader is free to
+     * mean what it says — the level it plays at when it is the one playing.
+     */
+    configs.set(id, {
+      buffer: track.buffer,
+      role: track.role,
+      level: touched ? saved.level : (track.setLevel ?? saved.level),
+      muted: saved.muted,
+      pan: touched ? saved.pan : (track.setPan ?? saved.pan),
+      regions: track.regions,
+      fileStartSec: track.fileStartSec,
+      devices: track.devices,
+    });
+  }
+
+  const preferred = engine.activeVariantId;
+  const activeId =
+    preferred && configs.get(preferred)?.role === 'mix' ? preferred : ready.defaultActiveId;
+  await engine.setTracks(configs, activeId, { effects: !!opts.effects });
+  engine.useClickTrack(ready.clickId);
+}
+
+/**
+ * Load a song and install it. Returns the variant ids in display order.
+ */
+export async function loadSong(
+  engine: SongEngine,
+  song: Song,
+  opts: LoadOptions,
+): Promise<string[]> {
+  const ready = await prepareSong(engine, song, opts);
+  if (opts.signal?.aborted) throw new DOMException('Load cancelled', 'AbortError');
+  await installSong(engine, song, ready, { effects: opts.effects });
+  return ready.order;
 }
 
 /** Total bytes that would need downloading for a song (0 when fully cached). */

@@ -162,6 +162,25 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
           />
           <span style={{ color: 'var(--text-dim)' }}>GB</span>
         </div>
+        <div className="field">
+          <label htmlFor="run-memory">
+            Songs held ready
+            <span className="hint">
+              Memory for the songs of a run, which are kept decoded so stepping between them is
+              instant. Past this the ones least recently played are let go.
+            </span>
+          </label>
+          <input
+            id="run-memory"
+            type="number"
+            min={1}
+            step={1}
+            value={settings.runMemoryGB}
+            onChange={(e) => saveSettings({ runMemoryGB: Math.max(1, Number(e.target.value) || 4) })}
+          />
+          <span style={{ color: 'var(--text-dim)' }}>GB</span>
+        </div>
+
         {tidied && <div className="notice">{tidied}</div>}
 
         {readingLocally && settings.useLocal && (
