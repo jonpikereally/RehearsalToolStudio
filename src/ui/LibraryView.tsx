@@ -94,7 +94,7 @@ export default function LibraryView() {
             }}
             aria-pressed={picking}
             aria-label="Select several songs"
-            title="Select several songs and open them together"
+            title="Working on a transition? Load multiple songs. Loading more than 1 song can slow down the app."
           >
             ☑
           </button>
