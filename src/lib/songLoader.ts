@@ -133,16 +133,20 @@ export interface FilesReport {
  * file and every clip of an arranged part, each asked about once.
  */
 export async function filesReport(song: Song): Promise<FilesReport> {
-  const wanted = new Map<string, string>();
+  /*
+   * Keyed without case so one file is asked about once, but asked about by
+   * the path the set wrote. The server matches a path against the folders it
+   * was given letter for letter, so a lowercased one was refused as outside
+   * a folder that had in fact been allowed.
+   */
+  const wanted = new Map<string, { path: string; part: string }>();
   for (const v of variantsToLoad(song)) {
-    if (v.clips?.length) {
-      for (const c of v.clips) if (!wanted.has(c.path.toLowerCase())) wanted.set(c.path.toLowerCase(), v.name);
-    } else if (!wanted.has(v.path.toLowerCase())) {
-      wanted.set(v.path.toLowerCase(), v.name);
+    for (const path of v.clips?.length ? v.clips.map((c) => c.path) : [v.path]) {
+      if (!wanted.has(path.toLowerCase())) wanted.set(path.toLowerCase(), { path, part: v.name });
     }
   }
   const report: FilesReport = { missing: [], forbidden: [] };
-  for (const [path, part] of wanted) {
+  for (const { path, part } of wanted.values()) {
     const standing = await availability(path);
     if (standing === 'missing') report.missing.push({ part, path });
     if (standing === 'forbidden') report.forbidden.push({ part, path });
