@@ -3158,10 +3158,10 @@ group('the file API');
   check('read hands back the bytes with a type',
     read.headers.get('content-type') === 'audio/wav' && (await read.arrayBuffer()).byteLength === 1000);
 
-  check('a library that is not there says so', (await ask('read-json', { dir: songs, path: '.learning-songs.json' })).missing === true);
-  const wrote = await ask('write-json', { dir: songs, path: '.learning-songs.json', data: { songs: [1, 2] } });
+  check('a library that is not there says so', (await ask('read-json', { dir: songs, path: '.rehearsal-tool.json' })).missing === true);
+  const wrote = await ask('write-json', { dir: songs, path: '.rehearsal-tool.json', data: { songs: [1, 2] } });
   check('writing JSON reports a revision', /^\d+-\d+$/.test(wrote.rev), wrote.rev);
-  const back = await ask('read-json', { dir: songs, path: '.learning-songs.json' });
+  const back = await ask('read-json', { dir: songs, path: '.rehearsal-tool.json' });
   check('and reading it back agrees', back.data.songs.length === 2 && back.rev === wrote.rev);
 
   const query = new URLSearchParams({ dir: songs, path: 'Prints/Prepared/Yellow/Yellow (full mix).mp3' });

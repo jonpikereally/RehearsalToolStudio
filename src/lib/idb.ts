@@ -9,7 +9,7 @@
  * four minute stereo render is ~42 MB even stored as 16-bit PCM.
  */
 
-const DB_NAME = 'learning-songs';
+const DB_NAME = 'rehearsal-tool-studio';
 const DB_VERSION = 2;
 const FILES = 'files';
 const RENDERS = 'renders';
@@ -78,7 +78,7 @@ function openDb(): Promise<IDBDatabase> {
       resolve(db);
     };
     req.onblocked = () => {
-      console.warn('[learning-songs] database upgrade is waiting on another tab of this app');
+      console.warn('[rehearsal-tool-studio] database upgrade is waiting on another tab of this app');
     };
     req.onerror = () => reject(req.error);
   });

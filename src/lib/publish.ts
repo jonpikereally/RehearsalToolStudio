@@ -22,7 +22,9 @@ import { isPreparedSet } from './prints';
  * none at all.
  */
 
-export const BAND_LIBRARY = '.learning-songs.json';
+export const BAND_LIBRARY = '.rehearsal-tool.json';
+/** The name the library went by before the app was renamed; read, never written. */
+export const LEGACY_BAND_LIBRARY = '.learning-songs.json';
 
 export interface PublishResult {
   /** Songs the band can now see. */
@@ -42,6 +44,7 @@ export interface PublishResult {
 export async function publishLibrary(folder: local.FolderHandle): Promise<PublishResult> {
   const existing =
     (await local.readJson<Library>(folder, '', `/${BAND_LIBRARY}`).catch(() => null))?.data ??
+    (await local.readJson<Library>(folder, '', `/${LEGACY_BAND_LIBRARY}`).catch(() => null))?.data ??
     emptyLibrary('');
 
   const files = await local.listFiles(folder, '');

@@ -7,6 +7,7 @@ dist/
 .claude/settings.local.json
 
 # The library file. It belongs in whatever folder you scan, never in the repo.
+.rehearsal-tool.json
 .learning-songs.json
 Mac apps/
 lyrics-studio/.state.json

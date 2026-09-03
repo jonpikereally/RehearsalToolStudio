@@ -1,4 +1,4 @@
-/** Core data model. Everything here is persisted to `<root>/.learning-songs.json` in Dropbox. */
+/** Core data model. Everything here is persisted to `<root>/.rehearsal-tool.json` in Dropbox. */
 
 export type VariantId = string;
 export type SongId = string;

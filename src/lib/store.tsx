@@ -13,10 +13,13 @@ import { normalisePath } from './paths.ts';
 
 /**
  * Library state, persisted to localStorage for instant startup and written to
- * `<root>/.learning-songs.json` in the folder, which is where it lives.
+ * `<root>/.rehearsal-tool.json` in the folder, which is where it lives.
  */
 
-const LIBRARY_FILE = '.learning-songs.json';
+const LIBRARY_FILE = '.rehearsal-tool.json';
+// What the file was called before the app was renamed. Read when the new
+// name is not there yet; never written, so a folder moves over on first save.
+const LEGACY_LIBRARY_FILE = '.learning-songs.json';
 const LS_LIBRARY = 'ls.library';
 const LS_REV = 'ls.libraryRev';
 const LS_SETTINGS = 'ls.settings';
@@ -142,6 +145,10 @@ function loadLocal<T>(key: string, fallback: T): T {
 function libraryPath(root: string): string {
   const r = normalisePath(root);
   return `${r}/${LIBRARY_FILE}`;
+}
+
+function legacyLibraryPath(root: string): string {
+  return `${normalisePath(root)}/${LEGACY_LIBRARY_FILE}`;
 }
 
 /**
@@ -406,7 +413,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSyncState('syncing');
       try {
         const path = libraryPath(settings.root);
-        const remote = await source.readJson<Library>(path);
+        const remote =
+          (await source.readJson<Library>(path)) ??
+          (await source.readJson<Library>(legacyLibraryPath(settings.root)));
         if (remote) {
           revRef.current = remote.rev;
           if (remote.rev) localStorage.setItem(LS_REV, remote.rev);
@@ -432,7 +441,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /**
    * Pointing at a different folder means a different library entirely — a band's
    * own folder, or another project. Start clean rather than merging, so one
-   * group's songs can never leak into another group's `.learning-songs.json`.
+   * group's songs can never leak into another group's `.rehearsal-tool.json`.
    */
   useEffect(() => {
     const wanted = normalisePath(settings.root);
@@ -566,7 +575,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { bytes } = await source.readBytes(file.path);
           parsedSets.push({ path: file.path, project: await parseAls(bytes) });
         } catch (err) {
-          console.error('[learning-songs] could not read', file.path, err);
+          console.error('[rehearsal-tool-studio] could not read', file.path, err);
           readErrors.push(`${file.name} could not be read`);
         }
       }
@@ -581,7 +590,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const doc = await source.readJson<unknown>(file.path);
           if (doc) manifestDocs.push({ path: file.path, data: doc.data });
         } catch (err) {
-          console.error('[learning-songs] could not read', file.path, err);
+          console.error('[rehearsal-tool-studio] could not read', file.path, err);
         }
       }
 

@@ -1,7 +1,7 @@
 {
-  "name": "Learning Songs",
-  "short_name": "Songs",
-  "description": "Practise player for multi-version Ableton exports stored in Dropbox.",
+  "name": "Rehearsal Tool Studio",
+  "short_name": "Studio",
+  "description": "Reads Ableton sets, plays them, and prepares them for Rehearsal Tool.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

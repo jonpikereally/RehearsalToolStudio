@@ -45,7 +45,7 @@ export function useMediaSession(opts: MediaSessionOptions): void {
       const detail = [song.tempoUnset ? null : `${song.bpm} BPM`, key].filter(Boolean).join(' · ');
       navigator.mediaSession.metadata = new MediaMetadata({
         title,
-        artist: artist || 'Learning Songs',
+        artist: artist || 'Rehearsal Tool Studio',
         album: [project === 'Unfiled' ? '' : project, detail].filter(Boolean).join(' — '),
         artwork: [
           { src: './icon-192.png', sizes: '192x192', type: 'image/png' },

@@ -23,7 +23,7 @@ player, and both are what make the set more than a pile of audio.
 
 ```
 <band folder>/                         the band's Dropbox app folder
-  .learning-songs.json                 the band's library, rebuilt on publish
+  .rehearsal-tool.json                 the band's library, rebuilt on publish
   Rehearsal Tool/
     Sets/
       TS TEST FOR RTS 2026-09-02/      one prepared set: "<set name> <date>"
@@ -186,9 +186,12 @@ Rules the reader follows, and a writer can rely on:
   whole back in set order. Songs no longer in the set keep their entry at the
   end rather than being dropped, because their files are still there.
 
-## `.learning-songs.json`
+## `.rehearsal-tool.json`
 
-The band's library file, at the root of their folder. After writing a set the
+The band's library file, at the root of their folder. It was called
+`.learning-songs.json` before the app was renamed; every reader still falls
+back to that name when the new one is not there, and the next publish writes
+the new one. After writing a set the
 Studio rebuilds it by **reading the band's folder back**, running the same
 scan the website runs, applying every `set.json` it finds, and merging the
 result into the library that was there. Reading back rather than writing what
