@@ -62,11 +62,16 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
     if (doc) applyManifest(songs, file.path, doc.data);
   }
 
-  await local.writeJson(folder, '', `/${BAND_LIBRARY}`, {
-    ...result.library,
-    songs,
-    updatedAt: Date.now(),
-  });
+  const library = { ...result.library, songs, updatedAt: Date.now() };
+  await local.writeJson(folder, '', `/${BAND_LIBRARY}`, library);
+  /*
+   * Under the old name as well, for now. The band's production site still
+   * reads only that name until the release that knows the new one goes
+   * out; a studio that stopped writing it would leave the band a library
+   * frozen on the day of the rename. Drop this once production reads
+   * .rehearsal-tool.json.
+   */
+  await local.writeJson(folder, '', `/${LEGACY_BAND_LIBRARY}`, library);
 
   return {
     songs: songs.length,
