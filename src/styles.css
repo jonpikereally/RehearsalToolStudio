@@ -1393,6 +1393,16 @@ input[type='range'] {
   color: #fca5a5;
 }
 
+/* A job finished: said in the colour of a thing gone right. */
+.notice.done {
+  border-color: var(--good);
+  background: #14261b;
+}
+.notice.done strong {
+  color: var(--good);
+  font-size: 15px;
+}
+
 .loading-bar {
   height: 4px;
   background: var(--bg-raised-2);

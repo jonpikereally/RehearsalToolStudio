@@ -233,7 +233,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         )}
         {error && <div className="notice error">{error}</div>}
         {result && (
-          <div className="notice">
+          <div className="notice done" role="status">
+            <strong>Done — the song is prepared.</strong>
+            <br />
             Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} to{' '}
             <span className="code">{result.folder}/{folderName}</span>.
             {result.skipped.length > 0 && (
@@ -253,16 +255,25 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         )}
 
         <div className="btn-row">
-          <button
-            className="btn primary"
-            disabled={busy || !alsSong || partCount === 0 || !!result}
-            onClick={() => void go()}
-          >
-            {busy ? 'Preparing…' : publishFolderName ? 'Prepare' : 'Choose the band\'s folder and prepare'}
-          </button>
-          <button className="btn" onClick={onClose} disabled={busy}>
-            {result ? 'Close' : 'Cancel'}
-          </button>
+          {result ? (
+            // Finished: one thing left to do, and it is the plain one.
+            <button className="btn primary" onClick={onClose} autoFocus>
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn primary"
+                disabled={busy || !alsSong || partCount === 0}
+                onClick={() => void go()}
+              >
+                {busy ? 'Preparing…' : publishFolderName ? 'Prepare' : 'Choose the band\'s folder and prepare'}
+              </button>
+              <button className="btn" onClick={onClose} disabled={busy}>
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
