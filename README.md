@@ -96,8 +96,10 @@ from. Both are chosen once in Settings and remembered.
 
 ## What a prepared set looks like
 
-Each song becomes a folder of small files under `Prints/Prepared/<set>/`, with
-a `set.json` manifest beside them carrying sections, chords and lyrics. The
+Each song becomes a folder of small files under `Rehearsal Tool/Sets/<set>/`
+in the band's folder, with a `set.json` manifest beside them carrying the
+tempo map, sections, chords and lyrics. The whole contract, file by file and
+field by field, is in [docs/prepared-sets.md](docs/prepared-sets.md). The
 files follow one naming convention so nothing depends on this app to read
 them:
 
@@ -109,7 +111,8 @@ them:
 
 The time signature is written `4-4`, since a slash cannot appear in a file
 name. A `set.json` can also be written by hand for a folder of audio that never
-came from Ableton; the schema is in `src/lib/preparedSet.ts`.
+came from Ableton; the schema is in `src/lib/preparedSet.ts` and spelled out
+in the document above.
 
 ## Ableton conventions it reads
 
