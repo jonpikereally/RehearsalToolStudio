@@ -45,7 +45,12 @@ import type { Marker, Song } from '../types';
 
 const LOOP_LENGTHS = [2, 4, 8, 16];
 
-export default function PlayerView({ songId, setlistId }: { songId: string; setlistId: string | null }) {
+/**
+ * The player. `shown` is false while the page is held open behind Settings:
+ * the song stays loaded and keeps playing, but the shortcuts that reach for
+ * the transport are the page's, not the whole window's.
+ */
+export default function PlayerView({ songId, setlistId, shown = true }: { songId: string; setlistId: string | null; shown?: boolean }) {
   const { library, settings, updateSong, pickResourcesFolder } = useStore();
   const [resourcesError, setResourcesError] = useState<string | null>(null);
   const song = library.songs.find((s) => s.id === songId) ?? null;
@@ -256,6 +261,7 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
   /* ------------------------------- shortcuts ------------------------------- */
 
   useEffect(() => {
+    if (!shown) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
@@ -303,7 +309,7 @@ export default function PlayerView({ songId, setlistId }: { songId: string; setl
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [player, jump, variants]);
+  }, [player, jump, variants, shown]);
 
   if (!song) {
     return (

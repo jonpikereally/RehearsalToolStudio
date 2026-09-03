@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useRoute, navigate } from './lib/router';
+import { useRoute, navigate, songUrl } from './lib/router';
 import { useStore } from './lib/store';
 import LibraryView from './ui/LibraryView';
 import PlayerView from './ui/PlayerView';
@@ -43,18 +43,32 @@ function useNewerBuild(): string | null {
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library } = useStore();
   const newerBuild = useNewerBuild();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
 
   const songId = route.query.get('id') ?? route.path[1];
+  const setlistId = route.query.get('sl');
 
-  let body: JSX.Element;
+  /*
+   * A song stays loaded behind Settings. Opening Settings used to unmount the
+   * player and with it the song — every stem decoded again on the way back —
+   * so the player is held, hidden, while Settings is up, and let go only when
+   * the page goes somewhere else. Held at a fixed place in the tree, so React
+   * keeps the same instance rather than making a new one.
+   */
+  const [held, setHeld] = useState<{ songId: string; setlistId: string | null } | null>(null);
+  useEffect(() => {
+    if (section === 'song' && songId) setHeld({ songId, setlistId });
+    else if (section !== 'settings') setHeld(null);
+  }, [section, songId, setlistId]);
+  const playing = section === 'song' && songId ? { songId, setlistId } : section === 'settings' ? held : null;
+  const heldSong = section === 'settings' && held ? library.songs.find((s) => s.id === held.songId) : undefined;
+
+  let body: JSX.Element | null;
   if (section === 'song' && songId) {
-    // Keyed on the resources folder: granting one is what makes the outside
-    // samples readable, and the song is opened again to pick them up.
-    body = <PlayerView key={resourcesFolderName ?? ''} songId={songId} setlistId={route.query.get('sl')} />;
+    body = null;
     // Set tools work on a lone .als with no folder at all, so they stay
     // reachable before a folder is chosen — as Settings always has.
   } else if (!usingLocalFolder && section !== 'settings' && section !== 'tools') {
@@ -115,7 +129,31 @@ export default function App() {
           </button>
         </div>
       )}
-      <div className="app-body">{body}</div>
+      {heldSong && (
+        <div className="setbar">
+          <span>
+            Still loaded: <strong>{heldSong.title}</strong>
+          </span>
+          <button className="chip" onClick={() => navigate(songUrl(heldSong.id, held?.setlistId ?? undefined))}>
+            Back to the song
+          </button>
+        </div>
+      )}
+      <div className="app-body">
+        {playing && (
+          // Keyed on the resources folder: granting one is what makes the outside
+          // samples readable, and the song is opened again to pick them up.
+          <div style={{ display: section === 'song' ? 'contents' : 'none' }}>
+            <PlayerView
+              key={resourcesFolderName ?? ''}
+              songId={playing.songId}
+              setlistId={playing.setlistId}
+              shown={section === 'song'}
+            />
+          </div>
+        )}
+        {body}
+      </div>
     </div>
   );
 }
