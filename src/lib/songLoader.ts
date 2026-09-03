@@ -115,6 +115,16 @@ export function isSetClick(song: Song, variant: Variant): boolean {
   return !!song.setPath && variant.name.trim().toLowerCase() === 'click';
 }
 
+/** The set's cues, likewise one part of every song of the set. */
+export function isSetCues(song: Song, variant: Variant): boolean {
+  return !!song.setPath && variant.name.trim().toLowerCase() === 'cues';
+}
+
+/** The set's own parts, click and cues, as against the song's. */
+export function isSetPart(song: Song, variant: Variant): boolean {
+  return isSetClick(song, variant) || isSetCues(song, variant);
+}
+
 /** One file of a song, and which part wants it. */
 export interface FileStanding {
   part: string;
@@ -130,9 +140,11 @@ export interface FilesReport {
 /**
  * What of the song is not there to play: files not in the folder, and
  * files in a folder the studio has not been allowed to read. Every part's
- * file and every clip of an arranged part, each asked about once.
+ * file and every clip of an arranged part, each asked about once. With
+ * `songOnly`, the set's click and cues are left out of the asking: they
+ * belong to the set, and a song is not missing audio for their sake.
  */
-export async function filesReport(song: Song): Promise<FilesReport> {
+export async function filesReport(song: Song, { songOnly = false } = {}): Promise<FilesReport> {
   /*
    * Keyed without case so one file is asked about once, but asked about by
    * the path the set wrote. The server matches a path against the folders it
@@ -141,6 +153,7 @@ export async function filesReport(song: Song): Promise<FilesReport> {
    */
   const wanted = new Map<string, { path: string; part: string }>();
   for (const v of variantsToLoad(song)) {
+    if (songOnly && isSetPart(song, v)) continue;
     for (const path of v.clips?.length ? v.clips.map((c) => c.path) : [v.path]) {
       if (!wanted.has(path.toLowerCase())) wanted.set(path.toLowerCase(), { path, part: v.name });
     }

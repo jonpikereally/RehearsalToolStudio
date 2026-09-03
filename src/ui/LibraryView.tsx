@@ -4,6 +4,7 @@ import { groupSongs } from '../lib/songSets';
 import { navigate, songUrl } from '../lib/router';
 import { formatSemitones } from '../lib/pitchService';
 import { mixesOf, stemsOf } from '../lib/stemMix';
+import { useMissingAudio } from '../lib/useMissingAudio';
 import type { ScanResult } from '../lib/scan';
 import type { Song } from '../types';
 
@@ -103,6 +104,7 @@ export default function LibraryView() {
 }
 
 function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
+  const missing = useMissingAudio(song);
   return (
     <button className="row" onClick={() => navigate(songUrl(song.id, setlistId))}>
       <div className="row-main">
@@ -118,6 +120,11 @@ function SongRow({ song, setlistId }: { song: Song; setlistId?: string }) {
         {song.transpose !== 0 && <span className="badge warn">{formatSemitones(song.transpose)}</span>}
         {song.tempoUnset && <span className="badge warn">tempo</span>}
         {song.variants.length === 0 && <span className="badge warn">no audio</span>}
+        {!!missing && (
+          <span className="badge warn" title="Files this song wants that are not here to play; the set's click and cues aside">
+            {missing} file{missing === 1 ? '' : 's'} missing
+          </span>
+        )}
         <span aria-hidden>›</span>
       </div>
     </button>
