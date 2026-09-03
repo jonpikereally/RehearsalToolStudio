@@ -409,22 +409,6 @@ export default function SetToolsView() {
           </div>
         )}
 
-        <div className="controls" style={{ padding: '4px 0' }}>
-          {(
-            [
-              ['check', 'Check set'],
-              ['slates', 'Slates'],
-              ['lyrics', 'Lyrics'],
-              ['chords', 'Chords'],
-              ['patches', 'Patch changes'],
-              ['setlist', 'Setlist'],
-            ] as const
-          ).map(([key, label]) => (
-            <button key={key} className={tool === key ? 'chip on' : 'chip'} onClick={() => setTool(key)}>
-              {label}
-            </button>
-          ))}
-        </div>
         {!project && (
           <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
             Choose a set above — every tool here works on one.
@@ -481,163 +465,198 @@ export default function SetToolsView() {
                 ))}
               </div>
             </div>
-
-            {tool === 'slates' && (
-              <>
-                {voices === null && (
-                  <div className="notice">
-                    The voice helper isn't running — slates need it. In a terminal:
-                    <br />
-                    <span className="code">npm run slates:helper</span>
-                    <div className="btn-row" style={{ marginTop: 8 }}>
-                      <button className="btn" onClick={() => void connectHelpers()}>
-                        Look again
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {ready && (
-                  <div className="field">
-                    <label htmlFor="playback-voice">Voice</label>
-                    <select id="playback-voice" value={voice} onChange={(e) => chooseVoice(e.target.value)}>
-                      {voices
-                        .filter((v) => v.lang.startsWith('en'))
-                        .map((v) => (
-                          <option key={v.name} value={v.name}>
-                            {v.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-                <div className="btn-row">
-                  <button
-                    className="btn primary"
-                    disabled={!ready || !!progress || !titles.length}
-                    onClick={() => void addSlates()}
-                  >
-                    {wholeSet ? 'Add slates to the whole set' : `Add slates to ${selected.size} song${selected.size === 1 ? '' : 's'}`}
-                  </button>
-                </div>
-                <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                  Spoken titles onto the set's Slate track, in a copy — never the original.
-                </div>
-              </>
-            )}
-
-            {tool === 'lyrics' && (
-              <>
-                <div className="btn-row">
-                  <button className="btn primary" disabled={!lyricsUp} onClick={() => void sendToLyricsStudio()}>
-                    Add lyric clips in Lyrics Studio
-                  </button>
-                </div>
-                {lyricsUp === false && (
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    Lyrics Studio isn't running — double-click{' '}
-                    <span className="code">Start Lyrics Studio.command</span> first.
-                  </div>
-                )}
-                <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                  Save and close the set in Live first — Lyrics Studio writes to the .als itself,
-                  keeping a backup beside it.
-                </div>
-              </>
-            )}
-
-            {tool === 'chords' && (
-              <>
-                <div className="btn-row">
-                  <button className="btn primary" disabled={!!progress} onClick={() => void addChords()}>
-                    {wholeSet ? 'Convert chords, whole set' : `Convert chords, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
-                  </button>
-                </div>
-                <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                  Writes the chord language the set is missing — names from numbers or numbers from
-                  names, each song in its own key — as a +LYRICS track in a copy of the set.
-                </div>
-              </>
-            )}
-
-            {tool === 'check' && <CheckPanel project={project} selected={selected} />}
-
-            {tool === 'setlist' && <SetlistPanel project={project} selected={selected} />}
-
-            {tool === 'patches' && (
-              <>
-                <div className="btn-row">
-                  <button
-                    className="btn primary"
-                    disabled={!!progress || !!lone}
-                    onClick={() => void writePatches()}
-                  >
-                    {wholeSet
-                      ? 'Write patch changes into the set'
-                      : `Write patch changes, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
-                  </button>
-                </div>
-                <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                  The patch clips programmed in the player, written into a copy of the set as *rig
-                  locators — visible in Ableton, read back on the next scan. Program them per song
-                  in the player's patch lane.
-                  {lone ? ' A lone .als was never scanned, so the library has no patches for it.' : ''}
-                </div>
-              </>
-            )}
           </>
         )}
 
-        {askKeys && (
-          <div className="notice">
-            <div style={{ marginBottom: 8 }}>
-              {askKeys.length} song{askKeys.length === 1 ? '' : 's'} have chords but no key in the
-              set, so there is nothing to count from. Type the key and they come across too —
-              anything like <span className="code">Eb</span>, <span className="code">F#m</span>,{' '}
-              <span className="code">Am</span>. Leave one blank to skip it.
-            </div>
-            {askKeys.map((title) => {
-              const typed = keyFor[title] ?? '';
-              const good = !!parseKey(typed);
-              return (
-                <div
-                  key={title}
-                  style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0' }}
-                >
-                  <span style={{ flex: 1, fontSize: 14 }}>{title}</span>
-                  <input
-                    type="text"
-                    value={typed}
-                    placeholder="key"
-                    size={6}
-                    style={{
-                      width: 72,
-                      borderColor: typed && !good ? 'var(--bad)' : undefined,
-                    }}
-                    onChange={(e) => setKeyFor({ ...keyFor, [title]: e.target.value })}
-                  />
-                  <span style={{ width: 60, fontSize: 12, color: 'var(--text-dim)' }}>
-                    {typed ? (good ? 'ok' : 'not a key') : 'skipped'}
-                  </span>
-                </div>
-              );
-            })}
-            <div className="btn-row" style={{ marginTop: 8 }}>
-              <button className="btn primary" disabled={!!progress} onClick={() => void addChords(true)}>
-                Write the chords
-              </button>
-              <button className="btn" disabled={!!progress} onClick={() => setAskKeys(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        {/*
+          The tools themselves. Below the set and the songs to work on, because
+          those are the same whichever tool is chosen — a shared control under
+          the tab bar would read as belonging to the tab.
+        */}
+        <nav className="subtabs" role="tablist" aria-label="Set tools">
+          {(
+            [
+              ['check', 'Check set'],
+              ['slates', 'Slates'],
+              ['lyrics', 'Lyrics'],
+              ['chords', 'Chords'],
+              ['patches', 'Patch changes'],
+              ['setlist', 'Setlist'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              id={`settool-${key}`}
+              aria-selected={tool === key}
+              aria-controls="settool-panel"
+              onClick={() => setTool(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        {progress && <div className="notice">{progress}</div>}
-        {done && <div className="notice">{done}</div>}
-        {error && <div className="notice error">{error}</div>}
+        <div id="settool-panel" role="tabpanel" aria-labelledby={`settool-${tool}`}>
+          {project && (
+            <>
+              {tool === 'slates' && (
+                <>
+                  {voices === null && (
+                    <div className="notice">
+                      The voice helper isn't running — slates need it. In a terminal:
+                      <br />
+                      <span className="code">npm run slates:helper</span>
+                      <div className="btn-row" style={{ marginTop: 8 }}>
+                        <button className="btn" onClick={() => void connectHelpers()}>
+                          Look again
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {ready && (
+                    <div className="field">
+                      <label htmlFor="playback-voice">Voice</label>
+                      <select id="playback-voice" value={voice} onChange={(e) => chooseVoice(e.target.value)}>
+                        {voices
+                          .filter((v) => v.lang.startsWith('en'))
+                          .map((v) => (
+                            <option key={v.name} value={v.name}>
+                              {v.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="btn-row">
+                    <button
+                      className="btn primary"
+                      disabled={!ready || !!progress || !titles.length}
+                      onClick={() => void addSlates()}
+                    >
+                      {wholeSet ? 'Add slates to the whole set' : `Add slates to ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Spoken titles onto the set's Slate track, in a copy — never the original.
+                  </div>
+                </>
+              )}
 
-        {tool === 'slates' && <SlatesPanel />}
-        {tool === 'lyrics' && <LyricClipsPanel />}
+              {tool === 'lyrics' && (
+                <>
+                  <div className="btn-row">
+                    <button className="btn primary" disabled={!lyricsUp} onClick={() => void sendToLyricsStudio()}>
+                      Add lyric clips in Lyrics Studio
+                    </button>
+                  </div>
+                  {lyricsUp === false && (
+                    <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                      Lyrics Studio isn't running — double-click{' '}
+                      <span className="code">Start Lyrics Studio.command</span> first.
+                    </div>
+                  )}
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Save and close the set in Live first — Lyrics Studio writes to the .als itself,
+                    keeping a backup beside it.
+                  </div>
+                </>
+              )}
+
+              {tool === 'chords' && (
+                <>
+                  <div className="btn-row">
+                    <button className="btn primary" disabled={!!progress} onClick={() => void addChords()}>
+                      {wholeSet ? 'Convert chords, whole set' : `Convert chords, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Writes the chord language the set is missing — names from numbers or numbers from
+                    names, each song in its own key — as a +LYRICS track in a copy of the set.
+                  </div>
+                </>
+              )}
+
+              {tool === 'check' && <CheckPanel project={project} selected={selected} />}
+
+              {tool === 'setlist' && <SetlistPanel project={project} selected={selected} />}
+
+              {tool === 'patches' && (
+                <>
+                  <div className="btn-row">
+                    <button
+                      className="btn primary"
+                      disabled={!!progress || !!lone}
+                      onClick={() => void writePatches()}
+                    >
+                      {wholeSet
+                        ? 'Write patch changes into the set'
+                        : `Write patch changes, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    The patch clips programmed in the player, written into a copy of the set as *rig
+                    locators — visible in Ableton, read back on the next scan. Program them per song
+                    in the player's patch lane.
+                    {lone ? ' A lone .als was never scanned, so the library has no patches for it.' : ''}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {askKeys && (
+            <div className="notice">
+              <div style={{ marginBottom: 8 }}>
+                {askKeys.length} song{askKeys.length === 1 ? '' : 's'} have chords but no key in the
+                set, so there is nothing to count from. Type the key and they come across too —
+                anything like <span className="code">Eb</span>, <span className="code">F#m</span>,{' '}
+                <span className="code">Am</span>. Leave one blank to skip it.
+              </div>
+              {askKeys.map((title) => {
+                const typed = keyFor[title] ?? '';
+                const good = !!parseKey(typed);
+                return (
+                  <div
+                    key={title}
+                    style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0' }}
+                  >
+                    <span style={{ flex: 1, fontSize: 14 }}>{title}</span>
+                    <input
+                      type="text"
+                      value={typed}
+                      placeholder="key"
+                      size={6}
+                      style={{
+                        width: 72,
+                        borderColor: typed && !good ? 'var(--bad)' : undefined,
+                      }}
+                      onChange={(e) => setKeyFor({ ...keyFor, [title]: e.target.value })}
+                    />
+                    <span style={{ width: 60, fontSize: 12, color: 'var(--text-dim)' }}>
+                      {typed ? (good ? 'ok' : 'not a key') : 'skipped'}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="btn-row" style={{ marginTop: 8 }}>
+                <button className="btn primary" disabled={!!progress} onClick={() => void addChords(true)}>
+                  Write the chords
+                </button>
+                <button className="btn" disabled={!!progress} onClick={() => setAskKeys(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {progress && <div className="notice">{progress}</div>}
+          {done && <div className="notice">{done}</div>}
+          {error && <div className="notice error">{error}</div>}
+
+          {tool === 'slates' && <SlatesPanel />}
+          {tool === 'lyrics' && <LyricClipsPanel />}
+        </div>
       </div>
     </div>
   );
