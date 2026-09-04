@@ -3635,5 +3635,69 @@ group('opening several songs together');
     orderForRun(library, set, ['a', 'a']).songIds.join() === 'a', orderForRun(library, set, ['a', 'a']).songIds.join());
 }
 
+/* --------------------- updating a prepared set in place -------------------- */
+
+group('updating a prepared set without re-rendering');
+{
+  const { setFor, updatableSong, songInfoFor } = await import('../src/lib/updatePrepared.ts');
+
+  const project = { tempo: 120, timeSigNum: 4, timeSigDen: 4, songs: [] };
+  const song = (title, extra = {}) => ({
+    title, startBar: 1, endBar: 33, key: 'G', bpm: 120,
+    tempoChanges: [], sections: [], chords: [], lyrics: [], stems: [], ...extra,
+  });
+
+  // The folder name carries tempo, key and meter, so it is what tells a
+  // still-valid song from one whose audio has gone stale.
+  const fixYou = song('Fix You');
+  const folder = 'Fix You {120, G, 4-4}';
+  const manifest = {
+    preparedBy: 'rehearsaltool', preparedAt: '2026-01-01T00:00:00.000Z', paddingSec: 0.0261,
+    songs: [{ folder, title: 'Fix You', firstBarOffsetSec: 0.0261 }],
+  };
+
+  const ok = updatableSong(fixYou, project, manifest, []);
+  check('a song whose folder still matches can be updated in place', ok.ok === true);
+  check('and its entry comes back, so the lead-in can be carried over',
+    ok.ok && ok.entry?.firstBarOffsetSec === 0.0261);
+
+  const faster = song('Fix You', { bpm: 132 });
+  const moved = updatableSong(faster, project, manifest, []);
+  check('a song whose tempo changed is refused, not half-updated', moved.ok === false);
+  check('and the refusal says the audio is stale too',
+    !moved.ok && /out of date/.test(moved.reason), !moved.ok ? moved.reason : '');
+
+  const stranger = updatableSong(song('Yellow'), project, manifest, []);
+  check('a song never prepared is refused by name',
+    !stranger.ok && /never been prepared/.test(stranger.reason));
+
+  check('a song with audio on disk but no manifest entry is still updatable',
+    updatableSong(song('Yellow'), project, manifest, ['Yellow {120, G, 4-4}']).ok === true);
+
+  // The lead-in describes files on disk, so it is carried, never re-derived.
+  const info = songInfoFor(fixYou, project, '/Sets/Friday.als', 0.0261);
+  check('the manifest entry keeps the lead-in it was given', info.firstBarOffsetSec === 0.0261);
+  check('and is named by the same folder rule the audio was written under',
+    info.folder === folder, info.folder);
+
+  // Which prepared folder a set belongs to: the manifest says, not the name.
+  const at = (folder, fromSet, preparedAt) => ({
+    folder, manifest: { preparedBy: 'rehearsaltool', preparedAt, paddingSec: 0, songs: [], fromSet },
+  });
+  const sets = [
+    at('Rehearsal Tool/Sets/Friday 2026-01-01', 'Friday.als', '2026-01-01T00:00:00.000Z'),
+    at('Rehearsal Tool/Sets/Friday 2026-02-01', 'Friday.als', '2026-02-01T00:00:00.000Z'),
+    at('Rehearsal Tool/Sets/Saturday 2026-02-02', 'Saturday.als', '2026-02-02T00:00:00.000Z'),
+  ];
+  check('the set is found by what it was prepared from, not by today\'s date',
+    setFor(sets, 'Friday.als')?.folder.endsWith('2026-02-01') === true,
+    setFor(sets, 'Friday.als')?.folder);
+  check('an .als nothing was prepared from finds nothing',
+    setFor(sets, 'Sunday.als') === null);
+  check('a manifest with no fromSet is matched by the folder name instead',
+    setFor([at('Rehearsal Tool/Sets/Sunday 2026-03-01', undefined, '2026-03-01T00:00:00.000Z')], '/x/Sunday.als')
+      ?.folder.endsWith('Sunday 2026-03-01') === true);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

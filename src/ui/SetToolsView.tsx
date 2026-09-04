@@ -19,6 +19,7 @@ import { LYRICS_STUDIO } from './LyricClipsPanel';
 
 import SlatesPanel from './SlatesPanel';
 import LyricClipsPanel from './LyricClipsPanel';
+import UpdatePreparedPanel from './UpdatePreparedPanel';
 import { useStore } from '../lib/store';
 import { writeClipsToSet } from '../lib/alsWrite';
 
@@ -45,9 +46,9 @@ export default function SetToolsView() {
   const [lone, setLone] = useState<{ name: string; bytes: ArrayBuffer } | null>(null);
   const [outDir, setOutDir] = useState<local.FolderHandle | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const [tool, setTool] = useState<'check' | 'slates' | 'lyrics' | 'chords' | 'patches' | 'setlist'>(
-    'check',
-  );
+  const [tool, setTool] = useState<
+    'check' | 'slates' | 'lyrics' | 'chords' | 'patches' | 'setlist' | 'update'
+  >('check');
   const { library, currentSet } = useStore();
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
@@ -482,6 +483,7 @@ export default function SetToolsView() {
               ['chords', 'Chords'],
               ['patches', 'Patch changes'],
               ['setlist', 'Setlist'],
+              ['update', 'Update the band'],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -500,6 +502,15 @@ export default function SetToolsView() {
         <div id="settool-panel" role="tabpanel" aria-labelledby={`settool-${tool}`}>
           {project && (
             <>
+              {tool === 'update' && (
+                <UpdatePreparedPanel
+                  project={project}
+                  alsPath={lone ? null : setPath}
+                  selected={selected}
+                  titles={titles}
+                />
+              )}
+
               {tool === 'slates' && (
                 <>
                   {voices === null && (

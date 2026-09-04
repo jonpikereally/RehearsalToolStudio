@@ -11,6 +11,8 @@ import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import { PREPARED_FOLDER, PRINTS_FOLDER } from '../lib/prints';
 import { resolveStemPath } from '../lib/alsImport';
 import { songKey } from '../lib/alsParser';
+import { locatePrepared } from '../lib/locatePrepared';
+import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
 
 /**
  * One song, prepared for the band.
@@ -35,6 +37,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const [published, setPublished] = useState<PublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [updated, setUpdated] = useState<UpdateResult | null>(null);
 
   // The set, read afresh: the tracks are its, not the library's.
   useEffect(() => {
@@ -136,6 +139,46 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     } finally {
       setBusy(false);
       setProgress(null);
+    }
+  };
+
+  /**
+   * The words and sections, without the audio.
+   *
+   * Everything the set says *about* this song — its sections, chords, lyric
+   * lanes, key and patch changes — lives in `set.json` and the `.lrc`/`.cho`
+   * beside the parts, not inside them. Fixing a lyric should not mean encoding
+   * the stems again, and after a rehearsal where three section names changed
+   * it is the difference between the band having them tonight and next week.
+   */
+  const updateWordsOnly = async () => {
+    if (!project || !alsSong || !song.setPath) return;
+    setBusy(true);
+    setError(null);
+    setUpdated(null);
+    setPublished(null);
+    try {
+      const folder = (await publishFolder()) ?? (await pickPublishFolder());
+      const found = await locatePrepared(folder, song.setPath);
+      if ('error' in found) throw new Error(found.error);
+
+      const done = await updatePrepared({
+        project,
+        alsPath: song.setPath,
+        setFolder: found.setFolder,
+        manifest: found.manifest,
+        presentFolders: found.presentFolders,
+        only: [alsSong.title],
+        writeFile: (path, data) => local.writeFile(folder, '', path, data),
+      });
+      setUpdated(done);
+      // The library carries the words and sections too, so it follows.
+      setPublished(await publishLibrary(folder));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/abort/i.test(message)) setError(message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -254,6 +297,27 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
           </div>
         )}
 
+        {updated && (
+          <div className="notice done" role="status">
+            {updated.updated.length ? (
+              <>
+                <strong>Words and sections updated.</strong> No audio was read or replaced.
+              </>
+            ) : (
+              <>
+                <strong>Nothing was updated.</strong>{' '}
+                {updated.skipped.map((s) => s.reason).join('; ')}
+              </>
+            )}
+            {updated.stale.length > 0 && (
+              <>
+                <br />
+                It has no words now, and the old file is still there: {updated.stale.join(', ')}
+              </>
+            )}
+          </div>
+        )}
+
         <div className="btn-row">
           {result ? (
             // Finished: one thing left to do, and it is the plain one.
@@ -268,6 +332,14 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
                 onClick={() => void go()}
               >
                 {busy ? 'Preparing…' : publishFolderName ? 'Prepare' : 'Choose the band\'s folder and prepare'}
+              </button>
+              <button
+                className="btn"
+                disabled={busy || !alsSong}
+                onClick={() => void updateWordsOnly()}
+                title="Rewrite this song's sections, chords, lyrics and patch changes in the band's folder, leaving its audio exactly as it is"
+              >
+                Words and sections only
               </button>
               <button className="btn" onClick={onClose} disabled={busy}>
                 Cancel
