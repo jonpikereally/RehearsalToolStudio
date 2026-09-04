@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import type { Player } from '../lib/usePlayer';
-import { mixesOf, stemsOf } from '../lib/stemMix';
+import { formatPan, mixesOf, stemsOf } from '../lib/stemMix';
 import { isReferenceName } from '../lib/scan';
 import { hasDevices } from '../lib/usePlayer';
 import { isSetClick } from '../lib/songLoader';
 import { useStore } from '../lib/store';
 import BlockHead, { type BlockChrome } from './BlockHead';
+import PanDial from './PanDial';
+import { mixerLayout, setMixerLayout, type MixerLayout } from '../lib/pageLayout';
 import { SongEngine } from '../lib/audioEngine';
 import BounceDialog from './BounceDialog';
 import { stemAudible } from '../lib/audioEngine';
@@ -16,6 +18,12 @@ import { stemAudible } from '../lib/audioEngine';
  *
  * Solo follows DAW convention: soloing anything silences every other stem, and
  * overrides that stem's own mute, so you hear only what you picked.
+ *
+ * It runs either way up. **Rows** stack down the page, each channel a couple of
+ * lines with a fat horizontal fader — which is what works on a phone. **Strips**
+ * stand side by side like a desk, so eight faders are in view and in reach at
+ * once. The controls are the same objects in both; only how they are stacked
+ * changes, so nothing can behave differently in one layout than the other.
  */
 /** ~30fps: fast enough to read as a meter, a third of the cost of every frame. */
 const METER_INTERVAL_MS = 33;
@@ -117,6 +125,14 @@ export default function StemMixer({
     return () => cancelAnimationFrame(frame);
   }, [chrome.collapsed, player.playing, player.engine]);
 
+  /** Rows or strips, on this device, on every song. */
+  const [layout, setLayout] = useState<MixerLayout>(mixerLayout);
+  const strips = layout === 'strips';
+  const chooseLayout = (next: MixerLayout) => {
+    setMixerLayout(next);
+    setLayout(next);
+  };
+
   /** While dragging, the provisional order; null the rest of the time. */
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -195,13 +211,19 @@ export default function StemMixer({
 
   const onDragMove = (e: React.PointerEvent) => {
     if (!draggingId || !dragOrder) return;
-    // Reorder as soon as the pointer crosses into another row's box, so the
-    // list rearranges under the finger rather than only on release.
-    const y = e.clientY;
+    /*
+     * Reorder as soon as the pointer crosses into another channel's box, so
+     * the list rearranges under the finger rather than only on release. Which
+     * way it crosses depends on which way the mixer runs.
+     */
     let over = -1;
     dragOrder.forEach((id, index) => {
       const rect = rowRefs.current.get(id)?.getBoundingClientRect();
-      if (rect && y >= rect.top && y <= rect.bottom) over = index;
+      if (!rect) return;
+      const inside = strips
+        ? e.clientX >= rect.left && e.clientX <= rect.right
+        : e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (inside) over = index;
     });
 
     const from = dragOrder.indexOf(draggingId);
@@ -221,7 +243,7 @@ export default function StemMixer({
 
   return (
     <section
-      className={chrome.dragging ? 'block mixer dragging' : 'block mixer'}
+      className={`block mixer ${strips ? 'strips' : 'rows'}${chrome.dragging ? ' dragging' : ''}`}
       aria-label="Stem mixer"
     >
       <BlockHead
@@ -229,6 +251,18 @@ export default function StemMixer({
         chrome={chrome}
         extra={
           <div className="block-actions">
+            <button
+              className="chip"
+              onClick={() => chooseLayout(strips ? 'rows' : 'strips')}
+              title={
+                strips
+                  ? 'Channel strips side by side — tap for rows down the page'
+                  : 'Rows down the page — tap for channel strips side by side'
+              }
+              aria-label={`Mixer layout: ${strips ? 'strips' : 'rows'}. Tap to switch.`}
+            >
+              <span aria-hidden>{strips ? '▥' : '≣'}</span> {strips ? 'Strips' : 'Rows'}
+            </button>
             <button
               className="chip"
               onClick={() => player.showAudioReport(true)}
@@ -288,42 +322,40 @@ export default function StemMixer({
         <BounceDialog song={song} player={player} onClose={() => setBouncing(false)} />
       )}
 
-      {!chrome.collapsed && shown.map((stem) => {
-        const movable = stem.kind === 'stem';
-        const state = player.stemState(stem.id) ?? { level: 1, muted: false, soloed: false, pan: 0 };
-        /*
-         * Grey out only what genuinely isn't sounding, mirroring the engine.
-         * A reference beside stems is silent unless SWITCH brings it in, and
-         * switching it in silences everything else — so the whole mixer greys
-         * out around it.
-         */
-        const switching = player.switchedId !== null;
-        const switchedIn = player.switchedId === stem.id;
-        const audible = switching
-          ? switchedIn
-          : stem.kind === 'reference' && hasStemChannels
-            ? false
-            : stemAudible(state, player.anySoloed);
-        const soloBeatsMute = state.muted && state.soloed;
-        const classes = [
-          'stem',
-          audible ? '' : 'quiet',
-          switchedIn ? 'switched' : '',
-          draggingId === stem.id ? 'dragging' : '',
-        ]
-          .filter(Boolean)
-          .join(' ');
+      {!chrome.collapsed && (
+        <div className="mixer-channels">
+          {shown.map((stem) => {
+            const movable = stem.kind === 'stem';
+            const state = player.stemState(stem.id) ?? { level: 1, muted: false, soloed: false, pan: 0 };
+            /*
+             * Grey out only what genuinely isn't sounding, mirroring the engine.
+             * A reference beside stems is silent unless SWITCH brings it in, and
+             * switching it in silences everything else — so the whole mixer greys
+             * out around it.
+             */
+            const switching = player.switchedId !== null;
+            const switchedIn = player.switchedId === stem.id;
+            const audible = switching
+              ? switchedIn
+              : stem.kind === 'reference' && hasStemChannels
+                ? false
+                : stemAudible(state, player.anySoloed);
+            const soloBeatsMute = state.muted && state.soloed;
+            const classes = [
+              'stem',
+              audible ? '' : 'quiet',
+              switchedIn ? 'switched' : '',
+              draggingId === stem.id ? 'dragging' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
 
-        return (
-          <div
-            key={stem.id}
-            className={classes}
-            ref={(el) => {
-              if (el) rowRefs.current.set(stem.id, el);
-              else rowRefs.current.delete(stem.id);
-            }}
-          >
-            <div className="stem-row">
+            /*
+             * Every control, built once. Rows and strips are two arrangements
+             * of these same elements — so a change to what a button does
+             * cannot land in one layout and miss the other.
+             */
+            const grip = (
               <button
                 className="stem-grip"
                 onPointerDown={(e) => startDrag(e, stem.id)}
@@ -332,16 +364,18 @@ export default function StemMixer({
                 onPointerCancel={endDrag}
                 onKeyDown={(e) => {
                   // Arrow keys do the same job without a pointer.
-                  if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(stem.id, -1); }
-                  if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(stem.id, 1); }
+                  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); moveBy(stem.id, -1); }
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); moveBy(stem.id, 1); }
                 }}
                 aria-label={`Reorder ${stem.name}. Use arrow keys to move it.`}
                 title="Drag to reorder"
               >
                 ⠿
               </button>
+            );
 
-              {movable && renamingId === stem.id ? (
+            const name =
+              movable && renamingId === stem.id ? (
                 <input
                   className="stem-name-input"
                   defaultValue={stem.name}
@@ -366,9 +400,10 @@ export default function StemMixer({
                 </button>
               ) : (
                 <span className={`stem-name ${stem.kind}`}>{stem.name}</span>
-              )}
+              );
 
-              {stem.kind === 'reference' ? (
+            const buttons =
+              stem.kind === 'reference' ? (
                 /*
                  * One button instead of mute and solo. The channel still has
                  * both underneath — the engine treats it like any other — they
@@ -390,81 +425,82 @@ export default function StemMixer({
                 </button>
               ) : (
                 <>
-              {movable && (
-                <button
-                  className="stem-btn off-btn"
-                  onClick={() => setEnabled(stem.id, false)}
-                  aria-label={`Turn off ${stem.name}`}
-                  title="Turn this part off — it won't be loaded or rendered at all"
-                >
-                  ⏻
-                </button>
-              )}
-              <button
-                className={`stem-btn${state.muted ? ' mute-on' : ''}${soloBeatsMute ? ' overridden' : ''}`}
-                onClick={() => player.setStemMuted(stem.id, !state.muted)}
-                aria-pressed={state.muted}
-                aria-label={
-                  soloBeatsMute
-                    ? `${stem.name} is muted, but solo is overriding it`
-                    : `Mute ${stem.name}`
-                }
-                title={
-                  soloBeatsMute
-                    ? 'Muted — but soloed, so it is sounding. Drop the solo to silence it again.'
-                    : 'Mute'
-                }
-              >
-                M
-              </button>
-              <button
-                className={`stem-btn${state.soloed ? ' solo-on' : ''}`}
-                onClick={() => player.setStemSolo(stem.id, !state.soloed)}
-                aria-pressed={state.soloed}
-                aria-label={`Solo ${stem.name}`}
-                title="Solo"
-              >
-                S
-              </button>
-                </>
-              )}
-
-              {player.supportsPanning && (
-                <>
-                  <span className="stem-sub">pan</span>
-                  <input
-                    type="range"
-                    className="stem-pan"
-                    min={-1}
-                    max={1}
-                    step={0.02}
-                    value={state.pan}
-                    onChange={(e) => player.setStemPan(stem.id, Number(e.target.value))}
-                    aria-label={`${stem.name} pan`}
-                  />
+                  {movable && (
+                    <button
+                      className="stem-btn off-btn"
+                      onClick={() => setEnabled(stem.id, false)}
+                      aria-label={`Turn off ${stem.name}`}
+                      title="Turn this part off — it won't be loaded or rendered at all"
+                    >
+                      ⏻
+                    </button>
+                  )}
                   <button
-                    className="stem-db secondary mono"
-                    onClick={() => player.setStemPan(stem.id, 0)}
-                    title="Centre"
+                    className={`stem-btn${state.muted ? ' mute-on' : ''}${soloBeatsMute ? ' overridden' : ''}`}
+                    onClick={() => player.setStemMuted(stem.id, !state.muted)}
+                    aria-pressed={state.muted}
+                    aria-label={
+                      soloBeatsMute
+                        ? `${stem.name} is muted, but solo is overriding it`
+                        : `Mute ${stem.name}`
+                    }
+                    title={
+                      soloBeatsMute
+                        ? 'Muted — but soloed, so it is sounding. Drop the solo to silence it again.'
+                        : 'Mute'
+                    }
                   >
-                    {formatPan(state.pan)}
+                    M
+                  </button>
+                  <button
+                    className={`stem-btn${state.soloed ? ' solo-on' : ''}`}
+                    onClick={() => player.setStemSolo(stem.id, !state.soloed)}
+                    aria-pressed={state.soloed}
+                    aria-label={`Solo ${stem.name}`}
+                    title="Solo"
+                  >
+                    S
                   </button>
                 </>
-              )}
-            </div>
+              );
 
-            <span className="stem-meter" aria-hidden>
-              <span
-                className="stem-meter-fill"
-                ref={(el) => {
-                  if (el) meterRefs.current.set(stem.id, el);
-                  else meterRefs.current.delete(stem.id);
-                }}
+            const pan = player.supportsPanning && (
+              <PanDial
+                value={state.pan}
+                onChange={(next) =>
+                  player.setStemPan(
+                    stem.id,
+                    // The engine is where the live figure is; what this render
+                    // captured may already be several key repeats behind.
+                    typeof next === 'function' ? next(player.stemState(stem.id)?.pan ?? 0) : next,
+                  )
+                }
+                label={stem.name}
               />
-            </span>
+            );
+            const panReadout = player.supportsPanning && (
+              <button
+                className="stem-db secondary mono"
+                onClick={() => player.setStemPan(stem.id, 0)}
+                title="Centre"
+              >
+                {formatPan(state.pan)}
+              </button>
+            );
 
-            {/* Volume gets a row to itself, full width. */}
-            <div className="stem-row">
+            const meter = (
+              <span className="stem-meter" aria-hidden>
+                <span
+                  className="stem-meter-fill"
+                  ref={(el) => {
+                    if (el) meterRefs.current.set(stem.id, el);
+                    else meterRefs.current.delete(stem.id);
+                  }}
+                />
+              </span>
+            );
+
+            const fader = (
               <input
                 type="range"
                 className="stem-fader"
@@ -475,7 +511,9 @@ export default function StemMixer({
                 onChange={(e) => player.setStemLevel(stem.id, Number(e.target.value))}
                 aria-label={`${stem.name} level`}
               />
-              {/* Tap the readout to snap back to unity. */}
+            );
+            // Tap the readout to snap back to unity.
+            const db = (
               <button
                 className="stem-db mono"
                 onClick={() => player.setStemLevel(stem.id, 1)}
@@ -483,10 +521,64 @@ export default function StemMixer({
               >
                 {formatLevel(state.level)}
               </button>
-            </div>
-          </div>
-        );
-      })}
+            );
+
+            return (
+              <div
+                key={stem.id}
+                className={classes}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(stem.id, el);
+                  else rowRefs.current.delete(stem.id);
+                }}
+              >
+                {strips ? (
+                  <>
+                    <div className="strip-top">
+                      {grip}
+                      {name}
+                    </div>
+                    {/*
+                      Meter beside the fader, both stood on end. They are the
+                      same elements as in rows, turned a quarter turn, so the
+                      meter still fills towards the end its scale runs to.
+                    */}
+                    <div className="strip-body">
+                      <span className="upright meter-slot">{meter}</span>
+                      <span className="upright fader-slot">{fader}</span>
+                    </div>
+                    {db}
+                    {pan && (
+                      <div className="strip-pan">
+                        {pan}
+                        {panReadout}
+                      </div>
+                    )}
+                    <div className="strip-buttons">{buttons}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="stem-row">
+                      {grip}
+                      {name}
+                      {buttons}
+                      {pan && <span className="stem-sub">pan</span>}
+                      {pan}
+                      {panReadout}
+                    </div>
+                    {meter}
+                    {/* Volume gets a row to itself, full width. */}
+                    <div className="stem-row">
+                      {fader}
+                      {db}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -497,11 +589,4 @@ function formatLevel(level: number): string {
   const db = 20 * Math.log10(level);
   if (Math.abs(db) < 0.05) return '0.0';
   return `${db > 0 ? '+' : '−'}${Math.abs(db).toFixed(1)}`;
-}
-
-/** Desk-style pan readout: C in the middle, L/R with a percentage either side. */
-function formatPan(pan: number): string {
-  const amount = Math.round(Math.abs(pan) * 100);
-  if (amount < 2) return 'C';
-  return `${pan < 0 ? 'L' : 'R'}${amount}`;
 }

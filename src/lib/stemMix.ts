@@ -135,6 +135,13 @@ function byOrder(a: Variant, b: Variant): number {
   return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
 }
 
+/** Desk-style pan readout: C in the middle, L/R with a percentage either side. */
+export function formatPan(pan: number): string {
+  const amount = Math.round(Math.abs(pan) * 100);
+  if (amount < 2) return 'C';
+  return `${pan < 0 ? 'L' : 'R'}${amount}`;
+}
+
 export function stemsOf(song: Song): Variant[] {
   return song.variants.filter((v) => !v.hidden && v.role === 'stem').sort(byOrder);
 }

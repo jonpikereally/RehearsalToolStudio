@@ -65,6 +65,15 @@ interface Track {
   fileStartSec: number;
   /** Null on browsers without StereoPannerNode; panning is then a no-op. */
   panner: StereoPannerNode | null;
+  /**
+   * Where the pan was last *asked* to go.
+   *
+   * Not read back off the panner: that value is a fifth of the way through a
+   * 20ms ramp for most of the time anyone might look, so a control that
+   * nudges relative to it walks backwards, and a mix persisted the instant a
+   * drag ends saves somewhere the pan was passing through.
+   */
+  pan: number;
   /** Where the source feeds in: the device chain when there is one, else the fader. */
   into: AudioNode;
   source: AudioBufferSourceNode | null;
@@ -318,6 +327,7 @@ export class SongEngine {
         regions,
         fileStartSec,
         panner,
+        pan: config.pan ?? 0,
         source: null,
         role: config.role,
         level: config.level ?? 1,
@@ -457,8 +467,10 @@ export class SongEngine {
   setStemPan(id: string, pan: number): void {
     if (id === CLICK_TRACK_ID) this.clickPan = Math.max(-1, Math.min(1, pan));
     const track = this.tracks.get(id);
-    if (!track?.panner || !this.ctx) return;
+    if (!track) return;
     const value = Math.max(-1, Math.min(1, pan));
+    track.pan = value;
+    if (!track.panner || !this.ctx) return;
     const now = this.ctx.currentTime;
     const p = track.panner.pan;
     p.cancelScheduledValues(now);
@@ -496,7 +508,7 @@ export class SongEngine {
         id: track.id,
         buffer: track.buffer,
         level: track.level,
-        pan: track.panner?.pan.value ?? 0,
+        pan: track.pan,
         // Carried through, so a part the arrangement drops is dropped in the
         // print too rather than playing on where you can't hear it.
         regions: track.regions ?? undefined,
@@ -556,7 +568,7 @@ export class SongEngine {
       level: track.level,
       muted: track.muted,
       soloed: track.soloed,
-      pan: track.panner?.pan.value ?? 0,
+      pan: track.pan,
     };
   }
 
@@ -761,6 +773,8 @@ export class SongEngine {
       gain,
       analyser,
       panner,
+      // Kept across rebuilds, so a click panned hard left stays there.
+      pan: this.clickPan,
       source: null,
       role: 'click',
       regionGain: null,

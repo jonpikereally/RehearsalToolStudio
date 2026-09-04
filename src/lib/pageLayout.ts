@@ -55,6 +55,32 @@ export function setBlockOrder(order: BlockId[]): void {
   writeJson(LS_ORDER, order);
 }
 
+/* --------------------------------- mixer ---------------------------------- */
+
+/**
+ * Which way the mixer runs: a list of rows down the page, or channel strips
+ * side by side the way a desk is laid out.
+ *
+ * Rows read better on a phone and give the names room; strips let you see
+ * eight faders at once and reach across them, which is what you want on a
+ * laptop with a mix to balance. Per device and the same on every song — a
+ * guitarist who thinks in strips thinks in strips all night — and it changes
+ * nothing about the mix itself, so it never goes near the library.
+ */
+export type MixerLayout = 'rows' | 'strips';
+
+const LS_MIXER = 'ls.player.mixerLayout';
+
+export function mixerLayout(): MixerLayout {
+  return readJson<MixerLayout>(LS_MIXER, 'rows') === 'strips' ? 'strips' : 'rows';
+}
+
+export function setMixerLayout(layout: MixerLayout): void {
+  writeJson(LS_MIXER, layout);
+}
+
+/* ------------------------------- collapsing ------------------------------- */
+
 export function isCollapsed(songId: string, block: BlockId): boolean {
   return (readJson<Record<string, BlockId[]>>(LS_COLLAPSED, {})[songId] ?? []).includes(block);
 }

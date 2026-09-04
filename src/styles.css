@@ -1136,6 +1136,180 @@ button {
   border-bottom: none;
 }
 
+/* ------------------------------- pan dial -------------------------------- */
+
+/*
+ * Pan as a knob. A slider says "somewhere along a line"; pan is an angle
+ * either side of centre, and a knob says that without a label — while taking
+ * a quarter of the width, which is what makes a channel strip fit at all.
+ */
+.pan-dial {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-dim);
+  cursor: ns-resize;
+  /* Dragging a knob must not scroll the page, nor select the text beside it. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pan-dial:hover,
+.pan-dial.dragging {
+  color: var(--accent);
+}
+
+.pan-dial:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pan-dial svg {
+  display: block;
+}
+
+.pan-dial-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* How far off centre, drawn from centre — so the eye reads the offset, not
+   the absolute position. */
+.pan-dial-amount {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.pan-dial-pointer {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.pan-dial-cap {
+  fill: currentColor;
+}
+
+/* ----------------------------- channel strips ---------------------------- */
+
+/*
+ * The mixer stood on end: channels side by side the way a desk lays them out,
+ * so eight faders are in view and in reach at once.
+ *
+ * The controls are the same elements as in rows — the faders and meters are
+ * simply turned a quarter turn inside a slot. Rotating rather than switching
+ * to a vertical <input type="range"> keeps every custom track and thumb style,
+ * and behaves the same in every engine, where vertical range inputs do not.
+ */
+.mixer.strips .mixer-channels {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.mixer.strips .stem {
+  flex: none;
+  /* Wide enough for off, mute and solo to sit on one line, and no wider. */
+  width: 106px;
+  padding: 10px 6px;
+  border-bottom: none;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.mixer.strips .stem.dragging {
+  outline: 1px solid var(--accent);
+}
+
+.mixer.strips .strip-top {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.mixer.strips .strip-top .stem-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mixer.strips .stem-name-input {
+  width: 100%;
+  flex: 1;
+}
+
+.mixer.strips .stem-grip {
+  width: 16px;
+  height: 24px;
+}
+
+.mixer.strips .strip-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upright {
+  display: grid;
+  place-items: center;
+}
+
+.mixer.strips .fader-slot {
+  width: 44px;
+  height: 150px;
+}
+
+.mixer.strips .fader-slot .stem-fader {
+  width: 150px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.mixer.strips .meter-slot {
+  width: 6px;
+  height: 150px;
+}
+
+/* Turned with the fader, so it still fills towards the end its scale runs to. */
+.mixer.strips .meter-slot .stem-meter {
+  width: 150px;
+  height: 6px;
+  margin: 0;
+  transform: rotate(-90deg);
+}
+
+.mixer.strips .strip-pan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.mixer.strips .strip-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+.mixer.strips .stem-switch {
+  width: 100%;
+}
+
 .stem.quiet .stem-name,
 .stem.quiet .stem-db {
   opacity: 0.4;
