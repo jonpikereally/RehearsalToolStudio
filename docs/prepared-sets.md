@@ -109,7 +109,10 @@ length of the song, and is meant to be played alongside the others.
   fades applied, clip and track gain in, a clip's own transposition and warp
   speed rendered in. Anything on a return bus is ignored, and third-party
   plugins are not rendered.
-- MP3 at 192 kbps, at the source file's sample rate, with the source's
+- MP3 at 192 kbps, at the rate the Studio's audio engine was running at when
+  the set was prepared — the Mac's output rate, every source having been
+  resampled to it on decode — and the encoder's lead-in measured at that same
+  rate; with the source's
   channel count up to stereo.
 
 Parts that could not be written are skipped and named in the Studio, not

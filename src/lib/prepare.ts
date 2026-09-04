@@ -65,6 +65,15 @@ export interface PrepareOptions {
   readManifest?: () => Promise<PreparedManifest | null>;
   bitrate?: number;
   /**
+   * The rate `decode` produces buffers at — the audio context's, which is the
+   * Mac's output rate. Every part is rendered and encoded at it, and so must
+   * the encoder's lead-in be measured at it: the lead-in is a fixed count of
+   * samples, which is a different number of seconds at 48 kHz than at 44.1,
+   * and a figure measured at the wrong rate puts every song two milliseconds
+   * off its grid.
+   */
+  sampleRate?: number;
+  /**
    * How much decoded source audio to keep between parts. Past it, the files
    * used longest ago are let go and read again if they come round.
    */
@@ -399,7 +408,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     return null;
   };
 
-  const paddingSec = await measurePadding();
+  const paddingSec = await measurePadding(opts.sampleRate ?? 44100);
 
   /*
    * Samples, written once for the whole run by what they contain. A click's

@@ -131,6 +131,8 @@ export default function PrepareSet() {
         readFile: async (path) => (await readBytes(path)).bytes,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
+        // What everything is rendered at, so the lead-in is measured there too.
+        sampleRate: ctx.sampleRate,
         // Cached under the file it came from: a key without it once served
         // one stem's render for every stem of the song.
         shift: (buffer, semitones, speed, source) =>
