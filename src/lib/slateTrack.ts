@@ -37,7 +37,7 @@ export interface SlateTrackResult {
 
 import { cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
 
-const SAMPLE_RATE = 44100;
+const SAMPLE_RATE = 48000;
 
 
 export function addSlatesTrack(xml: string, slates: SlateClip[], nowSec: number): SlateTrackResult {

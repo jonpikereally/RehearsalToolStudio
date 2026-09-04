@@ -23,7 +23,7 @@ export const DEFAULT_BITRATE = 192;
  * on the encoder build, and `measurePadding` reports what this one actually
  * does.
  */
-export async function measurePadding(sampleRate = 44100): Promise<number> {
+export async function measurePadding(sampleRate = 48000): Promise<number> {
   const seconds = 2;
   const ctx = new OfflineAudioContext(1, sampleRate * seconds, sampleRate);
   const probe = ctx.createBuffer(1, sampleRate * seconds, sampleRate);

@@ -224,9 +224,9 @@ export default function SetToolsView() {
         slates.push({
           title: entry.title,
           fileName,
-          // Mono 16-bit at 44.1 kHz, straight from the helper: the data is
+          // Mono 16-bit at 48 kHz, straight from the helper: the data is
           // everything after the 44-byte header, two bytes a frame.
-          durationSec: (wav.length - 44) / 2 / 44100,
+          durationSec: (wav.length - 44) / 2 / 48000,
           sizeBytes: wav.length,
           startBeat: (entry.startBar - 1) * beatsPerBar,
           bpm: entry.bpm,

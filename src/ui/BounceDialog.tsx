@@ -71,7 +71,7 @@ export default function BounceDialog({
   }, [song.variants, song.title, tracks]);
   const folder = printFolder(settings.root, madeFrom?.name ?? '');
   const seconds = tracks.length ? Math.max(...tracks.map((t) => t.buffer.duration)) : 0;
-  const rate = tracks[0]?.buffer.sampleRate ?? 44100;
+  const rate = tracks[0]?.buffer.sampleRate ?? 48000;
   const estimatedBytes = Math.round(seconds * rate * 4) + 44;
   const scale = song.tempoScale ?? 1;
 

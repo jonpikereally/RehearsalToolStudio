@@ -9,7 +9,7 @@
  *     npm run slates:helper
  *
  * GET  /voices          → { voices: [{ name, lang }] }
- * POST /speak           → audio/wav (mono 16-bit 44.1 kHz)
+ * POST /speak           → audio/wav (mono 16-bit 48 kHz)
  *      { text, voice }
  *
  * Only the studio's own origins may call it, it binds to 127.0.0.1 alone, and
@@ -48,7 +48,7 @@ function speak(text, voice) {
     // the plain mono WAV an Ableton cue track wants. The text goes in on
     // stdin, where nothing in it can read as an option.
     execFileSync('say', ['-v', voice, '-o', caf, '--data-format=LEF32@22050', '-f', '-'], { input: text });
-    execFileSync('afconvert', ['-f', 'WAVE', '-d', 'LEI16@44100', '-c', '1', caf, wav]);
+    execFileSync('afconvert', ['-f', 'WAVE', '-d', 'LEI16@48000', '-c', '1', caf, wav]);
     const out = readFileSync(wav);
     /*
      * A premium voice macOS has evicted still answers `say -v ?` and exits
@@ -56,7 +56,7 @@ function speak(text, voice) {
      * beats fourteen silent files nobody catches until the show. 0.2s is well
      * under any spoken word and well over the ghost's empty buffer.
      */
-    if ((out.length - 44) / 2 / 44100 < 0.2) {
+    if ((out.length - 44) / 2 / 48000 < 0.2) {
       throw new Error(
         `"${voice}" produced no audio — its download was likely evicted by macOS. ` +
           'Re-download it in System Settings → Accessibility → Spoken Content, or pick another voice.',

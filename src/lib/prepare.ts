@@ -408,7 +408,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     return null;
   };
 
-  const paddingSec = await measurePadding(opts.sampleRate ?? 44100);
+  const paddingSec = await measurePadding(opts.sampleRate ?? 48000);
 
   /*
    * Samples, written once for the whole run by what they contain. A click's

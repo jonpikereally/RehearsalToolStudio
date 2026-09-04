@@ -458,7 +458,7 @@ function drumPads(chunk: string): Map<number, Pad> {
     const path = decodeXml(sample.match(/<RelativePath Value="([^"]+)"/)?.[1] ?? sample.match(/<Path Value="([^"]+)"/)?.[1] ?? '');
     if (!path) continue;
     const absPath = decodeXml(sample.match(/<Path Value="([^"]+)"/)?.[1] ?? '') || null;
-    const rate = parseFloat(sample.match(/<DefaultSampleRate Value="(\d+)"/)?.[1] ?? '44100') || 44100;
+    const rate = parseFloat(sample.match(/<DefaultSampleRate Value="(\d+)"/)?.[1] ?? '48000') || 48000;
     const startFrames = parseFloat(body.match(/<SampleStart Value="([-\d.]+)"/)?.[1] ?? '0') || 0;
     // The pad's Simpler has its own volume, in dB.
     const db = parseFloat(body.match(/<Volume>\s*<LomId[^>]*>\s*<Manual Value="([-\d.]+)"/)?.[1] ?? '0') || 0;
