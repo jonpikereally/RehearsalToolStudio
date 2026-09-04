@@ -63,6 +63,11 @@ export interface PrepareOptions {
    */
   readManifest?: () => Promise<PreparedManifest | null>;
   bitrate?: number;
+  /**
+   * How much decoded source audio to keep between parts. Past it, the files
+   * used longest ago are let go and read again if they come round.
+   */
+  sourceCacheBytes?: number;
   /** Resolve a path as the set writes it to a path in the library. */
   resolvePath: (relative: string) => string | null;
   readFile: (path: string) => Promise<ArrayBuffer>;
@@ -123,6 +128,16 @@ export function partsFor(song: AlsSong, plan?: SongPlan): PlannedPart[] {
   }
   return out;
 }
+
+/**
+ * What the decoded-source cache may hold.
+ *
+ * Source WAVs are enormous decoded — a four-minute stereo file is 85 MB — and
+ * a set's worth of them held all at once is what kills the encoder's worker,
+ * which the browser does silently. A gigabyte still spans the several clips of
+ * a part that share one file, which is where nearly all of the saving is.
+ */
+const DEFAULT_SOURCE_CACHE_BYTES = 1e9;
 
 export interface PrepareResult {
   folder: string;
@@ -225,21 +240,48 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   let partsWritten = 0;
 
   /*
-   * Decoded source files, kept for the whole run. A set of fourteen songs
-   * shares very few files between songs, but a single song's tracks often point
-   * at the same file, and decoding a 50 MB WAV twice is pure waste.
+   * Decoded source files, kept between parts under a budget.
+   *
+   * A single song's tracks often point at the same file, and decoding a 50 MB
+   * WAV twice is pure waste — but held without limit these are what run the
+   * machine out of memory, and the first thing to die is the encoder's worker,
+   * silently. So: a Map in use order, oldest let go when the budget is passed.
+   * Evicting only drops this reference; a buffer already placed for the part
+   * being rendered is still held by the placement and is unaffected.
    */
+  const budget = opts.sourceCacheBytes ?? DEFAULT_SOURCE_CACHE_BYTES;
   const decoded = new Map<string, AudioBuffer>();
+  const sizeOf = (b: AudioBuffer) => b.length * b.numberOfChannels * 4;
+  let decodedBytes = 0;
+
+  const remember = (key: string, buffer: AudioBuffer): void => {
+    decoded.set(key, buffer);
+    decodedBytes += sizeOf(buffer);
+    for (const [oldest, old] of decoded) {
+      if (decodedBytes <= budget) break;
+      // Never the one just read: it is about to be used.
+      if (oldest === key) continue;
+      decoded.delete(oldest);
+      decodedBytes -= sizeOf(old);
+    }
+  };
+
   const loadFile = async (relative: string, absPath?: string): Promise<AudioBuffer | null> => {
     const path = resolvePath(relative);
     const candidates = [path, absPath ? `abs:${absPath}` : null].filter((p): p is string => !!p);
     for (const [i, candidate] of candidates.entries()) {
-      const already = decoded.get(candidate.toLowerCase());
-      if (already) return already;
+      const key = candidate.toLowerCase();
+      const already = decoded.get(key);
+      if (already) {
+        // Touch it, so the Map's order stays "least recently used first".
+        decoded.delete(key);
+        decoded.set(key, already);
+        return already;
+      }
       try {
         const bytes = await readFile(candidate);
         const buffer = await decode(bytes);
-        decoded.set(candidate.toLowerCase(), buffer);
+        remember(key, buffer);
         return buffer;
       } catch (err) {
         // Not in the folder under that name: a sample the set keeps

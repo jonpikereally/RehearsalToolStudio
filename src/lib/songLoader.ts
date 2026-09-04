@@ -95,6 +95,27 @@ export function keepReady(songIds: string[], budgetBytes: number): void {
   const wanted = new Set(songIds);
   for (const id of [...heldSongs.keys()]) if (!wanted.has(id)) releaseSong(id);
   makeRoom(null);
+  heldChanged();
+}
+
+/**
+ * Told whenever what is held changes.
+ *
+ * The player says how much of a run is ready, and preparing lets the whole lot
+ * go to make room — so without this the page would go on claiming three songs
+ * were a keypress away while none of them were.
+ */
+const heldListeners = new Set<() => void>();
+
+export function onHeldChange(listener: () => void): () => void {
+  heldListeners.add(listener);
+  return () => {
+    heldListeners.delete(listener);
+  };
+}
+
+function heldChanged(): void {
+  for (const listener of heldListeners) listener();
 }
 
 /** Let every held song go: the run is over, or was never wanted. */
@@ -278,6 +299,26 @@ export interface FileStanding {
 export interface FilesReport {
   missing: FileStanding[];
   forbidden: FileStanding[];
+  /**
+   * Musical parts with not one file to play — every clip of them missing or
+   * unreadable. The set's click and cues are never counted among these: a
+   * song that has only those is a song with nothing to hear.
+   */
+  silentParts: string[];
+  /** How many musical parts the song has at all, playable or not. */
+  musicalParts: number;
+}
+
+/**
+ * Whether opening this song would give you nothing but a click.
+ *
+ * Worth its own question because the answer is different in kind from "some
+ * files are missing": seven of nine parts missing is a thin song, and all of
+ * them missing is not a song at all. Someone about to open it deserves to
+ * know which of those it is before they wait for it to load.
+ */
+export function nothingToHear(report: FilesReport): boolean {
+  return report.musicalParts > 0 && report.silentParts.length === report.musicalParts;
 }
 
 /**
@@ -295,17 +336,37 @@ export async function filesReport(song: Song, { songOnly = false } = {}): Promis
    * a folder that had in fact been allowed.
    */
   const wanted = new Map<string, { path: string; part: string }>();
+  /** Each musical part's files, so a part can be judged whole. */
+  const musical = new Map<string, string[]>();
+
   for (const v of variantsToLoad(song)) {
-    if (songOnly && isSetPart(song, v)) continue;
-    for (const path of v.clips?.length ? v.clips.map((c) => c.path) : [v.path]) {
+    const setPart = isSetPart(song, v);
+    if (songOnly && setPart) continue;
+    const paths = v.clips?.length ? v.clips.map((c) => c.path) : [v.path];
+    if (!setPart) musical.set(v.name, paths);
+    for (const path of paths) {
       if (!wanted.has(path.toLowerCase())) wanted.set(path.toLowerCase(), { path, part: v.name });
     }
   }
-  const report: FilesReport = { missing: [], forbidden: [] };
+
+  const report: FilesReport = {
+    missing: [],
+    forbidden: [],
+    silentParts: [],
+    musicalParts: musical.size,
+  };
+  const unplayable = new Set<string>();
   for (const { path, part } of wanted.values()) {
     const standing = await availability(path);
     if (standing === 'missing') report.missing.push({ part, path });
     if (standing === 'forbidden') report.forbidden.push({ part, path });
+    if (standing !== 'here') unplayable.add(path.toLowerCase());
+  }
+
+  // An arranged part is silent only when every one of its clips is gone; one
+  // surviving clip still plays, in its own place, with the rest silent.
+  for (const [name, paths] of musical) {
+    if (paths.every((path) => unplayable.has(path.toLowerCase()))) report.silentParts.push(name);
   }
   return report;
 }
@@ -595,6 +656,7 @@ async function buildSong(
   if (keptSongIds.includes(song.id)) {
     heldSongs.set(song.id, ready);
     makeRoom(song.id);
+    heldChanged();
   }
 
   onProgress?.({ phase: 'ready', variantName: '', index: variants.length, total: variants.length, ratio: 1, cached: true });

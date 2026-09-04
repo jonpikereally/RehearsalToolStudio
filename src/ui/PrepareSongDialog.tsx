@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
+import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
 import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
@@ -38,6 +39,12 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [updated, setUpdated] = useState<UpdateResult | null>(null);
+  /*
+   * A run in progress, so it can be stopped. Preparing reads whole WAVs and
+   * encodes them, which is minutes on a long song — and a dialog that offers
+   * no way out of minutes is a dialog you reload the window to escape.
+   */
+  const running = useRef<AbortController | null>(null);
 
   // The set, read afresh: the tracks are its, not the library's.
   useEffect(() => {
@@ -81,13 +88,27 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const setName = `${alsName} ${new Date().toISOString().slice(0, 10)}`;
   const folderName = alsSong && project ? songFolderName(alsSong, project) : '';
 
+  const stop = () => running.current?.abort();
+
   const go = async () => {
     if (!alsSong || !project || !song.setPath) return;
+    running.current = new AbortController();
     setBusy(true);
     setError(null);
     setResult(null);
     setPublished(null);
     try {
+      /*
+       * Let go of what is only being held for listening. The player keeps the
+       * song it has open decoded, and a run keeps every song of it — up to the
+       * budget in Settings — while preparing needs the machine's memory for
+       * source WAVs, a rendered part and the encoder's copy of it. Nobody
+       * rehearses through a prepare, and the alternative is the browser
+       * quietly killing the encoder's worker mid-song.
+       */
+      releaseReady();
+      clearDecodedCache();
+
       // Asked for inside the click, where a dialog is allowed to open.
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
       const setPath = song.setPath;
@@ -129,14 +150,17 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             budgetBytes: settings.cacheBudgetGB * 1e9,
           }),
         onProgress: setProgress,
+        signal: running.current.signal,
       });
       void ctx.close();
       setResult(done);
       setPublished(await publishLibrary(folder));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if ((err as { name?: string })?.name === 'AbortError') setError('Stopped. Parts already written are on disk; running it again rewrites the song from the top.');
+      else if (!/abort/i.test(message)) setError(message);
     } finally {
+      running.current = null;
       setBusy(false);
       setProgress(null);
     }
@@ -341,8 +365,12 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
               >
                 Words and sections only
               </button>
-              <button className="btn" onClick={onClose} disabled={busy}>
-                Cancel
+              <button
+                className={busy ? 'btn danger' : 'btn'}
+                onClick={() => (busy ? stop() : onClose())}
+                title={busy ? 'Stop preparing. What is already written stays.' : undefined}
+              >
+                {busy ? 'Stop' : 'Cancel'}
               </button>
             </>
           )}

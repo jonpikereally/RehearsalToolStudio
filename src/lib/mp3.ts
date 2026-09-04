@@ -43,6 +43,18 @@ function spawnWorker(): Worker {
 
 let nextJob = 0;
 
+/**
+ * How long the encoder may go quiet before it is declared dead.
+ *
+ * It reports every two per cent, which on any part is well under a second of
+ * work, so a minute of silence is not slowness — it is a worker that has gone.
+ * A worker the browser kills, typically for memory, fires no error event and
+ * posts no message, so without this the promise simply never settles and the
+ * dialog sits at whatever percentage it had reached. Ten minutes at 82% is not
+ * a thing anyone should have to guess at.
+ */
+const STALL_MS = 60_000;
+
 export interface EncodeOptions {
   bitrate?: number;
   onProgress?: (ratio: number) => void;
@@ -62,7 +74,22 @@ export function encodeMp3(buffer: AudioBuffer, opts: EncodeOptions = {}): Promis
     const jobId = `mp3_${++nextJob}`;
     const worker = spawnWorker();
 
+    let reached = 0;
+    let heard = Date.now();
+    const watchdog = setInterval(() => {
+      if (Date.now() - heard < STALL_MS) return;
+      finish(() =>
+        reject(
+          new Error(
+            `the encoder stopped responding at ${Math.round(reached * 100)}% — it was most ` +
+              'likely killed for memory. Close other songs and try this part on its own.',
+          ),
+        ),
+      );
+    }, 5_000);
+
     const finish = (fn: () => void) => {
+      clearInterval(watchdog);
       worker.terminate();
       signal?.removeEventListener('abort', onAbort);
       fn();
@@ -73,7 +100,9 @@ export function encodeMp3(buffer: AudioBuffer, opts: EncodeOptions = {}): Promis
     worker.onmessage = (event: MessageEvent<EncodeResponse>) => {
       const msg = event.data;
       if (msg.jobId !== jobId) return;
+      heard = Date.now();
       if (msg.type === 'progress') {
+        reached = msg.ratio;
         onProgress?.(msg.ratio);
         return;
       }
@@ -84,6 +113,9 @@ export function encodeMp3(buffer: AudioBuffer, opts: EncodeOptions = {}): Promis
       finish(() => resolve(new Blob([msg.bytes], { type: 'audio/mpeg' })));
     };
     worker.onerror = (event) => finish(() => reject(new Error(event.message || 'Encoder failed')));
+    // A message that cannot be deserialised is still the worker answering, and
+    // still the end of this job — not something to wait out.
+    worker.onmessageerror = () => finish(() => reject(new Error('the encoder sent something unreadable')));
 
     // Copied out of the AudioBuffer so they can be transferred rather than
     // cloned — several megabytes each, and cloning them shows on the main thread.

@@ -4,6 +4,8 @@ import { navigate, songUrl } from '../lib/router';
 import { formatClock, runningOrder } from '../lib/runningOrder';
 import { isFromSet } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
+import { useMissingAudio } from '../lib/useMissingAudio';
+import type { Song } from '../types';
 
 export default function SetlistView({ setlistId }: { setlistId: string }) {
   const { library, updateSetlist, deleteSetlist, currentSet } = useStore();
@@ -148,6 +150,7 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
             </div>
           </button>
           <div className="row-right">
+            <SilentBadge song={song} />
             <span
               className="mono"
               title={durationSec === null ? 'Play it once to time it' : undefined}
@@ -226,5 +229,33 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * A song in the running order with nothing to hear.
+ *
+ * The setlist is the other place a song gets opened from, and it is the worse
+ * one to find out in: you are working through a set in order, and the song
+ * that turns out to be silent is the one you had planned the next ten minutes
+ * around. Its own component so each row asks about its own files.
+ */
+function SilentBadge({ song }: { song: Song }) {
+  const audio = useMissingAudio(song);
+  if (song.variants.length === 0) {
+    return (
+      <span className="badge bad" title="This song has no parts at all — the set gives it no audio.">
+        nothing to play
+      </span>
+    );
+  }
+  if (!audio?.silent) return null;
+  return (
+    <span
+      className="badge bad"
+      title="Every musical part is missing from the folder. Opening it would play the set's click and nothing else."
+    >
+      nothing to play
+    </span>
   );
 }

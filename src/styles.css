@@ -465,6 +465,12 @@ button {
   color: #86efac;
 }
 
+/* Not a warning: a song in this state is not worth opening at all. */
+.badge.bad {
+  background: #4c1d24;
+  color: #fca5a5;
+}
+
 .badge.offline {
   background: #1e293b;
   color: #7dd3fc;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { SongEngine, type LoopRegion } from './audioEngine';
-import { clearDecodedCache, filesReport, heldSongIds, keepReady, loadSong, prepareSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
+import { clearDecodedCache, filesReport, heldSongIds, keepReady, loadSong, onHeldChange, prepareSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
 import { barToSec, clickBeats, nudgeBars, secToBar } from './bars';
 import { resetMix, saveSetting } from './stemMix';
 
@@ -125,12 +125,14 @@ export function usePlayer(
   const [files, setFiles] = useState<FilesReport & { failed: { part: string; reason: string }[] }>({
     missing: [],
     forbidden: [],
+    silentParts: [],
+    musicalParts: 0,
     failed: [],
   });
   useEffect(() => {
     if (!song) return;
     let cancelled = false;
-    setFiles({ missing: [], forbidden: [], failed: [] });
+    setFiles({ missing: [], forbidden: [], silentParts: [], musicalParts: 0, failed: [] });
     void filesReport(song).then((report) => {
       if (!cancelled) setFiles((f) => ({ ...report, failed: f.failed }));
     });
@@ -152,6 +154,9 @@ export function usePlayer(
    */
   const aheadKey = ahead.map((s) => s.id).join('|');
   const [readyIds, setReadyIds] = useState<string[]>([]);
+  // Anything else may let the run go — preparing a song does, to make room —
+  // and a count that carried on claiming otherwise would simply be wrong.
+  useEffect(() => onHeldChange(() => setReadyIds(heldSongIds())), []);
   useEffect(() => {
     const run = ahead.length && songId ? [songId, ...ahead.map((s) => s.id)] : [];
     keepReady(run, Math.max(1, runMemoryGB) * 1024 * 1024 * 1024);

@@ -4,6 +4,7 @@ import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
+import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
 import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
@@ -88,6 +89,17 @@ export default function PrepareSet() {
     setResult(null);
     setPublished(null);
     try {
+      /*
+       * Let go of what is only being held for listening. The player keeps the
+       * song it has open decoded, and a run keeps every song of it — up to the
+       * budget in Settings — while preparing needs the machine's memory for
+       * source WAVs, a rendered part and the encoder's copy of it. Nobody
+       * rehearses through a prepare, and the alternative is the browser
+       * quietly killing the encoder's worker mid-song.
+       */
+      releaseReady();
+      clearDecodedCache();
+
       const { bytes } = await readBytes(setPath);
       const full = project ?? (await parseAls(bytes));
       const ctx = new AudioContext();

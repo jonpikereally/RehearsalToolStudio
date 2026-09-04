@@ -200,7 +200,14 @@ function SongRow({
   open?: boolean;
   onPick?: () => void;
 }) {
-  const missing = useMissingAudio(song);
+  const audio = useMissingAudio(song);
+  /*
+   * Nothing to hear at all: either the song has no parts, or every musical
+   * one of them is missing and only the set's click and cues would play. Said
+   * in red and in words, because the two ways of arriving at silence look
+   * identical from the row and neither is worth opening.
+   */
+  const silent = song.variants.length === 0 || !!audio?.silent;
   return (
     <button
       className="row"
@@ -225,10 +232,21 @@ function SongRow({
         {open && !picking && <span className="badge ok">open</span>}
         {song.transpose !== 0 && <span className="badge warn">{formatSemitones(song.transpose)}</span>}
         {song.tempoUnset && <span className="badge warn">tempo</span>}
-        {song.variants.length === 0 && <span className="badge warn">no audio</span>}
-        {!!missing && (
+        {silent && (
+          <span
+            className="badge bad"
+            title={
+              song.variants.length === 0
+                ? 'This song has no parts at all — the set gives it no audio.'
+                : "Every musical part is missing from the folder. Opening it would play the set's click and nothing else."
+            }
+          >
+            nothing to play
+          </span>
+        )}
+        {!silent && !!audio?.missing && (
           <span className="badge warn" title="Files this song wants that are not here to play; the set's click and cues aside">
-            {missing} file{missing === 1 ? '' : 's'} missing
+            {audio.missing} file{audio.missing === 1 ? '' : 's'} missing
           </span>
         )}
         <span aria-hidden>{picking ? '' : '›'}</span>
