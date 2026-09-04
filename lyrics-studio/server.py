@@ -40,6 +40,11 @@ from mido import MetaMessage, Message, MidiFile, MidiTrack
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
+# Where the log and the remembered paths live: beside the code, as they always
+# have — or wherever LYRICS_STUDIO_DATA says, which the packaged app sets, since
+# an app bundle is not a place to write into.
+DATA_DIR = Path(os.environ.get("LYRICS_STUDIO_DATA") or APP_DIR)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
@@ -69,7 +74,7 @@ def idle_watchdog() -> None:
         idle_for = time.monotonic() - LAST_ACTIVITY
         if idle_for > IDLE_EXIT_MINUTES * 60:
             try:
-                with (APP_DIR / "server.log").open("a") as f:
+                with (DATA_DIR / "server.log").open("a") as f:
                     f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
                             f"idle {idle_for / 60:.0f} min — exiting\n")
             except OSError:
@@ -108,7 +113,7 @@ async def surface_errors(request, call_next):
         import traceback
         tb = traceback.format_exc()
         try:
-            with (APP_DIR / "server.log").open("a") as f:
+            with (DATA_DIR / "server.log").open("a") as f:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {request.url.path}\n{tb}")
         except OSError:
             pass
@@ -1038,7 +1043,7 @@ SERVABLE_AUDIO: set[str] = set()     # sample files the player may stream
 # These allowlists must survive a server restart: the app is restarted often,
 # and losing them mid-job used to reject the write of an already-transcribed
 # track ("that set wasn't opened through Lyrics Studio").
-STATE_FILE = APP_DIR / ".state.json"
+STATE_FILE = DATA_DIR / ".state.json"
 
 
 def load_state() -> None:

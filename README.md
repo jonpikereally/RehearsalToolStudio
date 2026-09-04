@@ -51,6 +51,48 @@ moves, since the studio app carries the repo's path.
 Click the app. On the first run it asks for the folder your sets live in — the
 macOS folder dialog — and remembers it from then on. Rescan reads every set.
 
+## On another Mac
+
+The folder is in Dropbox and has no git remote, so the code arrives by sync
+rather than by clone. Once it has, one command does the rest:
+
+```bash
+bash scripts/setup-mac.sh
+```
+
+It checks the prerequisites and says what to install when one is missing,
+reinstalls `node_modules` — Dropbox carries them over, but they hold binaries
+built for whichever Mac installed them — runs the self-test, and builds the
+apps. From a real Terminal: macOS refuses apps stamped with a sandbox's
+provenance, so this is the step nothing can do for you remotely.
+
+Don't copy the `.app` bundles between machines. Each one carries the path of
+the folder it was built from, which is also why the script is what to run
+after moving this folder.
+
+### As a normal app
+
+For a Mac that only uses the studio, and needn't have Node or this folder:
+
+```bash
+bash scripts/package-app.sh
+bash scripts/package-lyrics-studio.sh
+```
+
+Each writes an app and a zip of it into `Mac apps/`. The zip is the thing to
+move: unzip on the other Mac, drag to Applications, and right-click → Open
+the first time, since nothing here carries a Developer ID. The studio app
+has a Node runtime, a finished build and its servers inside it and carries no
+path to anywhere; it never rebuilds, so a new build means packaging again.
+Lyrics Studio carries its source and a copy of `uv`, which on first open
+fetches a Python and its dependencies — minutes, and the network, once.
+
+Nothing of what you set up travels with the code. The remembered folders, the
+decoded audio and transposition caches, the mixer positions, the block layout
+and macOS's downloaded voices are all this machine's. And two studios should
+not run at once against the same sets folder: both write the library file in
+it, and Dropbox answers with conflicted copies.
+
 ## How it runs
 
 ```

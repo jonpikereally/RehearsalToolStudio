@@ -24,6 +24,17 @@ import Cocoa
 let studioURL = URL(string: "http://localhost:5177/")!
 let appName = "Rehearsal Tool Studio"
 let repo = Bundle.main.object(forInfoDictionaryKey: "RTSRepo") as? String ?? ""
+/*
+ * Two kinds of this app. The development one carries the repo's path and runs
+ * its launcher, which rebuilds the studio when the source has moved. The
+ * packaged one (scripts/package-app.sh) carries no path at all: Node, the
+ * build and the servers travel inside it, and its launcher sits beside them.
+ * No RTSRepo is how it tells which it is.
+ */
+let packaged = repo.isEmpty
+let resources = Bundle.main.resourcePath ?? ""
+let launcherPath = packaged ? "\(resources)/launch.sh" : "\(repo)/scripts/app-launch.sh"
+let logPath = packaged ? "~/Library/Logs/Rehearsal Tool Studio/launch.log" : "\(repo)/.studio-build.log"
 let ink = NSColor(red: 0x0d / 255, green: 0x0f / 255, blue: 0x13 / 255, alpha: 1)
 
 /// A page of the app's own, for the moments before and instead of the studio.
@@ -82,7 +93,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         NSApp.activate(ignoringOtherApps: true)
 
         web.loadHTMLString(page("Starting the studio…",
-            "Building it first if the source has moved on, which takes a moment."), baseURL: nil)
+            packaged ? "Starting its server." : "Building it first if the source has moved on, which takes a moment."), baseURL: nil)
         DispatchQueue.global(qos: .userInitiated).async {
             let build = self.startServers()
             DispatchQueue.main.async {
@@ -93,7 +104,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
                 } else {
                     self.web.loadHTMLString(page("The studio didn't start",
                         "Nothing answered on port 5177. The launcher's log says why: " +
-                        "<code>\(repo)/.studio-build.log</code>. Quit and try again once that is sorted."),
+                        "<code>\(logPath)</code>. Quit and try again once that is sorted."),
                         baseURL: nil)
                 }
             }
@@ -103,7 +114,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     /// Run the launcher's server-only mode — build if stale, serve, voice helper — then wait for an answer.
     /// Returns the build the server is serving, or nil when nothing answered.
     func startServers() -> String? {
-        let launcher = "\(repo)/scripts/app-launch.sh"
+        let launcher = launcherPath
         if FileManager.default.isReadableFile(atPath: launcher) {
             let sh = Process()
             sh.executableURL = URL(fileURLWithPath: "/bin/sh")
