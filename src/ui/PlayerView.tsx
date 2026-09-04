@@ -801,6 +801,8 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
                             });
                             player.seek(barToSec(startBar, song));
                           }}
+                          onClearLoop={() => player.setLoop(null)}
+                          loop={player.loop}
                           onPatchAt={(bar) =>
                             setPatchEdit({
                               clip:
@@ -1086,6 +1088,8 @@ function MarkerStrip({
   currentBar,
   onJump,
   onLoop,
+  onClearLoop,
+  loop,
   onPatchAt,
 }: {
   song: import('../types').Song;
@@ -1093,11 +1097,21 @@ function MarkerStrip({
   currentBar: number;
   onJump: (bar: number) => void;
   onLoop: (startBar: number, endBar: number) => void;
+  onClearLoop: () => void;
+  /** What is looping now, so the section it is can be shown as such. */
+  loop: { startSec: number; endSec: number } | null;
   /** Place a patch change at a bar; the Rig block owns the clips themselves. */
   onPatchAt: (bar: number) => void;
 }) {
   const { updateSong } = useStore();
   const [menu, setMenu] = useState<{ at: MenuAnchor; marker: Marker } | null>(null);
+  /*
+   * With this on, tapping a section loops it rather than jumping to it —
+   * for drilling a chorus, where the right-click menu is too many steps
+   * between one pass and the next. The button flashes while it is on, and
+   * so does the section that is looping, so the state is never a mystery.
+   */
+  const [looping, setLooping] = useState(false);
 
   const sorted = (markers: Marker[]) => [...markers].sort((a, b) => a.bar - b.bar);
 
@@ -1139,6 +1153,18 @@ function MarkerStrip({
     return next ? next.bar : totalBars(duration, song) + 1;
   };
 
+  /** Whether the loop is exactly this section, whichever way it was set. */
+  const isLooping = (marker: Marker): boolean =>
+    !!loop &&
+    Math.abs(loop.startSec - barToSec(marker.bar, song)) < 0.01 &&
+    Math.abs(loop.endSec - barToSec(sectionEnd(marker), song)) < 0.01;
+
+  const toggleLooping = () => {
+    // Switching off releases a section loop too, so the song carries on.
+    if (looping && song.markers.some(isLooping)) onClearLoop();
+    setLooping((on) => !on);
+  };
+
   const openMenu = (e: ReactMouseEvent, marker: Marker) => {
     e.preventDefault();
     setMenu({ at: { x: e.clientX, y: e.clientY }, marker });
@@ -1146,13 +1172,27 @@ function MarkerStrip({
 
   return (
     <div className="controls" role="group" aria-label="Sections">
+      {song.markers.length > 0 && (
+        <button
+          className={looping ? 'chip on flash' : 'chip'}
+          aria-pressed={looping}
+          onClick={toggleLooping}
+          title={looping ? 'Tapping a section loops it. Tap to go back to jumping.' : 'Tap a section to loop it, rather than jump to it'}
+        >
+          ⟲ Loop section
+        </button>
+      )}
       {song.markers.map((marker) => (
         <button
           key={marker.id}
-          className="chip"
-          onClick={() => onJump(marker.bar)}
+          className={isLooping(marker) ? 'chip on flash' : 'chip'}
+          onClick={() => (looping ? onLoop(marker.bar, sectionEnd(marker)) : onJump(marker.bar))}
           onContextMenu={(e) => openMenu(e, marker)}
-          title={canEditLibrary ? 'Right-click for section options' : 'Right-click to loop this section'}
+          title={
+            looping
+              ? `Loop ${marker.name} (bars ${marker.bar}–${sectionEnd(marker) - 1})`
+              : canEditLibrary ? 'Right-click for section options' : 'Right-click to loop this section'
+          }
         >
           {marker.name} <span style={{ opacity: 0.6 }}>{marker.bar}</span>
         </button>

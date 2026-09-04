@@ -42,6 +42,8 @@ player, and both are what make the set more than a pile of audio.
     MetronomeUp-1a2b3c4d.wav           once for every set in the folder
     MetronomeDown-5e6f7a8b.wav
     Chorus-9c0d1e2f.wav
+    slates/                            the spoken titles, kept apart
+      Fix You-3d4e5f6a.wav
 ```
 
 - `Rehearsal Tool/Sets/` is the only place prepared sets are written. Anything
@@ -102,7 +104,11 @@ length of the song, and is meant to be played alongside the others.
   once, byte for byte, into `Resources/` at the root of the band's folder —
   named for what they contain, so one kick serves every set that fires it
   and two different kicks never collide — and `Resources/` is a folder the
-  scan never reads, so nothing in it is mistaken for a song. Sets prepared
+  scan never reads, so nothing in it is mistaken for a song. Spoken slates,
+  which the Studio writes onto a Slates track and which play as cues, go
+  under `Resources/slates/` so a person opening the folder can tell a set's
+  worth of titles from its click; to the player they are cues like any
+  other, reached by the path on the sample. Sets prepared
   before this carry `[click].mp3` and `[cues].mp3` instead; a player should
   go on treating `[click]` as the click track when it meets one.
 - The audio is what Live would play: clips laid end to end with gaps silent,

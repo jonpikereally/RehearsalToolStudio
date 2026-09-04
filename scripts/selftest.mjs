@@ -3802,6 +3802,16 @@ group('the click and cues as sampler parts');
   check('a sample is named for what it is: its own name plus a hash of its bytes, under Resources/',
     sampleFileName('Some/Folder/kick.wav', '1a2b3c4d5e6f') === 'Resources/kick-1a2b3c4d.wav',
     sampleFileName('Some/Folder/kick.wav', '1a2b3c4d5e6f'));
+  {
+    const { isSlateSource } = await import('../src/lib/prepare.ts');
+    check('a sample off a Slates track, or out of a Slates folder, is a slate',
+      isSlateSource({ path: 'Cues/x.wav', track: 'Slates' }) && isSlateSource({ path: 'Slates/Fix You.wav' }) && !isSlateSource({ path: 'Cues/Chorus.wav', track: 'Cues' }));
+    check('and is filed under Resources/slates/',
+      sampleFileName('Slates/Fix You.wav', 'abcdef0123', 'slates') === 'Resources/slates/Fix You-abcdef01.wav',
+      sampleFileName('Slates/Fix You.wav', 'abcdef0123', 'slates'));
+    const slated = samplerPartFor(stem([clip('Slates/Fix You.wav', 1, { track: 'Slates' })], { name: 'Cues' }));
+    check('the track a cue came from travels with it', slated.sources.get('slates/fix you.wav').track === 'Slates');
+  }
   check('and Resources/ is a folder the scan never reads',
     isProjectScaffolding('Resources/kick-1a2b3c4d.wav') && !isProjectScaffolding('Rehearsal Tool/Sets/x/a.mp3'));
 

@@ -183,6 +183,8 @@ export interface AlsClip {
   note?: number;
   velocity?: number;
   padGain?: number;
+  /** For a set part's clip: the track it came from, since Cues sums several. */
+  track?: string;
 }
 
 export interface AlsLane {
@@ -1226,7 +1228,8 @@ export function parseAlsXml(xml: string): AlsProject {
     const setPartCaveats = new Set<string>();
     for (const [label, match] of [
       ['Click', /^click/i],
-      ['Cues', /^cues?$/i],
+      // Slates — the spoken titles the studio writes — are cues too.
+      ['Cues', /^(cues?|slates?)$/i],
     ] as const) {
       const groups = tracks.filter((t) => t.kind === 'GroupTrack' && t.groupId === '-1' && match.test(t.name.trim()));
       const members = tracks.filter(
@@ -1278,6 +1281,7 @@ export function parseAlsXml(xml: string): AlsProject {
               note: note.key,
               velocity: Math.min(127, Math.max(1, Math.round(note.velocity))),
               padGain: pad.gain * level,
+              track: t.name.trim(),
             });
           }
           continue;
@@ -1297,6 +1301,7 @@ export function parseAlsXml(xml: string): AlsProject {
             gain: c.gain * level,
             absPath: c.absPath ?? undefined,
             speed: c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005 ? startBpm / 60 / c.warpBps : 1,
+            track: t.name.trim(),
           });
         }
       }

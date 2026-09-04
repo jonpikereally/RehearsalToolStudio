@@ -223,6 +223,19 @@ export function partInfoFor(songTitle: string, partName: string, reference: bool
 
 /** Where the samples go: the root of the band's folder, shared by every set. */
 export const RESOURCES_FOLDER = 'Resources';
+/** Under it, the spoken slates — apart from the clicks and cues they play among. */
+export const SLATES_FOLDER = 'slates';
+
+/**
+ * A slate is a cue like any other to the player, but not to a person looking
+ * in the folder: a set's worth of spoken titles beside its click samples is a
+ * folder nobody can read. So a sample that came off a Slates track, or out of
+ * the Slates folder the studio writes them into, is filed under `slates/`.
+ */
+export function isSlateSource(source: { path: string; track?: string }): boolean {
+  if (source.track && /^slates?$/i.test(source.track.trim())) return true;
+  return /(^|\/)slates?\//i.test(source.path);
+}
 
 /** The set's own click and cue tracks, by the names the parser gives them. */
 export function isSetStem(stem: { name: string }): boolean {
@@ -234,6 +247,8 @@ export function isSetStem(stem: { name: string }): boolean {
 export interface SamplerSource {
   path: string;
   absPath: string | null;
+  /** The track the sample was struck from, when the set said. */
+  track?: string;
   note: number;
   /** The pad's level times the track's, apart from velocity. */
   gain: number;
@@ -267,6 +282,7 @@ export function samplerPartFor(
       source = {
         path: clip.path,
         absPath: clip.absPath ?? null,
+        ...(clip.track ? { track: clip.track } : {}),
         note: fromRack ? clip.note! : nextNote++,
         gain: (fromRack ? clip.padGain ?? 1 : 1) * stem.gain,
       };
@@ -291,12 +307,12 @@ export function samplerPartFor(
  * never overwrite each other. The website stores a sample once by path, so
  * the path staying the same across publishes is the whole saving.
  */
-export function sampleFileName(path: string, hashHex: string): string {
+export function sampleFileName(path: string, hashHex: string, subfolder = ''): string {
   const base = safeName(path.split('/').pop() ?? path) || 'sample';
   const dot = base.lastIndexOf('.');
   const stem = dot > 0 ? base.slice(0, dot) : base;
   const ext = dot > 0 ? base.slice(dot) : '';
-  return `${RESOURCES_FOLDER}/${stem}-${hashHex.slice(0, 8)}${ext}`;
+  return `${RESOURCES_FOLDER}/${subfolder ? `${subfolder}/` : ''}${stem}-${hashHex.slice(0, 8)}${ext}`;
 }
 
 async function sha1Hex(bytes: ArrayBuffer): Promise<string> {
@@ -421,7 +437,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     const hash = await sha1Hex(bytes);
     let sample = samplesWritten.get(hash);
     if (!sample) {
-      const rel = sampleFileName(source.path, hash);
+      const rel = sampleFileName(source.path, hash, isSlateSource(source) ? SLATES_FOLDER : '');
       await writeFile(`${normalisePath(root)}/${rel}`.replace(/^\/+/, ''), new Blob([bytes]));
       sample = { note: source.note, path: rel, rev: hash, sizeBytes: bytes.byteLength };
       samplesWritten.set(hash, sample);
