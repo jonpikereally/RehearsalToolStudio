@@ -3,7 +3,7 @@ import { needsRender, renderTrack, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { PREPARED_FOLDER, PRINTS_FOLDER } from './prints.ts';
 import { normalisePath } from './paths.ts';
-import { MANIFEST_NAME, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
+import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
 import { clipsFromMarks, laneList, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
@@ -189,6 +189,22 @@ export function partFileName(songTitle: string, partName: string, reference = fa
   return `${safeName(songTitle)} [${marked}].mp3`;
 }
 
+/**
+ * How a written part describes itself in the manifest.
+ *
+ * The label is what stands in the file's brackets, which is how the reader
+ * matches a file to an entry. The name is what to put on a fader — the label
+ * with the reference marker taken off — and the flag is what to say beside it.
+ * Derived here, once, from the same call that names the file, so the two can
+ * never drift apart.
+ */
+export function partInfoFor(songTitle: string, partName: string, reference: boolean): PreparedPart {
+  const file = partFileName(songTitle, partName, reference);
+  const label = file.slice(file.lastIndexOf('[') + 1, file.lastIndexOf(']'));
+  const name = reference ? label.replace(/\bref(erence)?\b/i, ' ').replace(/\s+/g, ' ').trim() : label;
+  return { label, name: name || label, ...(reference ? { reference: true } : {}) };
+}
+
 /** The tempo Live plays the song at: the automation's where there is any. */
 function tempoOf(song: AlsSong, project: AlsProject): number {
   return song.startBpm ?? song.bpm ?? project.tempo;
@@ -301,6 +317,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     const durationSec = barToSeconds(song.endBar - song.startBar + 1, bpm, project);
     const songFolder = `${folder}/${songFolderName(song, project)}`;
     let wroteAny = false;
+    /** The parts that actually reached the folder, for the manifest. */
+    const wroteParts: PreparedPart[] = [];
 
     for (const part of partsFor(song, opts.plan?.[song.title])) {
       if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
@@ -376,6 +394,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
         report('writing', 1);
         await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
+        wroteParts.push(partInfoFor(song.title, part.name, part.reference));
         partsWritten++;
         wroteAny = true;
       } catch (err) {
@@ -423,6 +442,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           : undefined,
         chords: song.chords.length ? song.chords : undefined,
         lanes: laneList(song),
+        parts: wroteParts.length ? wroteParts : undefined,
         patchClips: song.rigMarks?.length
           ? clipsFromMarks(song.rigMarks, songIdFor(opts.alsPath, song.title))
           : undefined,

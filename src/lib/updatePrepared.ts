@@ -116,11 +116,20 @@ export function songInfoFor(
   project: AlsProject,
   alsPath: string,
   firstBarOffsetSec: number,
+  parts?: PreparedSongInfo['parts'],
 ): PreparedSongInfo {
   return {
     folder: songFolderName(song, project),
     title: song.title,
     firstBarOffsetSec,
+    /*
+     * Carried, not derived, for the same reason as the lead-in: these name
+     * files sitting in the folder, and which of the set's tracks were printed,
+     * combined or skipped was a choice made at prepare time that this run has
+     * no record of. A set prepared before the manifest carried them gains them
+     * on its next proper prepare.
+     */
+    parts,
     originalKey: song.key ?? undefined,
     tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
     markers: song.sections.length
@@ -220,6 +229,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
         alsPath,
         // The files' own lead-in, kept exactly. Nothing here re-encodes them.
         standing.entry?.firstBarOffsetSec ?? manifest.paddingSec,
+        standing.entry?.parts,
       ),
     );
   }

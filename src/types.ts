@@ -31,6 +31,19 @@ export interface Variant {
   /** Dropbox content hash / rev, used to invalidate the cache when you re-export. */
   rev: string;
   sizeBytes: number;
+  /**
+   * The record's own part rather than the band's.
+   *
+   * True for anything the set filed under a REF group, and for anything whose
+   * track name says so. Held as a fact about the part rather than read off its
+   * name each time, because the name is the one thing anybody can change: a
+   * "REF DRUMS" renamed to "drums" in the mixer is still the record's drums,
+   * and a player that forgot would mix the two together.
+   *
+   * The reference *master* — the whole record, the thing SWITCH plays — is a
+   * mix, not a stem, and is not this.
+   */
+  reference?: boolean;
   /** Hidden from the variant switcher without deleting it. */
   hidden?: boolean;
   /** Manual ordering within the song. */

@@ -465,6 +465,21 @@ button {
   color: #86efac;
 }
 
+/*
+ * What a fader's name doesn't say — that it is the record's part, not the
+ * band's. Under the name rather than in it, so the instrument still reads at a
+ * glance and the two never compete for the same few characters.
+ */
+.stem-note {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
 /* Not a warning: a song in this state is not worth opening at all. */
 .badge.bad {
   background: #4c1d24;

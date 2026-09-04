@@ -3699,5 +3699,53 @@ group('updating a prepared set without re-rendering');
       ?.folder.endsWith('Sunday 2026-03-01') === true);
 }
 
+/* ----------------------------- reference stems ---------------------------- */
+
+group('reference stems');
+{
+  const { isReferenceStem, partName } = await import('../src/lib/stemMix.ts');
+  const { partInfoFor } = await import('../src/lib/prepare.ts');
+  const { roleForTrack } = await import('../src/lib/alsImport.ts');
+
+  const v = (name, extra = {}) => ({ id: name, name, path: name, rev: 'r', sizeBytes: 1, role: 'stem', ...extra });
+
+  check('a stem named REF is the record\'s', isReferenceStem(v('REF DRUMS')) === true);
+  check('and is called by its instrument alone', partName(v('REF DRUMS')) === 'DRUMS', partName(v('REF DRUMS')));
+  check('a plain part is not, and keeps its name',
+    isReferenceStem(v('BASS')) === false && partName(v('BASS')) === 'BASS');
+
+  // The set knows by the folder what the track name never says.
+  const hidden = v('Lead Vox', { reference: true });
+  check('a part the set filed under REF is one whatever it calls itself', isReferenceStem(hidden) === true);
+  check('and keeps its whole name, there being no word to take off',
+    partName(hidden) === 'Lead Vox', partName(hidden));
+
+  // Renaming must not be able to launder it.
+  check('a reference stem renamed to hide the word is still one',
+    isReferenceStem(v('drums', { reference: true })) === true);
+
+  // The reference master is a mix, and SWITCH's own thing — never this.
+  check('the reference master is not a reference stem',
+    isReferenceStem(v('REF SONG', { role: 'mix' })) === false);
+  check('and the set agrees it is a whole mix',
+    roleForTrack('REF SONG') === 'mix' && roleForTrack('REF DRUMS') === 'stem');
+
+  // What the website is handed.
+  const refPart = partInfoFor('Fix You', 'REF DRUMS', true);
+  check('the manifest gives the label the file actually carries',
+    refPart.label === 'ref drums', refPart.label);
+  check('with the name to put on the fader, and the fact said separately',
+    refPart.name === 'drums' && refPart.reference === true, JSON.stringify(refPart));
+
+  const plain = partInfoFor('Fix You', 'Bass 1', false);
+  check('an ordinary part says nothing extra',
+    plain.label === 'bass' && plain.name === 'bass' && plain.reference === undefined,
+    JSON.stringify(plain));
+
+  const already = partInfoFor('Fix You', 'REF VOX', true);
+  check('a label that already says ref is not made to say it twice',
+    already.label === 'ref vox' && already.name === 'vox', JSON.stringify(already));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

@@ -265,6 +265,9 @@ export function songsFromProject(
         id: file.path.toLowerCase(),
         name: label,
         role: roleForTrack(label),
+        // The set knows by the folder, which a track name need not admit to:
+        // one set files a plain "Lead Vox 1" under REF.
+        reference: stem.reference || undefined,
         // One set, one version: a click or a cue from another folder is not
         // a version of the song, whatever folder it came from.
         versionId: setlistIdFor(alsPath),

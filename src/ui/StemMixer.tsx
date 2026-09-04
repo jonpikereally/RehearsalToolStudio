@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import type { Player } from '../lib/usePlayer';
-import { formatPan, mixesOf, stemsOf } from '../lib/stemMix';
+import { formatPan, isReferenceStem, mixesOf, partName, stemsOf } from '../lib/stemMix';
 import { isReferenceName } from '../lib/scan';
 import { hasDevices } from '../lib/usePlayer';
 import { isSetClick } from '../lib/songLoader';
@@ -34,6 +34,14 @@ const METER_DECAY = 0.82;
 interface Channel {
   id: string;
   name: string;
+  /**
+   * What the name doesn't say. A reference stem is labelled with its
+   * instrument like every other fader, and this is where the fact that it is
+   * the record's rather than the band's goes.
+   */
+  note?: string;
+  /** The name as stored, which is what renaming edits. */
+  storedName: string;
   kind: 'stem' | 'mix' | 'reference' | 'click';
   /** Position among the channels; every kind can be dragged. */
   order: number;
@@ -68,12 +76,20 @@ export default function StemMixer({
   const LAST = Number.MAX_SAFE_INTEGER;
 
   const channels: Channel[] = [
-    ...stems.map((v) => ({ id: v.id, name: v.name, kind: 'stem' as const, order: v.order ?? LAST })),
+    ...stems.map((v) => ({
+      id: v.id,
+      name: partName(v),
+      note: isReferenceStem(v) ? 'reference' : undefined,
+      storedName: v.name,
+      kind: 'stem' as const,
+      order: v.order ?? LAST,
+    })),
     ...mixesOf(song)
       .filter((v) => loaded(v.id))
       .map((v) => ({
         id: v.id,
         name: v.name,
+        storedName: v.name,
         // Only the reference master gets SWITCH; an instrumental or an acapella
         // is an ordinary channel you can blend.
         kind: isReferenceName(v.name) ? ('reference' as const) : ('mix' as const),
@@ -83,7 +99,7 @@ export default function StemMixer({
     // already among the stems above and is the click then.
     ...(stems.some((v) => isSetClick(song, v))
       ? []
-      : [{ id: CLICK_ID, name: 'Click', kind: 'click' as const, order: song.clickOrder ?? LAST }]),
+      : [{ id: CLICK_ID, name: 'Click', storedName: 'Click', kind: 'click' as const, order: song.clickOrder ?? LAST }]),
   ].sort((a, b) => a.order - b.order);
 
   const meterRefs = useRef(new Map<string, HTMLSpanElement>());
@@ -378,7 +394,7 @@ export default function StemMixer({
               movable && renamingId === stem.id ? (
                 <input
                   className="stem-name-input"
-                  defaultValue={stem.name}
+                  defaultValue={stem.storedName}
                   autoFocus
                   onBlur={(e) => {
                     rename(stem.id, e.target.value);
@@ -394,12 +410,16 @@ export default function StemMixer({
                 <button
                   className="stem-name"
                   onClick={() => setRenamingId(stem.id)}
-                  title="Tap to rename"
+                  title={stem.note ? "The record's own part. Tap to rename." : 'Tap to rename'}
                 >
                   {stem.name}
+                  {stem.note && <span className="stem-note">{stem.note}</span>}
                 </button>
               ) : (
-                <span className={`stem-name ${stem.kind}`}>{stem.name}</span>
+                <span className={`stem-name ${stem.kind}`}>
+                  {stem.name}
+                  {stem.note && <span className="stem-note">{stem.note}</span>}
+                </span>
               );
 
             const buttons =

@@ -153,3 +153,38 @@ export function mixesOf(song: Song): Variant[] {
 export function hasStems(song: Song): boolean {
   return stemsOf(song).length > 0;
 }
+
+/* ----------------------------- reference stems ---------------------------- */
+
+const REF_WORD = /\bref(erence)?\b/i;
+
+/**
+ * A reference stem: the record's own drums, or vocal, beside the band's.
+ *
+ * Sets keep the finished record next to the parts — a REF folder holding a
+ * "REF VOX" to check a line against — and those play alongside the band like
+ * any other part. The reference *master* is not one of these: it is a whole
+ * mix, exclusive, and SWITCH is what plays it.
+ *
+ * The flag on the part decides, with the name as a fallback for parts that
+ * predate it. Not the name alone: a part renamed in the mixer would stop
+ * being the record's the moment somebody tidied the word away.
+ */
+export function isReferenceStem(variant: Variant): boolean {
+  if (variant.role !== 'stem') return false;
+  return variant.reference === true || REF_WORD.test(variant.name);
+}
+
+/**
+ * What to call a reference stem on screen: its own name, without the word.
+ *
+ * "REF DRUMS" is drums. Saying so leaves the fader labelled the same as every
+ * other, which is what makes a mixer readable at a glance — and the fact that
+ * it is the record's is said underneath rather than smuggled into the name,
+ * where it competes with the instrument for the same few characters.
+ */
+export function partName(variant: Variant): string {
+  if (!isReferenceStem(variant)) return variant.name;
+  const bare = variant.name.replace(REF_WORD, ' ').replace(/\s+/g, ' ').trim();
+  return bare || variant.name;
+}

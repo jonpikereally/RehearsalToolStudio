@@ -354,6 +354,19 @@ export function isReferenceName(label: string): boolean {
   return REFERENCE_RE.test(label);
 }
 
+/**
+ * A part belonging to the record rather than the band, by its label alone.
+ *
+ * Narrower than `isReferenceName` on purpose: that one counts "master" so it
+ * can spot the whole record, and counting it here would brand the band's own
+ * master mix somebody else's.
+ */
+const REFERENCE_PART_RE = /\bref(erence)?\b/i;
+
+export function isReferenceLabel(label: string): boolean {
+  return REFERENCE_PART_RE.test(label);
+}
+
 /** Variants sort by an explicit order when set, else "fullest" first. */
 function variantRank(label: string): number {
   const l = label.toLowerCase();
@@ -540,6 +553,12 @@ export function mergeScan(
           name: old?.name ?? parsed.label,
           // Keep any role the user set by hand; only derive it for new files.
           role: old?.role ?? parsed.role,
+          /*
+           * A prepared set writes "[ref drums]", so the label is where this
+           * comes from for a folder of files. Read once and kept, so renaming
+           * the part in the mixer cannot lose it.
+           */
+          reference: old?.reference ?? (isReferenceLabel(parsed.label) || undefined),
           path: f.path,
           rev: f.rev,
           sizeBytes: f.size,

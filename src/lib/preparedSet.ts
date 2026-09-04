@@ -41,11 +41,37 @@ export interface PreparedSongInfo {
    */
   lanes?: ChartLane[];
   /**
+   * The song's parts, and what each one is.
+   *
+   * A part's file name already carries a `ref` marker, and the website could
+   * read it off there — but a fact worth acting on should be stated rather
+   * than parsed out of a string, and the display name is the studio's to
+   * decide, not something each reader should re-derive. `label` is exactly
+   * what stands in the file's square brackets, which is how a part is matched.
+   */
+  parts?: PreparedPart[];
+  /**
    * Patch changes for the rig, exactly as the set carried them. Their ids are
    * derived from the set, so a re-publish replaces each clip with itself
    * rather than with an identical stranger every device then argues about.
    */
   patchClips?: PatchClip[];
+}
+
+/** One part of a song, as the prepared folder holds it. */
+export interface PreparedPart {
+  /** The bracketed label in the file name — `[ref drums]` is `ref drums`. */
+  label: string;
+  /**
+   * What to call it on screen: the label with the reference marker taken off.
+   * "ref drums" is drums, and a mixer full of faders reads better for it.
+   */
+  name: string;
+  /**
+   * The record's own part rather than the band's, to be said beside the name
+   * rather than folded into it. Absent means an ordinary part.
+   */
+  reference?: boolean;
 }
 
 export interface PreparedManifest {
@@ -127,6 +153,21 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
     }
     if (song.lanes !== undefined && !Array.isArray(song.lanes)) bad('"lanes" must be a list');
     if (song.patchClips !== undefined && !Array.isArray(song.patchClips)) bad('"patchClips" must be a list');
+    if (song.parts !== undefined) {
+      if (!Array.isArray(song.parts)) bad('"parts" must be a list');
+      else {
+        song.parts.forEach((part, j) => {
+          if (!part || typeof part !== 'object') bad(`"parts"[${j}] is not an object`);
+          else if (typeof part.label !== 'string' || !part.label.trim()) {
+            bad(`"parts"[${j}] wants a "label"`);
+          } else if (part.name !== undefined && typeof part.name !== 'string') {
+            bad(`"parts"[${j}].name must be text`);
+          } else if (part.reference !== undefined && typeof part.reference !== 'boolean') {
+            bad(`"parts"[${j}].reference must be true or false`);
+          }
+        });
+      }
+    }
   });
   return { ok: errors.length === 0, errors };
 }

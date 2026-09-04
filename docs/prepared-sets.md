@@ -79,7 +79,14 @@ length of the song, and is meant to be played alongside the others.
 - **A reference part says so**: a track filed under the set's `REF` group
   comes out as `[ref drums]`, `[ref vox]` and so on, so the record's lead
   vocal can never be mistaken for the band's. The prefix is not added when
-  the label already contains `ref`.
+  the label already contains `ref`. These are **reference stems** — the
+  record's own drums or vocal, playing alongside the band's parts like any
+  other. They are not the reference *master*, which is a whole mix and is
+  what SWITCH plays. `set.json` names them outright under `parts`, and the
+  player is expected to label such a fader with the instrument alone —
+  `[ref drums]` is "drums" — and say "reference" beside it rather than
+  inside the name, where it would compete with the instrument for the same
+  few characters.
 - **A combined part** is several tracks summed into one, under a name typed
   in the Studio, `[band]` by default. It is pulled down as a whole if the sum
   would clip, and left alone otherwise.
@@ -139,6 +146,10 @@ way a hand-made folder would.
       "tempoMap": [{ "bar": 1, "bpm": 85 }, { "bar": 41, "bpm": 90 }],
       "markers": [{ "bar": 1, "name": "Intro" }, { "bar": 5, "name": "Verse 1" }],
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
+      "parts": [
+        { "label": "ref drums", "name": "drums", "reference": true },
+        { "label": "bass", "name": "bass" }
+      ],
       "lanes": [
         { "id": "lead", "name": "LYRICS", "kind": "lyrics", "items": [{ "bar": 4, "text": "Yeah, yeah, yeah, yeah." }] },
         { "id": "chords", "name": "CHORDS Nash", "kind": "chords", "items": [{ "bar": 5, "text": "IV" }] }
@@ -166,6 +177,7 @@ way a hand-made folder would.
 | `songs[].markers` | no | `{bar, name}` list of sections |
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
+| `songs[].parts` | no | one entry per part written: `{label, name, reference?}`. `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?}, lengthBars?, endPatch?}` |
 
 Rules the reader follows, and a writer can rely on:
@@ -216,7 +228,12 @@ the same way.
 3. Apply every `set.json` under `Rehearsal Tool/Sets/` by the rules above.
 4. Offset all bar maths by the song's `firstBarOffsetSec`.
 5. Treat `[click]` as the click track and leave it, and `[cues]`, untransposed.
-6. Play the parts of a song together; they are the same length and start at
+6. Label a part by its `parts` entry where the manifest has one — the name
+   without the reference marker, with "reference" said beside it — and fall
+   back to the bracketed label when it does not. A set prepared before `parts`
+   existed carries none, and `[ref …]` in the label is then the only clue;
+   read it the same way.
+7. Play the parts of a song together; they are the same length and start at
    the same instant.
 
 Everything above is what the code in `src/lib/prepare.ts`, `src/lib/prints.ts`
