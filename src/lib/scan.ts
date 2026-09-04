@@ -31,7 +31,9 @@ export function isAudio(name: string): boolean {
  * and reading them all would both take an age and fill the library with stale
  * duplicates of every song.
  */
-const IGNORED_DIR = /(^|\/)(Backup|Archive Sets?|Samples|Ableton Project Info|AbleSet)(\/|$)/i;
+// Resources holds the one-shots sampler parts strike, shared across every set;
+// read as songs it would be two hundred songs called "kick".
+const IGNORED_DIR = /(^|\/)(Backup|Archive Sets?|Samples|Resources|Ableton Project Info|AbleSet)(\/|$)/i;
 
 export function isProjectScaffolding(path: string): boolean {
   return IGNORED_DIR.test(path);

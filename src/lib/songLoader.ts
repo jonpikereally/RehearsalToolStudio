@@ -274,14 +274,36 @@ async function inParallel<T>(
   await Promise.all(runners);
 }
 
+/** A sampler part's notes as clips: one-shots, each given room to ring out. */
+export function samplerClips(variant: Variant): Variant['clips'] {
+  const byNote = new Map((variant.samples ?? []).map((s) => [s.note, s]));
+  const clips = [];
+  for (const n of variant.notes ?? []) {
+    const sample = byNote.get(n.note);
+    if (!sample) continue;
+    clips.push({
+      path: sample.path,
+      startBar: n.bar,
+      endBar: n.bar + 16,
+      sourceStartSec: 0,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      semitones: 0,
+      speed: 1,
+      gain: (sample.gain ?? 1) * (n.velocity ?? 1) ** 2,
+    });
+  }
+  return clips;
+}
+
 /** The set's own click track, brought in as a part: it stands in for the metronome. */
 export function isSetClick(song: Song, variant: Variant): boolean {
-  return !!song.setPath && variant.name.trim().toLowerCase() === 'click';
+  return (!!song.setPath || variant.kind === 'sampler') && variant.name.trim().toLowerCase() === 'click';
 }
 
 /** The set's cues, likewise one part of every song of the set. */
 export function isSetCues(song: Song, variant: Variant): boolean {
-  return !!song.setPath && variant.name.trim().toLowerCase() === 'cues';
+  return (!!song.setPath || variant.kind === 'sampler') && variant.name.trim().toLowerCase() === 'cues';
 }
 
 /** The set's own parts, click and cues, as against the song's. */
@@ -342,7 +364,7 @@ export async function filesReport(song: Song, { songOnly = false } = {}): Promis
   for (const v of variantsToLoad(song)) {
     const setPart = isSetPart(song, v);
     if (songOnly && setPart) continue;
-    const paths = v.clips?.length ? v.clips.map((c) => c.path) : [v.path];
+    const paths = v.kind === 'sampler' ? (v.samples ?? []).map((s) => s.path) : v.clips?.length ? v.clips.map((c) => c.path) : [v.path];
     if (!setPart) musical.set(v.name, paths);
     for (const path of paths) {
       if (!wanted.has(path.toLowerCase())) wanted.set(path.toLowerCase(), { path, part: v.name });
@@ -461,7 +483,13 @@ async function buildSong(
      * in from another take plays where the set put it. The result is one
      * buffer from bar 1, memoised under the arrangement's own signature.
      */
-    const arranged = variant.clips && variant.clips.length > 1 ? variant.clips : null;
+    /*
+     * A sampler part is played as an arrangement: every note become a clip
+     * of its sample, the same way a click straight out of a set is. Velocity
+     * is squared, as the band's player squares it, so the two sound alike.
+     */
+    const sampler = variant.kind === 'sampler' ? samplerClips(variant) : null;
+    const arranged = sampler ?? (variant.clips && variant.clips.length > 1 ? variant.clips : null);
     const rev = arranged
       ? `${variant.rev}|${arranged.map((c) => `${c.path}@${c.startBar}-${c.endBar}+${c.sourceStartSec}`).join(';')}`
       : variant.rev;

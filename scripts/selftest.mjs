@@ -3747,5 +3747,87 @@ group('reference stems');
     already.label === 'ref vox' && already.name === 'vox', JSON.stringify(already));
 }
 
+/* ---------------------- the click and cues as sampler parts ---------------------- */
+
+group('the click and cues as sampler parts');
+{
+  const { isSetStem, samplerPartFor, sampleFileName } = await import('../src/lib/prepare.ts');
+  const { manifestFromSongs, validateManifest } = await import('../src/lib/preparedSet.ts');
+  const { isProjectScaffolding } = await import('../src/lib/scan.ts');
+
+  const clip = (path, startBar, extra = {}) => ({
+    path, startBar, endBar: startBar + 16, sourceStartSec: 0, disabled: false, fadeInSec: 0, fadeOutSec: 0,
+    warped: false, semitones: 0, speed: 1, gain: 1, ...extra,
+  });
+  const stem = (clips, extra = {}) => ({
+    name: 'Click', reference: false, gain: 1, pan: 0, devices: [], sends: [], direct: true,
+    path: clips[0]?.path ?? '', regions: null, clips, ...extra,
+  });
+
+  check('the set\'s click and cues are what become sampler parts, by name',
+    isSetStem({ name: 'Click' }) && isSetStem({ name: 'CUES' }) && !isSetStem({ name: 'Bass' }));
+
+  // A drum-rack click: notes keep their number, their velocity, and the pad's level.
+  const rack = samplerPartFor(stem([
+    clip('Samples/MetronomeUp.wav', 1, { note: 44, velocity: 127, padGain: 1.58 }),
+    clip('Samples/MetronomeDown.wav', 1.25, { note: 46, velocity: 100, padGain: 1 }),
+    clip('Samples/MetronomeDown.wav', 1.5, { note: 46, velocity: 100, padGain: 1, disabled: true }),
+    clip('Samples/MetronomeDown.wav', 1.75, { note: 46, velocity: 100, padGain: 1 }),
+  ]));
+  check('every note that plays is written, a disabled one is not', rack.notes.length === 3, String(rack?.notes.length));
+  check('a note keeps its MIDI number', rack.notes[0].note === 44 && rack.notes[1].note === 46);
+  check('velocity is the raw MIDI velocity over 127, and absent when full',
+    rack.notes[0].velocity === undefined && Math.abs(rack.notes[1].velocity - 100 / 127) < 1e-9,
+    JSON.stringify(rack.notes.map((n) => n.velocity)));
+  check('the pad\'s level rides on the sample, apart from velocity',
+    rack.sources.get('samples/metronomeup.wav').gain === 1.58 && rack.sources.size === 2);
+
+  // An audio cue track has no notes, so it is given some.
+  const cues = samplerPartFor(stem([
+    clip('Cues/Chorus.wav', 4, { gain: 0.25 }),
+    clip('Cues/Verse.wav', 12),
+    clip('cues/chorus.wav', 20),
+  ], { name: 'Cues' }));
+  check('a cue track\'s files are numbered from 36, one note per distinct file',
+    cues.notes.map((n) => n.note).join() === '36,37,36', cues.notes.map((n) => n.note).join());
+  check('and a cue\'s clip gain goes into velocity, square-rooted, since the player squares it',
+    Math.abs(cues.notes[0].velocity - 0.5) < 1e-9 && cues.notes[1].velocity === undefined,
+    JSON.stringify(cues.notes.map((n) => n.velocity)));
+
+  const gated = samplerPartFor(stem([clip('a.wav', 1, { note: 44, velocity: 127 }), clip('a.wav', 5, { note: 44, velocity: 127 })],
+    { regions: [{ startBar: 1, endBar: 3 }] }));
+  check('a mute region silences the notes inside it', gated.notes.length === 1, String(gated?.notes.length));
+  check('a track with nothing playing is no part at all', samplerPartFor(stem([])) === null);
+
+  check('a sample is named for what it is: its own name plus a hash of its bytes, under Resources/',
+    sampleFileName('Some/Folder/kick.wav', '1a2b3c4d5e6f') === 'Resources/kick-1a2b3c4d.wav',
+    sampleFileName('Some/Folder/kick.wav', '1a2b3c4d5e6f'));
+  check('and Resources/ is a folder the scan never reads',
+    isProjectScaffolding('Resources/kick-1a2b3c4d.wav') && !isProjectScaffolding('Rehearsal Tool/Sets/x/a.mp3'));
+
+  // Editing a song in the studio rewrites its manifest entry from the library,
+  // which knows nothing of files on disk. What describes them must survive.
+  const samplerPart = { label: 'click', name: 'click', kind: 'sampler', id: 'x#sampler:click', role: 'stem', rev: 'r',
+    samples: [{ note: 44, path: 'Resources/a.wav', rev: 'h', sizeBytes: 1 }], notes: rack.notes };
+  const previous = { preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0.02,
+    songs: [{ folder: 'Fix You {120, G, 4-4}', title: 'Fix You', firstBarOffsetSec: 0.02,
+      parts: [{ label: 'bass', name: 'bass' }, samplerPart] }] };
+  const song = { id: 's', title: 'Fix You', folderPath: 'Rehearsal Tool/Sets/Friday/Fix You {120, G, 4-4}', variants: [],
+    markers: [{ id: 'm', name: 'Verse', bar: 5 }], bpm: 120, timeSigNum: 4, timeSigDen: 4, firstBarOffsetSec: 0.02, transpose: 0 };
+  const rewritten = manifestFromSongs([song], 'Rehearsal Tool/Sets/Friday', previous);
+  check('a rewrite from the library keeps the parts it cannot know, sampler ones included',
+    rewritten.songs[0].parts?.length === 2 && rewritten.songs[0].parts[1].kind === 'sampler',
+    JSON.stringify(rewritten.songs[0].parts?.map((p) => p.kind ?? 'audio')));
+
+  const ok = validateManifest({ preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0, songs: [{ folder: 'f', parts: [samplerPart] }] });
+  check('a manifest with a sampler part validates', ok.ok, ok.errors.join('; '));
+  const empty = validateManifest({ preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0,
+    songs: [{ folder: 'f', parts: [{ ...samplerPart, notes: [] }] }] });
+  check('and a sampler with no notes is named, not swallowed', !empty.ok && /no "notes"/.test(empty.errors.join()), empty.errors.join());
+  const hot = validateManifest({ preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0,
+    songs: [{ folder: 'f', parts: [{ ...samplerPart, notes: [{ bar: 1, note: 44, velocity: 1.5 }] }] }] });
+  check('as is a velocity outside 0..1', !hot.ok && /velocity/.test(hot.errors.join()));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

@@ -174,6 +174,15 @@ export interface AlsClip {
    * path leads out of the folder.
    */
   absPath?: string;
+  /**
+   * For a clip born of a MIDI note on a drum rack: the note, its velocity as
+   * Live had it (1..127), and the pad's own level times the track's, apart
+   * from that velocity. `gain` folds all three for the renderer; a sampler
+   * part wants them separately, since its player applies velocity itself.
+   */
+  note?: number;
+  velocity?: number;
+  padGain?: number;
 }
 
 export interface AlsLane {
@@ -1213,6 +1222,8 @@ export function parseAlsXml(xml: string): AlsProject {
      * nothing. A set's click *is* the click: the player's own metronome
      * steps aside for it, so there is one click channel either way.
      */
+    // Members of the click and cue groups the studio cannot make sound.
+    const setPartCaveats = new Set<string>();
     for (const [label, match] of [
       ['Click', /^click/i],
       ['Cues', /^cues?$/i],
@@ -1240,7 +1251,12 @@ export function parseAlsXml(xml: string): AlsProject {
          */
         if (t.kind === 'MidiTrack') {
           const pads = drumPads(t.chunk);
-          if (!pads.size) continue;
+          if (!pads.size) {
+            // A synth, or a rack with no samples: nothing here can render an
+            // instrument, so it is named rather than silently left out.
+            setPartCaveats.add(`${t.name.trim()} is a MIDI track playing an instrument, which cannot be rendered here — bounce it to audio in Live`);
+            continue;
+          }
           for (const note of midiNotes(t.chunk)) {
             if (note.beat < loc.beat - 1e-6 || note.beat >= endBeat) continue;
             const pad = pads.get(note.key);
@@ -1259,6 +1275,9 @@ export function parseAlsXml(xml: string): AlsProject {
               semitones: 0,
               gain: pad.gain * level * (0.65 + (0.35 * Math.min(127, Math.max(1, note.velocity))) / 127),
               speed: 1,
+              note: note.key,
+              velocity: Math.min(127, Math.max(1, Math.round(note.velocity))),
+              padGain: pad.gain * level,
             });
           }
           continue;
@@ -1304,7 +1323,7 @@ export function parseAlsXml(xml: string): AlsProject {
      * inside the song: this app counts one signature per song, so bars
      * after the change land in the wrong place, though the audio plays on.
      */
-    const caveats: string[] = [];
+    const caveats: string[] = [...setPartCaveats];
     const inside = signatureChanges.filter((c) => c.beat > loc.beat + 1e-6 && c.beat < endBeat);
     const fmt = (b: number) => (Number.isInteger(b) ? String(b) : b.toFixed(1));
     for (let i = 0; i < inside.length; i++) {

@@ -1,4 +1,4 @@
-import type { ChartLane, Marker, PatchClip, Song, TempoPoint, TimedText } from '../types';
+import type { ChartLane, Marker, PatchClip, SamplerNote, SamplerSample, Song, TempoPoint, TimedText, Variant } from '../types';
 
 /**
  * What a folder of files can't say for itself.
@@ -58,10 +58,28 @@ export interface PreparedSongInfo {
   patchClips?: PatchClip[];
 }
 
-/** One part of a song, as the prepared folder holds it. */
+/**
+ * One part of a song, as the prepared folder holds it.
+ *
+ * Two kinds. An audio part is a file, and `label` is what stands in its
+ * square brackets. A sampler part is no file at all — `kind: "sampler"`, a
+ * pattern of `notes` and the `samples` they strike — the shape the band's
+ * library carries and their website already plays. Its samples live under
+ * `Resources/` at the root of the band's folder, one file per distinct
+ * content however many songs strike it.
+ */
 export interface PreparedPart {
   /** The bracketed label in the file name — `[ref drums]` is `ref drums`. */
   label: string;
+  /** Present on a sampler part. Absent means audio, as every earlier file was. */
+  kind?: 'sampler';
+  /** A sampler part's id in the library, its revision, and its place among the parts. */
+  id?: string;
+  role?: 'stem';
+  rev?: string;
+  order?: number;
+  samples?: SamplerSample[];
+  notes?: SamplerNote[];
   /**
    * What to call it on screen: the label with the reference marker taken off.
    * "ref drums" is drums, and a mixer full of faders reads better for it.
@@ -164,6 +182,23 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
             bad(`"parts"[${j}].name must be text`);
           } else if (part.reference !== undefined && typeof part.reference !== 'boolean') {
             bad(`"parts"[${j}].reference must be true or false`);
+          } else if (part.kind !== undefined && part.kind !== 'sampler') {
+            bad(`"parts"[${j}].kind can only be "sampler"`);
+          } else if (part.kind === 'sampler') {
+            if (!Array.isArray(part.samples) || !part.samples.length) bad(`"parts"[${j}] is a sampler with no "samples"`);
+            else part.samples.forEach((smp, k) => {
+              if (!smp || typeof smp.note !== 'number' || typeof smp.path !== 'string') {
+                bad(`"parts"[${j}].samples[${k}] needs a numeric "note" and a "path"`);
+              }
+            });
+            if (!Array.isArray(part.notes) || !part.notes.length) bad(`"parts"[${j}] is a sampler with no "notes"`);
+            else part.notes.forEach((n, k) => {
+              if (!n || typeof n.bar !== 'number' || typeof n.note !== 'number') {
+                bad(`"parts"[${j}].notes[${k}] needs a numeric "bar" and "note"`);
+              } else if (n.velocity !== undefined && (typeof n.velocity !== 'number' || n.velocity < 0 || n.velocity > 1)) {
+                bad(`"parts"[${j}].notes[${k}].velocity must be 0..1`);
+              }
+            });
           }
         });
       }
@@ -212,6 +247,14 @@ export function manifestFromSongs(
           : [{ id: 'lead', name: 'Lead', kind: 'lyrics', items: song.lyrics! }];
       }
       if (song.patchClips?.length) info.patchClips = song.patchClips;
+      /*
+       * What the entry says about files on disk — which parts were written,
+       * which samples the click and cues play — is not in the library and
+       * cannot be re-derived from it. It is carried from the entry being
+       * replaced, or an edit to a section name would quietly strip it.
+       */
+      const before = previous?.songs.find((e) => e.folder.toLowerCase() === info.folder.toLowerCase());
+      if (before?.parts?.length) info.parts = before.parts;
       return info;
     });
 
@@ -259,6 +302,7 @@ export function applyManifest(
     // manifest with none must not wipe what was programmed in the app.
     if (info.patchClips?.length) song.patchClips = info.patchClips;
     if (info.markers?.length) song.markers = markersFrom(info.markers, song.markers);
+    if (info.parts?.some((p) => p.kind === 'sampler')) samplerVariants(song, info.parts);
     song.tempoUnset = false;
   }
   return { applied };
@@ -277,4 +321,29 @@ function markersFrom(
     const key = `${s.bar}:${s.name}`;
     return old.get(key) ?? { id: `p_${i}_${s.bar}`, name: s.name, bar: s.bar };
   });
+}
+
+/**
+ * A sampler part of the manifest as a part of the song. What the band's
+ * library carries, exactly; the studio's own loader turns the notes into
+ * placements when the song is opened. Replaces its earlier self by id on a
+ * rescan rather than piling up.
+ */
+function samplerVariants(song: Song, parts: PreparedPart[]): void {
+  const made: Variant[] = parts
+    .filter((p) => p.kind === 'sampler' && p.samples?.length && p.notes?.length)
+    .map((p) => ({
+      id: (p.id ?? `${song.folderPath}#sampler:${p.label}`).toLowerCase(),
+      name: p.name || p.label,
+      role: 'stem' as const,
+      kind: 'sampler' as const,
+      rev: p.rev ?? 'sampler',
+      sizeBytes: 0,
+      path: p.samples![0].path,
+      order: p.order,
+      samples: p.samples!,
+      notes: p.notes!,
+    }));
+  const mine = new Set(made.map((v) => v.id));
+  song.variants = [...song.variants.filter((v) => !mine.has(v.id)), ...made];
 }

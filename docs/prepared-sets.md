@@ -34,12 +34,14 @@ player, and both are what make the set more than a pile of audio.
           Cruel Summer [bass].mp3
           Cruel Summer [guitar].mp3
           Cruel Summer [band].mp3      a combined part, named in the Studio
-          Cruel Summer [click].mp3
-          Cruel Summer [cues].mp3
           Cruel Summer.lrc
           Cruel Summer.cho
         august {90, 4-4}/
           ...
+  Resources/                           the one-shots sampler parts strike,
+    MetronomeUp-1a2b3c4d.wav           once for every set in the folder
+    MetronomeDown-5e6f7a8b.wav
+    Chorus-9c0d1e2f.wav
 ```
 
 - `Rehearsal Tool/Sets/` is the only place prepared sets are written. Anything
@@ -90,9 +92,19 @@ length of the song, and is meant to be played alongside the others.
 - **A combined part** is several tracks summed into one, under a name typed
   in the Studio, `[band]` by default. It is pulled down as a whole if the sum
   would clip, and left alone otherwise.
-- **`[click]` and `[cues]`** are the set's own click and cue tracks, one file
-  each, when the set has them. They are written like any other part; the
-  player treats `[click]` as the click track.
+- **The click and cues are sampler parts, not files.** A click is a short
+  sample struck on every beat and a cue track a handful of spoken files
+  along the song; rendering either into a song-length MP3 made megabytes of
+  file out of kilobytes of audio, timed by an encoder. Instead each becomes
+  a part with `kind: "sampler"` in the manifest (and so in the library): a
+  pattern of `notes` and the `samples` they strike, in exactly the shape the
+  website already plays for a hand-written library. The samples are copied
+  once, byte for byte, into `Resources/` at the root of the band's folder —
+  named for what they contain, so one kick serves every set that fires it
+  and two different kicks never collide — and `Resources/` is a folder the
+  scan never reads, so nothing in it is mistaken for a song. Sets prepared
+  before this carry `[click].mp3` and `[cues].mp3` instead; a player should
+  go on treating `[click]` as the click track when it meets one.
 - The audio is what Live would play: clips laid end to end with gaps silent,
   fades applied, clip and track gain in, a clip's own transposition and warp
   speed rendered in. Anything on a return bus is ignored, and third-party
@@ -148,7 +160,18 @@ way a hand-made folder would.
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
       "parts": [
         { "label": "ref drums", "name": "drums", "reference": true },
-        { "label": "bass", "name": "bass" }
+        { "label": "bass", "name": "bass" },
+        { "label": "click", "name": "click", "kind": "sampler",
+          "id": "cruel summer {85, g, 4-4}#sampler:click", "role": "stem", "rev": "1a2b3c4d+5e6f7a8b", "order": 2,
+          "samples": [
+            { "note": 44, "path": "Resources/MetronomeUp-1a2b3c4d.wav",   "rev": "1a2b3c4d…", "sizeBytes": 40960, "gain": 1.58 },
+            { "note": 46, "path": "Resources/MetronomeDown-5e6f7a8b.wav", "rev": "5e6f7a8b…", "sizeBytes": 38210 }
+          ],
+          "notes": [
+            { "bar": 1,    "note": 44 },
+            { "bar": 1.25, "note": 46, "velocity": 0.79 },
+            { "bar": 1.5,  "note": 46, "velocity": 0.79 }
+          ] }
       ],
       "lanes": [
         { "id": "lead", "name": "LYRICS", "kind": "lyrics", "items": [{ "bar": 4, "text": "Yeah, yeah, yeah, yeah." }] },
@@ -177,7 +200,7 @@ way a hand-made folder would.
 | `songs[].markers` | no | `{bar, name}` list of sections |
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
-| `songs[].parts` | no | one entry per part written: `{label, name, reference?}`. `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name |
+| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?}, lengthBars?, endPatch?}` |
 
 Rules the reader follows, and a writer can rely on:
@@ -227,7 +250,13 @@ the same way.
    song whose title it carries.
 3. Apply every `set.json` under `Rehearsal Tool/Sets/` by the rules above.
 4. Offset all bar maths by the song's `firstBarOffsetSec`.
-5. Treat `[click]` as the click track and leave it, and `[cues]`, untransposed.
+5. Play a `kind: "sampler"` part by striking its samples: at each note's
+   `bar` — through the tempo map, with `firstBarOffsetSec` added as for every
+   other part — start the sample for that `note` and let it ring, at
+   `velocity` squared. The part labelled `click` is the click track. A note
+   whose number has no sample is skipped and said so. Neither the click nor
+   the cues is ever transposed with the song. A `[click]` or `[cues]` file
+   from an older set is the same thing rendered; treat it as before.
 6. Label a part by its `parts` entry where the manifest has one — the name
    without the reference marker, with "reference" said beside it — and fall
    back to the bracketed label when it does not. A set prepared before `parts`

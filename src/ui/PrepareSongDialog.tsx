@@ -305,7 +305,15 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             <br />
             Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} to{' '}
             <span className="code">{result.folder}/{folderName}</span>.
-            {result.skipped.length > 0 && (
+            {result.samplerParts > 0 && (
+            <>
+              {' '}
+              {result.samplerParts} of them {result.samplerParts === 1 ? 'is a pattern' : 'are patterns'} striking{' '}
+              {result.samplesShared} sample{result.samplesShared === 1 ? '' : 's'} in{' '}
+              <span className="code">Resources/</span> — one kick for every song that fires it.
+            </>
+          )}
+          {result.skipped.length > 0 && (
               <>
                 {' '}
                 {result.skipped.length} skipped — {result.skipped[0].part}: {result.skipped[0].reason}

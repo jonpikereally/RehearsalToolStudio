@@ -44,6 +44,17 @@ export interface Variant {
    * mix, not a stem, and is not this.
    */
   reference?: boolean;
+  /**
+   * A sampler part: a pattern of notes and the one-shot samples they strike,
+   * instead of a rendered file. The set's click and cues come out this way —
+   * a click is two samples struck hundreds of times, and rendering that into
+   * a song-length file made megabytes out of kilobytes. Absent means audio.
+   * `path` still names the first sample here, since the studio's loader
+   * wants a path; the band's library is written without it.
+   */
+  kind?: 'sampler';
+  samples?: SamplerSample[];
+  notes?: SamplerNote[];
   /** Hidden from the variant switcher without deleting it. */
   hidden?: boolean;
   /** Manual ordering within the song. */
@@ -98,6 +109,31 @@ export interface Variant {
    * the ordinary part, which is `path` placed once.
    */
   clips?: VariantClip[];
+}
+
+/** One sample a sampler part can strike, by MIDI note. */
+export interface SamplerSample {
+  /** MIDI note number, 0..127. */
+  note: number;
+  /** Relative to the band's folder: `Resources/kick-1a2b3c4d.wav`. */
+  path: string;
+  rev: string;
+  sizeBytes: number;
+  /**
+   * The pad's own level times the track's, linear. Not part of the contract
+   * the website reads — it ignores what it does not know — but what the set
+   * had, and what the studio's own player honours.
+   */
+  gain?: number;
+}
+
+/** One strike: which note, at which bar. */
+export interface SamplerNote {
+  /** 1-based, fractional: 9.5 is halfway through bar 9. */
+  bar: number;
+  note: number;
+  /** 0..1, the raw MIDI velocity over 127; absent means full. */
+  velocity?: number;
 }
 
 /** One clip of an arranged part: which file, where in the song, where in the file. */

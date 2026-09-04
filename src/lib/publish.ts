@@ -62,7 +62,20 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
     if (doc) applyManifest(songs, file.path, doc.data);
   }
 
-  const library = { ...result.library, songs, updatedAt: Date.now() };
+  /*
+   * As the band's player reads it. A sampler part carries no path there —
+   * its paths are on its samples — and the studio's loader needing one is
+   * the studio's business, not the contract's.
+   */
+  const forBand = songs.map((song) => ({
+    ...song,
+    variants: song.variants.map((v) => {
+      if (v.kind !== 'sampler') return v;
+      const { path: _path, clips: _clips, ...rest } = v;
+      return rest as typeof v;
+    }),
+  }));
+  const library = { ...result.library, songs: forBand, updatedAt: Date.now() };
   await local.writeJson(folder, '', `/${BAND_LIBRARY}`, library);
   /*
    * Under the old name as well, for now. The band's production site still

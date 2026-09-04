@@ -260,6 +260,14 @@ export default function PrepareSet() {
           Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} across{' '}
           {result.songsWritten} song{result.songsWritten === 1 ? '' : 's'} to{' '}
           <span className="code">{result.folder}</span>.
+          {result.samplerParts > 0 && (
+            <>
+              {' '}
+              {result.samplerParts} of them {result.samplerParts === 1 ? 'is a pattern' : 'are patterns'} striking{' '}
+              {result.samplesShared} sample{result.samplesShared === 1 ? '' : 's'} in{' '}
+              <span className="code">Resources/</span> — one kick for every song that fires it.
+            </>
+          )}
           {result.skipped.length > 0 && (
             <>
               <br />

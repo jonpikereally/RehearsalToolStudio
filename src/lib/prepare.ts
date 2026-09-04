@@ -4,6 +4,7 @@ import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { PREPARED_FOLDER, PRINTS_FOLDER } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
+import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, laneList, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
@@ -145,6 +146,10 @@ export interface PrepareResult {
   partsWritten: number;
   /** Parts that could not be prepared, with why. */
   skipped: { song: string; part: string; reason: string }[];
+  /** Parts written as patterns striking samples, rather than as files. */
+  samplerParts: number;
+  /** Distinct sample files those patterns share, written to Resources/. */
+  samplesShared: number;
   /** Lead-in the encoder adds, written into each song so bars stay true. */
   paddingSec: number;
 }
@@ -205,7 +210,92 @@ export function partInfoFor(songTitle: string, partName: string, reference: bool
   return { label, name: name || label, ...(reference ? { reference: true } : {}) };
 }
 
-/** The tempo Live plays the song at: the automation's where there is any. */
+/* ------------------------------ sampler parts ------------------------------ */
+
+/** Where the samples go: the root of the band's folder, shared by every set. */
+export const RESOURCES_FOLDER = 'Resources';
+
+/** The set's own click and cue tracks, by the names the parser gives them. */
+export function isSetStem(stem: { name: string }): boolean {
+  const name = stem.name.trim().toLowerCase();
+  return name === 'click' || name === 'cues';
+}
+
+/** What a sampler part wants read and written, before any of it is. */
+export interface SamplerSource {
+  path: string;
+  absPath: string | null;
+  note: number;
+  /** The pad's level times the track's, apart from velocity. */
+  gain: number;
+}
+
+/**
+ * A click or cue track as notes and the samples they strike — the pattern
+ * the set already had, rather than a song-length file rendered from it.
+ *
+ * A drum-rack note keeps its own number and velocity. An audio cue track has
+ * neither, so each distinct file it plays is given a note from 36 up and its
+ * clip gain goes into velocity, which the player squares — so it is the
+ * square root that is written, clamped: a cue above unity plays at unity.
+ * Disabled clips and clips inside a mute region are no notes at all.
+ * Nothing here reads audio; what comes back says which files are wanted.
+ */
+export function samplerPartFor(
+  stem: AlsSong['stems'][number],
+): { sources: Map<string, SamplerSource>; notes: SamplerNote[] } | null {
+  const audible = (bar: number) =>
+    !stem.regions || stem.regions.some((r) => bar >= r.startBar && bar < r.endBar);
+  const sources = new Map<string, SamplerSource>();
+  const notes: SamplerNote[] = [];
+  let nextNote = 36;
+  for (const clip of stem.clips) {
+    if (clip.disabled || !audible(clip.startBar)) continue;
+    const key = clip.path.toLowerCase();
+    const fromRack = clip.note !== undefined;
+    let source = sources.get(key);
+    if (!source) {
+      source = {
+        path: clip.path,
+        absPath: clip.absPath ?? null,
+        note: fromRack ? clip.note! : nextNote++,
+        gain: (fromRack ? clip.padGain ?? 1 : 1) * stem.gain,
+      };
+      sources.set(key, source);
+    }
+    const velocity = fromRack
+      ? Math.min(127, Math.max(1, clip.velocity!)) / 127
+      : Math.min(1, Math.sqrt(Math.max(0, clip.gain)));
+    notes.push({ bar: clip.startBar, note: source.note, ...(velocity < 0.999 ? { velocity } : {}) });
+  }
+  if (!notes.length) return null;
+  notes.sort((a, b) => a.bar - b.bar || a.note - b.note);
+  return { sources, notes };
+}
+
+/**
+ * A name for a sample, from what it is rather than where it came from.
+ *
+ * The file's own name kept for a person, a hash of its bytes added for the
+ * machine: identical content from two projects lands on one file however
+ * many sets strike it, and two different kicks both called kick.wav can
+ * never overwrite each other. The website stores a sample once by path, so
+ * the path staying the same across publishes is the whole saving.
+ */
+export function sampleFileName(path: string, hashHex: string): string {
+  const base = safeName(path.split('/').pop() ?? path) || 'sample';
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  return `${RESOURCES_FOLDER}/${stem}-${hashHex.slice(0, 8)}${ext}`;
+}
+
+async function sha1Hex(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** The tempo Live plays the song at: the automation's where there is any. *//** The tempo Live plays the song at: the automation's where there is any. */
 function tempoOf(song: AlsSong, project: AlsProject): number {
   return song.startBpm ?? song.bpm ?? project.tempo;
 }
@@ -254,6 +344,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const written: PreparedSongInfo[] = [];
   let songsWritten = 0;
   let partsWritten = 0;
+  let samplerParts = 0;
 
   /*
    * Decoded source files, kept between parts under a budget.
@@ -310,6 +401,38 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
   const paddingSec = await measurePadding();
 
+  /*
+   * Samples, written once for the whole run by what they contain. A click's
+   * two files are struck in every song of the set and copied on the first;
+   * the rest reuse the path, which is what the band's player stores once.
+   */
+  const samplesWritten = new Map<string, SamplerSample>();
+  const sampleFor = async (source: SamplerSource): Promise<SamplerSample> => {
+    const bytes = await readSource(source.path, source.absPath);
+    const hash = await sha1Hex(bytes);
+    let sample = samplesWritten.get(hash);
+    if (!sample) {
+      const rel = sampleFileName(source.path, hash);
+      await writeFile(`${normalisePath(root)}/${rel}`.replace(/^\/+/, ''), new Blob([bytes]));
+      sample = { note: source.note, path: rel, rev: hash, sizeBytes: bytes.byteLength };
+      samplesWritten.set(hash, sample);
+    }
+    return { ...sample, note: source.note, ...(Math.abs(source.gain - 1) > 1e-6 ? { gain: source.gain } : {}) };
+  };
+  const readSource = async (relative: string, absPath: string | null): Promise<ArrayBuffer> => {
+    const path = resolvePath(relative);
+    const candidates = [path, absPath ? `abs:${absPath}` : null].filter((p): p is string => !!p);
+    let last: unknown = new Error(`cannot resolve ${relative}`);
+    for (const candidate of candidates) {
+      try {
+        return await readFile(candidate);
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last;
+  };
+
   for (const [index, song] of chosen.entries()) {
     if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
@@ -319,6 +442,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     let wroteAny = false;
     /** The parts that actually reached the folder, for the manifest. */
     const wroteParts: PreparedPart[] = [];
+    /** How many of this song's parts were written as patterns, not files. */
+    let samplerHere = 0;
 
     for (const part of partsFor(song, opts.plan?.[song.title])) {
       if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
@@ -334,6 +459,54 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         });
 
       try {
+        /*
+         * The set's click and cues are not rendered at all. Each is a pattern
+         * of notes striking a few samples, and that — with the samples copied
+         * once to Resources/ — is what gets written: kilobytes where a
+         * rendered click was tens of megabytes. A click folded into a combined
+         * part is the one exception, since a sum cannot be triggered.
+         */
+        if (!part.combined && part.stems.length === 1 && isSetStem(part.stems[0])) {
+          report('writing', 0);
+          const built = samplerPartFor(part.stems[0]);
+          if (!built) {
+            skipped.push({ song: song.title, part: part.name, reason: 'nothing playing in this song' });
+            continue;
+          }
+          const samples: SamplerSample[] = [];
+          const lost: number[] = [];
+          for (const source of built.sources.values()) {
+            try {
+              samples.push(await sampleFor(source));
+            } catch (err) {
+              lost.push(source.note);
+              skipped.push({
+                song: song.title, part: part.name,
+                reason: `${source.path.split('/').pop()} could not be read — ${err instanceof Error ? err.message : String(err)}`,
+              });
+            }
+          }
+          // A note with no sample is still written: the player says which it
+          // is missing, which beats a pattern with holes nobody can explain.
+          if (!samples.length) continue;
+          const label = part.name.trim().toLowerCase();
+          wroteParts.push({
+            label,
+            name: label,
+            kind: 'sampler',
+            id: `${songFolderName(song, project)}#sampler:${label}`.toLowerCase(),
+            role: 'stem',
+            rev: samples.map((s) => s.rev.slice(0, 8)).join('+'),
+            order: wroteParts.length,
+            samples,
+            notes: built.notes,
+          });
+          samplerHere++;
+          partsWritten++;
+          wroteAny = true;
+          continue;
+        }
+
         report('reading', 0);
         // Every clip of every track in the part, placed; a combined part is
         // simply all of its tracks' clips rendered into one buffer.
@@ -409,6 +582,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
     if (wroteAny) {
       songsWritten++;
+      samplerParts += samplerHere;
       const words = lyricsFileFor(song, project);
       if (words) await writeFile(`${songFolder}/${safeName(song.title)}.lrc`, words);
 
@@ -475,7 +649,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, partsWritten, skipped, paddingSec };
+  return { folder, songsWritten, partsWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */
