@@ -4164,5 +4164,94 @@ group('a song\'s audio as a key');
   check('a words-only update carries it forward', songInfoFor(song(), project, '/x.als', 0, undefined, base).audioKey === base);
 }
 
+/* ------------------------------ what the band is shown ------------------------------ */
+
+group('what the band\'s library is built from');
+{
+  const { publishable } = await import('../src/lib/publish.ts');
+  const f = (p) => ({ path: p, name: p.split('/').pop(), rev: 'r', size: 1, modified: 1 });
+  const files = [
+    f('/Sets/Friday/Yellow {120}/Yellow [bass].mp3'),
+    f('/Sets/Friday/set.json'),
+    f('/Resources/MetronomeUp-1a2b3c4d.flac'),
+    f('/Resources/slates/Yellow-5e6f7a8b.wav'),
+    f('/Resources/Cues/1 One.flac'),
+    f('/Prints/Yellow (no vocal v1 2026-08-13 rehearsaltool).wav'),
+    f('/Rehearsal Tool/Sets/Old/Clocks {131}/Clocks [drums].mp3'),
+  ];
+  const kept = publishable(files).map((x) => x.path);
+  check('a prepared part is a song', kept.includes('/Sets/Friday/Yellow {120}/Yellow [bass].mp3'));
+  check('so is one under the old wrapper', kept.includes('/Rehearsal Tool/Sets/Old/Clocks {131}/Clocks [drums].mp3'));
+  check('nothing under Resources is', !kept.some((p) => /\/Resources\//.test(p)), kept.join(', '));
+  check('nor a print', !kept.some((p) => /\/Prints\//.test(p)));
+  check('the manifest rides along for the reader', kept.includes('/Sets/Friday/set.json'));
+}
+
+/* ------------------------------ the order AbleSet plays ------------------------------ */
+
+group('running order from AbleSet');
+{
+  const { parseAbleSetSetlist, orderFromAbleSet, abletSetlistFiles } = await import('../src/lib/ableset.ts');
+  const { setlistFromProject, songIdFor } = await import('../src/lib/alsImport.ts');
+  const { folderOrder } = await import('../src/lib/prepare.ts');
+
+  const song = (title, startBar) => ({
+    title, raw: title, startBar, endBar: startBar + 30, bpm: 120, key: null, durationText: null, tags: [],
+    sections: [], chords: [], lyrics: [], lanes: [], tempoChanges: [], rigMarks: [], stems: [],
+  });
+  const project = {
+    creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [],
+    songs: [song('Sound Check', 1), song('Yellow', 17), song('Yellow', 19), song('Clocks', 65), song('Fix You', 129)],
+  };
+  // AbleSet plays Fix You first, then Yellow, then Clocks; it has not heard of Sound Check.
+  const raw = [
+    { id: 'a', time: 512, lastKnownName: 'Fix You' },
+    { id: 'b', time: 64, lastKnownName: 'Yellow' },
+    { id: 'c', time: 999, lastKnownName: 'Clocks - Play in D' },
+  ];
+  const entries = parseAbleSetSetlist(raw);
+  check('a setlist file is a list of positions and names', entries?.length === 3 && entries[0].time === 512 && entries[0].name === 'Fix You');
+  check('anything else is not one', parseAbleSetSetlist({ songs: [] }) === null && parseAbleSetSetlist([{ id: 'x' }]) === null);
+
+  const order = orderFromAbleSet(project, entries);
+  check('songs come out in AbleSet\'s order, matched by beat', order.slice(0, 2).join(' | ') === 'Fix You | Yellow', order.join(' | '));
+  check('a moved locator is matched by name, brackets and all', order[2] === 'Clocks');
+  check('a song the setlist never names follows, as the set has it', order[3] === 'Sound Check' && order.length === 4, order.join(' | '));
+  check('a count-in locator repeating a title does not double it', order.filter((t) => t === 'Yellow').length === 1);
+
+  const als = '/Band/Show/Show.als';
+  const setlist = setlistFromProject(als, project, () => true, order, 'from AbleSet');
+  check('the set\'s own setlist takes that order', setlist.songIds[0] === songIdFor(als, 'Fix You') && setlist.songIds.length === 4 && setlist.notes === 'from AbleSet');
+  check('and the arrangement\'s without one', setlistFromProject(als, project, () => true).songIds[0] === songIdFor(als, 'Sound Check'));
+
+  const folders = folderOrder(project, order);
+  check('the manifest follows it too', folders[0].startsWith('Fix You') && folders[3].startsWith('Sound Check') && folders.length === 4, folders.join(' | '));
+  check('and the set without it', folderOrder(project)[0].startsWith('Sound Check'));
+
+  const files = [
+    { path: '/Band/Show/AbleSet/Setlists/Tour.json', name: 'Tour.json', rev: 'r', size: 1, modified: 10 },
+    { path: '/Band/Show/AbleSet/Setlists/Rehearsal.json', name: 'Rehearsal.json', rev: 'r', size: 1, modified: 20 },
+    { path: '/Band/Show/AbleSet/Settings/settings.json', name: 'settings.json', rev: 'r', size: 1, modified: 30 },
+    { path: '/Band/Other/AbleSet/Setlists/Other.json', name: 'Other.json', rev: 'r', size: 1, modified: 40 },
+  ];
+  const found = abletSetlistFiles(files, als);
+  check('the setlists beside a set are found, newest first, and nobody else\'s', found.map((f) => f.name).join(',') === 'Rehearsal.json,Tour.json', found.map((f) => f.name).join(','));
+
+  // What AbleSet is showing right now, from its log: the last order it sent itself.
+  const { liveSetlistFromLog } = await import('./studio-files.mjs');
+  const line = (ts, map, name = 'Tour') => JSON.stringify({ level: 'debug', message: 'POST Request', method: 'POST', module: 'server', path: '/api/setlist/setCueMeta', timestamp: ts, body: { setlistName: name, metaMap: map } });
+  const log = [
+    '{"level":"info","message":"Starting","timestamp":"2026-09-05T20:00:00Z"}',
+    line('2026-09-05T20:01:00Z', [{ id: 'a', time: 512, lastKnownName: 'Fix You', order: 1 }, { id: 'b', time: 64, lastKnownName: 'Yellow', order: 0 }]),
+    'not json at all',
+    line('2026-09-05T21:18:24Z', [{ id: 'a', time: 512, lastKnownName: 'Fix You', order: 0 }, { id: 'b', time: 64, lastKnownName: 'Yellow', order: 1 }], 'Tour 2'),
+    '{"level":"info","message":"Stopping","timestamp":"2026-09-05T21:20:00Z"}',
+  ].join('\n');
+  const live = liveSetlistFromLog(log);
+  check('the last order AbleSet sent itself is the one taken', live?.at === '2026-09-05T21:18:24Z' && live.setlistName === 'Tour 2', JSON.stringify(live));
+  check('sorted by its order field, names carried', live.entries.map((e) => e.lastKnownName).join(',') === 'Fix You,Yellow');
+  check('a log with no such line has none', liveSetlistFromLog('{"a":1}\nnope') === null);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

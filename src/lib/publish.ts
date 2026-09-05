@@ -1,8 +1,9 @@
-import { emptyLibrary, type Library } from '../types';
-import * as local from './localSource';
-import { mergeScan } from './scan';
-import { applyManifest, isManifestName } from './preparedSet';
-import { isPreparedSet, isPrint } from './prints';
+import { emptyLibrary, type Library } from '../types.ts';
+import * as local from './localSource.ts';
+import { isProjectScaffolding, mergeScan } from './scan.ts';
+import type { FileEntry } from './files.ts';
+import { applyManifest, isManifestName } from './preparedSet.ts';
+import { isPreparedSet, isPrint } from './prints.ts';
 
 /**
  * Handing a prepared set to the band.
@@ -41,6 +42,22 @@ export interface PublishResult {
  * anything typed against those songs — a key, a marker moved by hand — belongs
  * to the library rather than to the files, and would be lost by starting over.
  */
+/**
+ * The files of the band's folder that are songs.
+ *
+ * Not the prints: a mix of a song that exists is not a song, and the
+ * website attaches those itself on its own scan. And nothing under
+ * Resources/, which holds the samples the click and cues strike, the slates,
+ * and whatever else was filed there — a folder of a hundred and sixty
+ * one-shots is not a hundred and sixty songs, and once read as such it put
+ * "215 songs" in front of a band with forty-six. The studio's own scan never
+ * looked there; this one, having no set to tell it whose territory was
+ * whose, did.
+ */
+export function publishable(files: FileEntry[]): FileEntry[] {
+  return files.filter((f) => !isPrint(f.path) && !isProjectScaffolding(f.path));
+}
+
 export async function publishLibrary(folder: local.FolderHandle): Promise<PublishResult> {
   const existing =
     (await local.readJson<Library>(folder, '', `/${BAND_LIBRARY}`).catch(() => null))?.data ??
@@ -52,9 +69,7 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
 
   // The band's folder has no Ableton sets in it and nothing to claim, so this
   // is the plain folder scan — the same one their app would have run.
-  // Not the prints: a mix of a song that exists is not a song, and the
-  // website attaches those itself on its own scan.
-  const result = mergeScan(existing, files.filter((f) => !isPrint(f.path)), '');
+  const result = mergeScan(existing, publishable(files), '');
   const songs = result.library.songs;
 
   // Facts the folder names had no room for: sections, chords, lyrics.

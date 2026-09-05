@@ -235,7 +235,12 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
         </div>
       )}
       {preparing && (
-        <PrepareSetDialog preselect={songs.map((s) => s.title)} onClose={() => setPreparing(false)} />
+        <PrepareSetDialog
+          preselect={songs.map((s) => s.title)}
+          // A setlist made by hand is its own order; the set's own follows AbleSet.
+          order={fromSet ? undefined : songs.map((s) => s.title)}
+          onClose={() => setPreparing(false)}
+        />
       )}
 
       <div className="panel btn-row">

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { emptyLibrary, type Library, type Setlist, type Song } from '../types';
 import { mergeScan, isProjectScaffolding, newestSetPerFolder, parseFileName, syncSetlists, type ScanResult } from './scan';
 import { parseAls, type AlsProject } from './alsParser';
+import { abletSetlistFiles, liveRunningOrder, orderFromAbleSet, parseAbleSetSetlist } from './ableset';
 import { findPrints, isPrint, isPreparedSet, type FoundPrint } from './prints';
 import { applyManifest, isManifestName } from './preparedSet';
 import { versionsOf } from './versions';
@@ -585,12 +586,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * copy carried. Anything saved since, patch changes included, was thrown
        * away by a scan that had never seen it.
        */
-      const parsedSets: { path: string; project: AlsProject }[] = [];
+      const parsedSets: { path: string; project: AlsProject; order: string[] | null; orderNote?: string }[] = [];
       for (const [index, file] of setFiles.entries()) {
         setScanProgress(`Reading Ableton set ${index + 1} of ${setFiles.length}…`);
         try {
           const { bytes } = await source.readBytes(file.path);
-          parsedSets.push({ path: file.path, project: await parseAls(bytes) });
+          const project = await parseAls(bytes);
+          /*
+           * The running order is AbleSet's when the project keeps a setlist:
+           * that is what runs the show, and the arrangement's order is only
+           * where the songs happen to sit. Newest saved setlist wins.
+           */
+          let order: string[] | null = null;
+          let orderNote: string | undefined;
+          let savedAt: number | null = null;
+          const setlists = abletSetlistFiles(files, file.path);
+          for (const candidate of setlists) {
+            try {
+              const doc = await source.readJson<unknown>(candidate.path);
+              const entries = doc ? parseAbleSetSetlist(doc.data) : null;
+              if (!entries?.length) continue;
+              order = orderFromAbleSet(project, entries);
+              savedAt = candidate.modified;
+              const label = candidate.name.replace(/\.json$/i, '');
+              orderNote =
+                `Running order from AbleSet's setlist “${label}”` +
+                (setlists.length > 1 ? `, the newest of ${setlists.length}` : '') +
+                '.';
+              break;
+            } catch (err) {
+              console.warn('[rehearsal-tool-studio] could not read', candidate.path, err);
+            }
+          }
+          // Newer still: the order AbleSet is showing right now, saved or not.
+          const live = await liveRunningOrder(project, file.path, savedAt);
+          if (live) {
+            order = live.titles;
+            orderNote = live.note;
+          }
+          parsedSets.push({ path: file.path, project, order, orderNote });
         } catch (err) {
           console.error('[rehearsal-tool-studio] could not read', file.path, err);
           readErrors.push(`${file.name} could not be read`);
@@ -663,8 +697,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          */
         const live = new Set(songs.map((s) => s.id));
         const alsSetlists = parsedSets
-          .map(({ path, project }) => setlistFromProject(path, project, (id) => live.has(id)))
+          .map(({ path, project, order, orderNote }) =>
+            setlistFromProject(path, project, (id) => live.has(id), order, orderNote),
+          )
           .filter((sl) => sl.songIds.length > 0);
+        for (const { path, orderNote } of parsedSets) {
+          if (orderNote) alsNotes.push(`${path.split('/').pop()}: ${orderNote.replace(/\.$/, '')}`);
+        }
 
         result.library = {
           ...result.library,

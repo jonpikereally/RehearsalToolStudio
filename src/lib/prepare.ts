@@ -160,8 +160,31 @@ export interface PrepareOptions {
    * are known; the next prepare compares and leaves unchanged songs alone.
    */
   audioKeys?: Record<string, string>;
+  /**
+   * The running order, by title, when it is not the arrangement's — AbleSet's
+   * setlist, or a setlist made by hand. The manifest lists songs in it, and
+   * the band's app plays them in it. Titles left out follow in set order.
+   */
+  songOrder?: string[];
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
+}
+
+/**
+ * The manifest's order as folder names: the given running order first, by
+ * title, then whatever of the set it did not name, as the set has it.
+ */
+export function folderOrder(project: AlsProject, songOrder?: string[] | null): string[] {
+  const arranged = project.songs.map((s) => s.title);
+  const titles = songOrder ? [...songOrder, ...arranged.filter((t) => !songOrder.includes(t))] : arranged;
+  const out: string[] = [];
+  for (const title of titles) {
+    const song = project.songs.find((s) => s.title === title);
+    if (!song) continue;
+    const folder = songFolderName(song, project);
+    if (!out.includes(folder)) out.push(folder);
+  }
+  return out;
 }
 
 /**
@@ -883,7 +906,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     const songs = mergeSongs(
       ((await opts.readManifest?.()) ?? { songs: [] }).songs,
       written,
-      project.songs.map((s) => songFolderName(s, project)),
+      folderOrder(project, opts.songOrder),
     );
 
     const manifest: PreparedManifest = {

@@ -3,6 +3,7 @@ import type { Song } from '../types';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
 import { holdAwake } from '../lib/keepAwake';
+import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -43,6 +44,7 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
   const { publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [project, setProject] = useState<AlsProject | null>(null);
+  const liveOrder = useLiveOrder(project, song.setPath ?? null);
   const [alsSong, setAlsSong] = useState<AlsSong | null>(null);
   const [choice, setChoice] = useState<Record<string, Choice>>({});
   const [combinedName, setCombinedName] = useState('band');
@@ -134,6 +136,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       };
       const ctx = new AudioContext();
       const done = await prepareSet({
+        songOrder: liveOrder?.titles,
         project,
         alsPath: setPath,
         only: [alsSong.title],
@@ -213,6 +216,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       if ('error' in found) throw new Error(found.error);
 
       const done = await updatePrepared({
+        songOrder: liveOrder?.titles,
         project,
         alsPath: song.setPath,
         setFolder: found.setFolder,

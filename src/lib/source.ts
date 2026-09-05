@@ -1,5 +1,5 @@
-import type { FileEntry } from './files';
-import * as local from './localSource';
+import type { FileEntry } from './files.ts';
+import * as local from './localSource.ts';
 
 /**
  * Where the app reads songs from: one folder on this machine, and nothing
@@ -97,6 +97,12 @@ export async function readJson<T>(path: string): Promise<Doc<T> | null> {
 }
 
 /** A file's identity as another local tool would need it: name, size, date. */
+/** AbleSet's current running order for the set at `path`, from its log. */
+export async function abletLive(path: string): Promise<local.AbleSetLive> {
+  if (!localReady()) return { found: false };
+  return local.abletLive(config.folder!, config.root, path);
+}
+
 export async function statFile(path: string): Promise<{ name: string; size: number; modified: number }> {
   if (!localReady()) throw new Error('No folder is chosen to read from.');
   return local.statFile(config.folder!, config.root, path);

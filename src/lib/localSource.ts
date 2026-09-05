@@ -202,6 +202,22 @@ export async function statFile(
   return call('stat', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/** What AbleSet is playing right now for this set, from its log. */
+export interface AbleSetLive {
+  found: boolean;
+  /** When AbleSet last sent itself this order, as an ISO date. */
+  at?: string | null;
+  setlistName?: string;
+  /** The set AbleSet has open, and whether it is this set's project. */
+  projectFile?: string | null;
+  applies?: boolean;
+  entries?: { time: number; lastKnownName: string }[];
+}
+
+export async function abletLive(folder: FolderHandle, root: string, path: string): Promise<AbleSetLive> {
+  return call('ableset-live', { dir: open(folder).dir, path: below(root, path) });
+}
+
 /** Whether a file is actually there, without reading it. */
 export async function exists(folder: FolderHandle, root: string, path: string): Promise<boolean> {
   return (await call<{ exists: boolean }>('exists', { dir: open(folder).dir, path: below(root, path) })).exists;

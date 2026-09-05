@@ -1,7 +1,7 @@
 import type { AlsProject, AlsSong } from './alsParser';
 import { clipsFromMarks, laneList, songIdFor } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
-import { lyricsFileFor, mergeSongs, songFolderName } from './prepare.ts';
+import { folderOrder, lyricsFileFor, mergeSongs, songFolderName } from './prepare.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
 
 /**
@@ -79,6 +79,8 @@ export interface UpdateOptions {
   presentFolders: string[];
   /** Titles to update; the whole set when absent. */
   only?: string[];
+  /** The running order by title, as for prepareSet; the arrangement's without. */
+  songOrder?: string[];
   writeFile: (path: string, data: Blob) => Promise<string>;
   onProgress?: (p: { title: string; index: number; count: number }) => void;
   signal?: AbortSignal;
@@ -246,11 +248,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       fromSet: alsPath,
       // Describes the MP3s in the folder, which this run has not touched.
       paddingSec: manifest.paddingSec,
-      songs: mergeSongs(
-        manifest.songs,
-        written,
-        project.songs.map((s) => songFolderName(s, project)),
-      ),
+      songs: mergeSongs(manifest.songs, written, folderOrder(project, opts.songOrder)),
     };
     await writeFile(
       `${setFolder}/${MANIFEST_NAME}`,

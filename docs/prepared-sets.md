@@ -223,7 +223,7 @@ way a hand-made folder would.
 | `preparedAt` | no | ISO time of the run |
 | `fromSet` | no | the `.als` it came from, relative to the Studio's sets folder; absent when written by hand |
 | `paddingSec` | no | the encoder lead-in for this run, in seconds |
-| `songs` | yes, a list | one entry per song folder, in the set's running order |
+| `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order |
 | `songs[].folder` | yes | the song folder's name, relative to the set folder; how the entry is matched to the scanned song, case-insensitively |
 | `songs[].title` | no | the song's title, in case the folder name had to be cleaned |
 | `songs[].firstBarOffsetSec` | no | seconds from the start of each file to the downbeat of bar 1 |

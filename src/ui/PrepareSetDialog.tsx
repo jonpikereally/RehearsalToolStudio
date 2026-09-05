@@ -7,6 +7,7 @@ import { songFolderName } from '../lib/prepare';
 import { DEFAULT_BITRATE } from '../lib/mp3';
 import { updatePrepared } from '../lib/updatePrepared';
 import { statFile } from '../lib/source';
+import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -45,9 +46,12 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
 export default function PrepareSetDialog({
   onClose,
   preselect,
+  order,
 }: {
   onClose: () => void;
   preselect?: string[];
+  /** The running order to write, by title, when a setlist's own; else the set's. */
+  order?: string[];
 }) {
   const { currentSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
@@ -72,6 +76,10 @@ export default function PrepareSetDialog({
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
+  // The order the manifest lists songs in: the setlist this was opened from,
+  // else the set's running order — AbleSet's, as it has it right now.
+  const liveOrder = useLiveOrder(project, order ? null : setPath);
+  const songOrder = order ?? liveOrder?.titles ?? undefined;
   /** What the band will see the set called: their folder's name. */
   const [setName, setSetName] = useState(() => setNameFor(setPath));
   useEffect(() => setSetName(setNameFor(setPath)), [setPath]);
@@ -286,6 +294,7 @@ export default function PrepareSetDialog({
           }),
         parallelShifts: shiftLanes(),
         audioKeys: keys,
+        songOrder,
         onProgress: setProgress,
         signal: running.current.signal,
       });
@@ -320,6 +329,7 @@ export default function PrepareSetDialog({
             manifest,
             presentFolders,
             only: untouched,
+            songOrder,
             writeFile: (path, data) => local.writeFile(folder, '', path, data),
             signal: running.current?.signal,
           });
@@ -364,6 +374,9 @@ export default function PrepareSetDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3>Prepare {alsName ?? 'the set'} for Rehearsal Tool</h3>
+        {/* The form, until a run has finished: then what happened is all that's shown. */}
+        {!result && (
+          <>
         {!setPath && <p className="dialog-note">No set is open. Choose one from the Songs tab first.</p>}
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         Reads the set's current arrangement and writes each song out as small files anyone can
@@ -437,6 +450,11 @@ export default function PrepareSetDialog({
                 : `${selected.size} of ${titles.length}`}
             </span>
           </div>
+          {liveOrder?.note && (
+            <div className="hint" style={{ marginBottom: 6 }}>
+              {liveOrder.note}
+            </div>
+          )}
           {standing && lastPrepared && (
             <div className="hint" style={{ marginBottom: 6 }}>
               {(() => {
@@ -492,6 +510,9 @@ export default function PrepareSetDialog({
         </div>
       )}
 
+          </>
+        )}
+
       {progress && (
         <>
           <PrepareBar progress={progress} />
@@ -509,15 +530,14 @@ export default function PrepareSetDialog({
 
       {error && <div className="notice error">{error}</div>}
 
-      {published && (
-        <div className="notice">
-          Published to <span className="code">{published.folderName}</span> — the band now sees{' '}
-          {published.songs} song{published.songs === 1 ? '' : 's'}.
-        </div>
-      )}
-
       {result && (
-        <div className="notice">
+        <div className="notice done" role="status">
+          <strong>
+            {result.songsWritten > 0
+              ? `Done — ${result.songsWritten === titles.length && titles.length ? 'the set is' : `${result.songsWritten} song${result.songsWritten === 1 ? ' is' : 's are'}`} prepared.`
+              : 'Finished, but nothing was written.'}
+          </strong>
+          <br />
           Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} across{' '}
           {result.songsWritten} song{result.songsWritten === 1 ? '' : 's'} to{' '}
           <span className="code">{result.folder}</span>.
@@ -557,34 +577,64 @@ export default function PrepareSetDialog({
         </div>
       )}
 
+      {published && (
+        <div className="notice">
+          Published to <span className="code">{published.folderName}</span> — the band now sees{' '}
+          {published.songs} song{published.songs === 1 ? '' : 's'}.
+        </div>
+      )}
+
       <div className="btn-row">
-        <button
-          className="btn primary"
-          onClick={() => void start()}
-          disabled={busy || !setPath || selected.size === 0}
-        >
-          {busy
-            ? 'Preparing…'
-            : selected.size === 0
-              ? 'Nothing chosen'
-              : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
-                  selected.size === titles.length && titles.length
-                    ? 'the whole setlist'
-                    : `${selected.size} song${selected.size === 1 ? '' : 's'}`
-                }`}
-        </button>
-        <button
-          className={busy ? 'btn danger' : 'btn'}
-          onClick={() => (busy ? running.current?.abort() : onClose())}
-          title={busy ? 'Stop preparing. What is already written stays.' : undefined}
-        >
-          {busy ? 'Stop' : result ? 'Close' : 'Cancel'}
-        </button>
+        {result ? (
+          // Finished: the plain thing to do first, and a way back to the form.
+          <>
+            <button className="btn primary" onClick={onClose} autoFocus>
+              Close
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                setResult(null);
+                setPublished(null);
+                setRefreshed(null);
+              }}
+            >
+              Prepare again
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn primary"
+              onClick={() => void start()}
+              disabled={busy || !setPath || selected.size === 0}
+            >
+              {busy
+                ? 'Preparing…'
+                : selected.size === 0
+                  ? 'Nothing chosen'
+                  : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
+                      selected.size === titles.length && titles.length
+                        ? 'the whole setlist'
+                        : `${selected.size} song${selected.size === 1 ? '' : 's'}`
+                    }`}
+            </button>
+            <button
+              className={busy ? 'btn danger' : 'btn'}
+              onClick={() => (busy ? running.current?.abort() : onClose())}
+              title={busy ? 'Stop preparing. What is already written stays.' : undefined}
+            >
+              {busy ? 'Stop' : 'Cancel'}
+            </button>
+          </>
+        )}
       </div>
-      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-        Reads every stem the set points at, which is gigabytes, so it wants the machine those files
-        are actually on. What it writes is small enough for a phone.
-      </div>
+      {!result && (
+        <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+          Reads every stem the set points at, which is gigabytes, so it wants the machine those files
+          are actually on. What it writes is small enough for a phone.
+        </div>
+      )}
       </div>
     </div>
   );

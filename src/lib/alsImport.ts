@@ -139,11 +139,27 @@ export function setlistFromProject(
   alsPath: string,
   project: AlsProject,
   known: (songId: string) => boolean,
+  /**
+   * The running order by title when something other than the arrangement
+   * decides it — AbleSet's setlist. Titles it leaves out follow in
+   * arrangement order. Without it, the arrangement's own order.
+   */
+  order?: string[] | null,
+  /** Where that order came from, said on the setlist. */
+  orderNote?: string,
 ): Setlist {
+  const arranged = project.songs.map((s) => s.title);
+  const titles = order ? [...order, ...arranged.filter((t) => !order.includes(t))] : arranged;
+  const ids: string[] = [];
+  for (const title of titles) {
+    const id = songIdFor(alsPath, title);
+    if (known(id) && !ids.includes(id)) ids.push(id);
+  }
   return {
     id: setlistIdFor(alsPath),
     name: setName(alsPath),
-    songIds: project.songs.map((s) => songIdFor(alsPath, s.title)).filter(known),
+    songIds: ids,
+    ...(orderNote ? { notes: orderNote } : {}),
     updatedAt: Date.now(),
   };
 }

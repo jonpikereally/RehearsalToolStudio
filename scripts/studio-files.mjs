@@ -63,6 +63,37 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 export const OWN_SET_COPY = /( \((slates|chords|rehearsaltool)\)| Lyrics)\.als$/i;
 
 /**
+ * The running order AbleSet is playing right now, from its own log.
+ *
+ * AbleSet writes a setlist file only when asked to save one; the order on
+ * screen lives inside it until then. But every change goes from its page
+ * to its server as a request, and the request is logged in full — each
+ * song by id, position in beats, last name and place in the order. The
+ * newest such line is the order as AbleSet has it at this moment, saved or
+ * not, and this reads it back. A log is not a promise, so the line is
+ * dated and the caller decides whether it is newer than what was saved.
+ */
+export function liveSetlistFromLog(text) {
+  let found = null;
+  for (const line of text.split('\n')) {
+    if (!line.includes('/api/setlist/setCueMeta')) continue;
+    try {
+      const entry = JSON.parse(line);
+      const map = entry?.body?.metaMap;
+      if (!Array.isArray(map) || !map.length) continue;
+      const entries = map
+        .filter((m) => m && typeof m.time === 'number')
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((m) => ({ time: m.time, lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : '' }));
+      if (entries.length) found = { at: entry.timestamp ?? null, setlistName: entry.body.setlistName ?? '', entries };
+    } catch {
+      /* a line that is not JSON is not the one */
+    }
+  }
+  return found;
+}
+
+/**
  * Besides its own page, the one other place a call may come from: the dev
  * server (`npm run dev:studio`), which passes `/__fs` along to this one.
  */
@@ -265,6 +296,45 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       };
       await walk(base, '');
       return { files: out };
+    },
+
+    /**
+     * AbleSet's current order for the set at `path`, from its log — see
+     * liveSetlistFromLog. `applies` says whether AbleSet's open project is
+     * this set's, by folder: the file it has open may be a saved-as copy of
+     * the same project, and the order is the project's, not the file's.
+     */
+    async 'ableset-live'({ dir, path }) {
+      const full = inside(dir, path, { file: true });
+      const support = join(homedir(), 'Library', 'Application Support');
+      let projectFile = null;
+      for (const name of ['AbleSet', 'ableset']) {
+        try {
+          projectFile = JSON.parse(await readFile(join(support, name, 'last-project-file.json'), 'utf8')).lastProjectFile ?? null;
+          if (projectFile) break;
+        } catch {
+          /* not here */
+        }
+      }
+      for (const name of ['ableset', 'AbleSet']) {
+        const logs = join(support, name, 'logs');
+        let names;
+        try {
+          names = (await readdir(logs)).filter((n) => n.endsWith('.log'));
+        } catch {
+          continue;
+        }
+        const dated = await Promise.all(names.map(async (n) => ({ n, st: await stat(join(logs, n)).catch(() => null) })));
+        dated.sort((a, b) => (b.st?.mtimeMs ?? 0) - (a.st?.mtimeMs ?? 0));
+        // The newest few launches: a setlist changed today is in today's log.
+        for (const { n } of dated.slice(0, 5)) {
+          const found = liveSetlistFromLog(await readFile(join(logs, n), 'utf8').catch(() => ''));
+          if (!found) continue;
+          const applies = !!projectFile && dirname(resolve(projectFile)) === dirname(full);
+          return { found: true, ...found, projectFile, applies };
+        }
+      }
+      return { found: false, projectFile };
     },
 
     async stat({ dir, path }) {

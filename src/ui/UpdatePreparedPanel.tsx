@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveOrder } from '../lib/useLiveOrder';
 import type { AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
 import { useStore } from '../lib/store';
@@ -28,6 +29,7 @@ export default function UpdatePreparedPanel({
   titles: string[];
 }) {
   const { publishFolderName, pickPublishFolder, publishFolder } = useStore();
+  const liveOrder = useLiveOrder(project, alsPath);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [result, setResult] = useState<UpdateResult | null>(null);
@@ -54,6 +56,7 @@ export default function UpdatePreparedPanel({
         manifest: found.manifest,
         presentFolders: found.presentFolders,
         only: [...selected],
+        songOrder: liveOrder?.titles,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         onProgress: (p) => setProgress(`${p.title} — ${p.index} of ${p.count}`),
       });
