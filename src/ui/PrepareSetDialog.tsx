@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
+import { holdAwake } from '../lib/keepAwake';
+import { audioKeyFor, audioStanding, type AudioStanding } from '../lib/audioKey';
+import { songFolderName } from '../lib/prepare';
+import { DEFAULT_BITRATE } from '../lib/mp3';
+import { updatePrepared } from '../lib/updatePrepared';
+import { statFile } from '../lib/source';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -53,6 +59,16 @@ export default function PrepareSetDialog({
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   /** The run in progress, so it can be stopped: minutes is too long to be locked in. */
   const running = useRef<AbortController | null>(null);
+  /**
+   * Where each song stands against the last prepare of this set, once the
+   * files have been looked at; null while they are being looked at, or
+   * when there is no band's folder to look in yet.
+   */
+  const [standing, setStanding] = useState<Map<string, AudioStanding> | null>(null);
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [lastPrepared, setLastPrepared] = useState<string | null>(null);
+  /** Words and sections refreshed for the songs left alone, once the run is done. */
+  const [refreshed, setRefreshed] = useState<{ count: number; error?: string } | null>(null);
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
@@ -89,6 +105,85 @@ export default function PrepareSetDialog({
     };
   }, [setPath]);
 
+  /*
+   * What has changed since the last prepare into this folder.
+   *
+   * Each song's audio is keyed from the set and the files' revisions, and
+   * held against the key its manifest entry carries. Songs whose audio is
+   * as it was are unticked to start with — that is the point — and said
+   * so, with the reason beside those that changed. Nothing here reads a
+   * stem; it is the set, a stat per file, and the manifest.
+   */
+  useEffect(() => {
+    setStanding(null);
+    setKeys({});
+    setLastPrepared(null);
+    if (!project || !setPath || !publishFolderName) return;
+    let live = true;
+    void (async () => {
+      // The band's folder as already granted; never a dialog from an effect.
+      const band = await publishFolder();
+      if (!band || !live) return;
+      const folderName = safeSetName(setName) || defaultSetName(setPath);
+      let manifest: PreparedManifest | null = null;
+      try {
+        const { bytes } = await local.readBytes(band, '', `${SETS_FOLDER}/${folderName}/${MANIFEST_NAME}`);
+        manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
+      } catch {
+        manifest = null; // never prepared under this name: every song is new
+      }
+      const revs = new Map<string, string | null>();
+      const paths = new Set<string>();
+      for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
+        if (!clip.disabled) paths.add(resolveStemPath(setPath, clip.path));
+      }
+      // A stat apiece, a dozen at a time; a missing file is a fact, not a failure.
+      const list = [...paths];
+      for (let i = 0; i < list.length; i += 12) {
+        await Promise.all(
+          list.slice(i, i + 12).map(async (path) => {
+            try {
+              const st = await statFile(path);
+              revs.set(path.toLowerCase(), `${st.modified}-${st.size}`);
+            } catch {
+              revs.set(path.toLowerCase(), null);
+            }
+          }),
+        );
+      }
+      if (!live) return;
+      const inputs = {
+        fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
+        bitrate: DEFAULT_BITRATE,
+        sampleRate: 48000,
+      };
+      const nextKeys: Record<string, string> = {};
+      const next = new Map<string, AudioStanding>();
+      for (const song of project.songs) {
+        if (nextKeys[song.title]) continue;
+        const key = audioKeyFor(song, project, inputs);
+        nextKeys[song.title] = key;
+        const folder = songFolderName(song, project).toLowerCase();
+        const entry = manifest?.songs.find((e) => e.folder.toLowerCase() === folder);
+        next.set(song.title, audioStanding(key, entry?.audioKey, !!entry));
+      }
+      setKeys(nextKeys);
+      setStanding(next);
+      setLastPrepared(manifest?.preparedAt ?? null);
+      // Unchanged songs start unticked; anything ticked by hand already is kept.
+      if (manifest) {
+        setChosen((was) => {
+          const base = was ?? new Set(project.songs.map((s) => s.title));
+          return new Set([...base].filter((t) => next.get(t)?.state !== 'unchanged'));
+        });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, setPath, publishFolderName, setName]);
+
   // Titles, deduped and in set order: a count-in locator repeats its song's.
   const titles: string[] = [];
   for (const song of project?.songs ?? []) {
@@ -117,10 +212,14 @@ export default function PrepareSetDialog({
   const go = async (folder: local.FolderHandle) => {
     if (!setPath) return;
     running.current = new AbortController();
+    // Minutes of work nobody is touching is what a Mac calls idle; held
+    // awake, or the display sleeps, the app naps and the run crawls.
+    const releaseAwake = holdAwake('Preparing a set');
     setBusy(true);
     setError(null);
     setResult(null);
     setPublished(null);
+    setRefreshed(null);
     try {
       /*
        * Let go of what is only being held for listening. The player keeps the
@@ -186,11 +285,50 @@ export default function PrepareSetDialog({
             signal: running.current?.signal,
           }),
         parallelShifts: shiftLanes(),
+        audioKeys: keys,
         onProgress: setProgress,
         signal: running.current.signal,
       });
       void ctx.close();
       setResult(done);
+
+      /*
+       * The songs left alone still get their words and sections: a lyric
+       * fixed in the set lands everywhere, whether or not any audio moved.
+       * The cheap path, over the manifest the run just wrote.
+       */
+      const untouched = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
+      if (untouched.length) {
+        try {
+          const setFolder = `${SETS_FOLDER}/${folderName}`;
+          const { bytes: raw } = await local.readBytes(folder, '', `${setFolder}/${MANIFEST_NAME}`);
+          const manifest = JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
+          const under = `${setFolder.toLowerCase()}/`;
+          const presentFolders = [
+            ...new Set(
+              (await local.listFiles(folder, ''))
+                .map((f) => f.path.replace(/^\/+/, ''))
+                .filter((path) => path.toLowerCase().startsWith(under))
+                .map((path) => path.slice(under.length).split('/')[0])
+                .filter((name) => name && !name.includes('.')),
+            ),
+          ];
+          const refresh = await updatePrepared({
+            project: full,
+            alsPath: setPath,
+            setFolder,
+            manifest,
+            presentFolders,
+            only: untouched,
+            writeFile: (path, data) => local.writeFile(folder, '', path, data),
+            signal: running.current?.signal,
+          });
+          setRefreshed({ count: refresh.updated.length });
+        } catch (err) {
+          if ((err as { name?: string })?.name === 'AbortError') throw err;
+          setRefreshed({ count: 0, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
       setPublished(await publishLibrary(folder));
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
@@ -199,6 +337,7 @@ export default function PrepareSetDialog({
         setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
+      releaseAwake();
       running.current = null;
       setBusy(false);
       setProgress(null);
@@ -298,6 +437,26 @@ export default function PrepareSetDialog({
                 : `${selected.size} of ${titles.length}`}
             </span>
           </div>
+          {standing && lastPrepared && (
+            <div className="hint" style={{ marginBottom: 6 }}>
+              {(() => {
+                const same = titles.filter((t) => standing.get(t)?.state === 'unchanged').length;
+                const changed = titles.filter((t) => standing.get(t)?.state === 'changed').length;
+                const fresh = titles.filter((t) => standing.get(t)?.state === 'new').length;
+                const when = new Date(lastPrepared);
+                const since = Number.isNaN(when.getTime()) ? 'the last prepare' : `the prepare of ${when.toLocaleString()}`;
+                return same
+                  ? `${same} song${same === 1 ? '' : 's'} unchanged since ${since} — left unticked, their words and sections refreshed instead. ` +
+                      `${changed} changed, ${fresh} new. Tick a song to write it again regardless.`
+                  : `Everything has changed since ${since}: ${changed} changed, ${fresh} new.`;
+              })()}
+            </div>
+          )}
+          {publishFolderName && project && !standing && (
+            <div className="hint" style={{ marginBottom: 6 }}>
+              Looking at what changed since the last prepare…
+            </div>
+          )}
           <div
             style={{
               maxHeight: 220,
@@ -319,6 +478,14 @@ export default function PrepareSetDialog({
                   onChange={() => toggle(title)}
                 />
                 <span style={{ fontSize: 14 }}>{title}</span>
+                {standing?.get(title) && lastPrepared && (
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto', textAlign: 'right' }}>
+                    {(() => {
+                      const s = standing.get(title)!;
+                      return s.state === 'new' ? 'new' : s.state === 'unchanged' ? 'unchanged' : `changed — ${s.why}`;
+                    })()}
+                  </span>
+                )}
               </label>
             ))}
           </div>
@@ -369,6 +536,14 @@ export default function PrepareSetDialog({
               {result.records.length === 1 ? 'one song' : `${result.records.length} songs`} —{' '}
               {result.records.map((r) => `${r.song} [${r.part}]`).join(', ')} — and is tagged so the band's
               player switches to it rather than mixing it in.
+            </>
+          )}
+          {refreshed && (
+            <>
+              <br />
+              {refreshed.error
+                ? `The unchanged songs' words and sections could not be refreshed: ${refreshed.error}`
+                : `Words and sections refreshed for ${refreshed.count} unchanged song${refreshed.count === 1 ? '' : 's'}.`}
             </>
           )}
           {result.skipped.length > 0 && (

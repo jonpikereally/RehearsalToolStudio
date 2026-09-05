@@ -53,6 +53,13 @@ export interface PreparedSongInfo {
    */
   parts?: PreparedPart[];
   /**
+   * A key over everything that decides what the parts sound like — files
+   * by revision, clips, faders, devices, encoder settings — so the next
+   * prepare can leave a song whose audio has not changed alone. The
+   * studio's own; a player ignores it.
+   */
+  audioKey?: string;
+  /**
    * Patch changes for the rig, exactly as the set carried them. Their ids are
    * derived from the set, so a re-publish replaces each clip with itself
    * rather than with an identical stranger every device then argues about.
@@ -185,6 +192,7 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
       });
     }
     if (song.lanes !== undefined && !Array.isArray(song.lanes)) bad('"lanes" must be a list');
+    if (song.audioKey !== undefined && typeof song.audioKey !== 'string') bad('"audioKey" must be text');
     if (song.patchClips !== undefined && !Array.isArray(song.patchClips)) bad('"patchClips" must be a list');
     if (song.parts !== undefined) {
       if (!Array.isArray(song.parts)) bad('"parts" must be a list');

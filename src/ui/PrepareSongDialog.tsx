@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
+import { holdAwake } from '../lib/keepAwake';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -105,6 +106,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const go = async () => {
     if (!alsSong || !project || !song.setPath) return;
     running.current = new AbortController();
+    // Minutes of work nobody is touching is what a Mac calls idle; held
+    // awake, or the display sleeps, the app naps and the run crawls.
+    const releaseAwake = holdAwake('Preparing a song');
     setBusy(true);
     setError(null);
     setResult(null);
@@ -181,6 +185,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       if ((err as { name?: string })?.name === 'AbortError') setError('Stopped. Parts already written are on disk; running it again rewrites the song from the top.');
       else if (!/abort/i.test(message)) setError(message);
     } finally {
+      releaseAwake();
       running.current = null;
       setBusy(false);
       setProgress(null);

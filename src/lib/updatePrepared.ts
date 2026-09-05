@@ -117,6 +117,7 @@ export function songInfoFor(
   alsPath: string,
   firstBarOffsetSec: number,
   parts?: PreparedSongInfo['parts'],
+  audioKey?: string,
 ): PreparedSongInfo {
   return {
     folder: songFolderName(song, project),
@@ -130,6 +131,8 @@ export function songInfoFor(
      * on its next proper prepare.
      */
     parts,
+    // The audio's key is a fact about those same files, and travels with them.
+    audioKey,
     originalKey: song.key ?? undefined,
     notes: song.notes || undefined,
     tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
@@ -231,6 +234,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
         // The files' own lead-in, kept exactly. Nothing here re-encodes them.
         standing.entry?.firstBarOffsetSec ?? manifest.paddingSec,
         standing.entry?.parts,
+        standing.entry?.audioKey,
       ),
     );
   }

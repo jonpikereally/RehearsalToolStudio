@@ -154,6 +154,12 @@ export interface PrepareOptions {
    * time — and the stems of one song are independent, so a core each.
    */
   parallelShifts?: number;
+  /**
+   * Each song's audio key, by title, to write into its manifest entry — see
+   * audioKey.ts. Computed by the caller, which is where the files' revisions
+   * are known; the next prepare compares and leaves unchanged songs alone.
+   */
+  audioKeys?: Record<string, string>;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
 }
@@ -868,6 +874,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         patchClips: song.rigMarks?.length
           ? clipsFromMarks(song.rigMarks, songIdFor(opts.alsPath, song.title))
           : undefined,
+        audioKey: opts.audioKeys?.[song.title],
       });
     }
   }

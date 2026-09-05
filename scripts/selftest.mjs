@@ -4085,5 +4085,72 @@ group('frozen tracks');
     yellowSong?.variants.find((v) => v.name === 'Keys')?.clips === undefined);
 }
 
+/* ------------------------------ what changed since ------------------------------ */
+
+group('a song\'s audio as a key');
+{
+  const { audioKeyFor, audioKeySegments, audioStanding, AUDIO_KEY_VERSION } = await import('../src/lib/audioKey.ts');
+  const { validateManifest } = await import('../src/lib/preparedSet.ts');
+  const { songInfoFor } = await import('../src/lib/updatePrepared.ts');
+
+  const clip = (path, extra = {}) => ({
+    path, startBar: 1, endBar: 65, sourceStartSec: 0, disabled: false, fadeInSec: 0, fadeOutSec: 0,
+    warped: true, semitones: 0, speed: 1, gain: 1, ...extra,
+  });
+  const stem = (name, path, extra = {}) => ({
+    name, reference: false, frozen: false, gain: 1, pan: 0, devices: [], sends: [], direct: true,
+    path, regions: null, clips: [clip(path)], ...extra,
+  });
+  const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, songs: [], warnings: [] };
+  const song = (over = {}) => ({
+    title: 'Yellow', raw: '', startBar: 1, endBar: 65, bpm: 120, key: 'G', durationText: null, tags: [],
+    sections: [], chords: [], lanes: [], lyrics: [], tempoChanges: [], rigMarks: [],
+    stems: [stem('Bass', 'Stems/Bass.wav'), stem('Vox', 'Stems/Vox.wav')],
+    ...over,
+  });
+  const revs = { 'stems/bass.wav': '100-5', 'stems/vox.wav': '100-7' };
+  const inputs = (over = {}) => ({ fileRev: (p) => revs[p.toLowerCase()] ?? null, bitrate: 192, sampleRate: 48000, ...over });
+
+  const base = audioKeyFor(song(), project, inputs());
+  check('the key is five segments, version first', base.split('.').length === 5 && base.startsWith(`${AUDIO_KEY_VERSION}.`), base);
+  check('and the same set keys the same twice', audioKeyFor(song(), project, inputs()) === base);
+  check('the words changing changes nothing',
+    audioKeyFor(song({ lyrics: [{ bar: 3, text: 'hello' }], sections: [{ bar: 1, text: 'INTRO' }] }), project, inputs()) === base);
+
+  const seg = (key, i) => key.split('.')[i];
+  const reExported = audioKeyFor(song(), project, inputs({ fileRev: (p) => (p.toLowerCase() === 'stems/bass.wav' ? '200-5' : revs[p.toLowerCase()]) }));
+  check('a re-exported file changes only the files segment',
+    seg(reExported, 1) !== seg(base, 1) && seg(reExported, 2) === seg(base, 2) && seg(reExported, 3) === seg(base, 3));
+  const moved = audioKeyFor(song({ stems: [stem('Bass', 'Stems/Bass.wav', { clips: [clip('Stems/Bass.wav', { startBar: 3 })] }), stem('Vox', 'Stems/Vox.wav')] }), project, inputs());
+  check('a moved clip changes the arrangement segment', seg(moved, 2) !== seg(base, 2) && seg(moved, 1) === seg(base, 1));
+  const quieter = audioKeyFor(song({ stems: [stem('Bass', 'Stems/Bass.wav', { gain: 0.5 }), stem('Vox', 'Stems/Vox.wav')] }), project, inputs());
+  check('a fader changes the mix segment', seg(quieter, 3) !== seg(base, 3) && seg(quieter, 2) === seg(base, 2));
+  const planned = audioKeyFor(song(), project, inputs({ plan: { print: ['Vox'], combine: [{ name: 'band', stems: ['Bass'] }] } }));
+  check('so does the plan', planned !== base);
+  const bitrate = audioKeyFor(song(), project, inputs({ bitrate: 128 }));
+  check('and the encoder settings their own', seg(bitrate, 4) !== seg(base, 4) && seg(bitrate, 1) === seg(base, 1));
+  const gone = audioKeyFor(song(), project, inputs({ fileRev: () => null }));
+  check('a missing file is a fact in the key', seg(gone, 1) !== seg(base, 1));
+  check('a disabled clip counts for nothing',
+    audioKeyFor(song({ stems: [stem('Bass', 'Stems/Bass.wav', { clips: [clip('Stems/Bass.wav'), clip('Stems/Other.wav', { disabled: true })] }), stem('Vox', 'Stems/Vox.wav')] }), project, inputs()) === base);
+  check('the segments read plainly', /Stems\/Bass\.wav 100-5/.test(audioKeySegments(song(), project, inputs()).files));
+
+  // What the dialog says about each song.
+  check('never prepared is new', audioStanding(base, undefined, false).state === 'new');
+  check('prepared before keys existed is taken as changed',
+    audioStanding(base, undefined, true).state === 'changed' && /before this could be told/.test(audioStanding(base, undefined, true).why));
+  check('the same key is unchanged', audioStanding(base, base, true).state === 'unchanged');
+  check('a re-export says so', /re-exported/.test(audioStanding(reExported, base, true).why));
+  check('a moved clip says so', /arrangement/.test(audioStanding(moved, base, true).why));
+  check('a fader says so', /fader/.test(audioStanding(quieter, base, true).why));
+  check('a new version of the renderer trumps the rest', /renders parts differently/.test(audioStanding(`${AUDIO_KEY_VERSION + 1}.a.b.c.d`, base, true).why));
+
+  // Into and out of the manifest.
+  const manifest = { preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0, songs: [{ folder: 'Yellow {120}', title: 'Yellow', firstBarOffsetSec: 0, audioKey: base }] };
+  check('the manifest carries the key', validateManifest(manifest).ok);
+  check('and refuses one that is not text', !validateManifest({ ...manifest, songs: [{ ...manifest.songs[0], audioKey: 5 }] }).ok);
+  check('a words-only update carries it forward', songInfoFor(song(), project, '/x.als', 0, undefined, base).audioKey === base);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

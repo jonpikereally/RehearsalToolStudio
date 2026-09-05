@@ -52,7 +52,7 @@ func page(_ title: String, _ detail: String) -> String {
     """
 }
 
-final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: WKWebView!
     var titleWatch: NSKeyValueObservation?
@@ -64,6 +64,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
 
         let config = WKWebViewConfiguration()
         config.mediaTypesRequiringUserActionForPlayback = []
+        // The page's way of asking things of the app: for now, to be kept awake.
+        config.userContentController.add(self, name: "studio")
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         // "Inspect Element" in the context menu: the studio is a tool, and tools get opened up.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -160,6 +162,31 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /*
+     * Kept awake while the page says so. A prepare runs for many minutes and
+     * touches nothing, which is idleness to macOS: the display sleeps, the
+     * app is napped, the Mac sleeps, and a run that wrote a part every seven
+     * seconds under somebody's eye takes hours on its own. The page holds a
+     * screen wake lock for the display; this is for the rest — no App Nap
+     * (user-initiated) and no idle sleep — and it ends when the page says,
+     * or when the page goes away with the hold still up.
+     */
+    var awake: NSObjectProtocol?
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "studio", let body = message.body as? [String: Any] else { return }
+        if let wanted = body["awake"] as? Bool {
+            if wanted, awake == nil {
+                let reason = (body["reason"] as? String) ?? "Working"
+                awake = ProcessInfo.processInfo.beginActivity(
+                    options: [.userInitiated, .idleSystemSleepDisabled], reason: reason)
+            } else if !wanted, let held = awake {
+                ProcessInfo.processInfo.endActivity(held)
+                awake = nil
+            }
+        }
+    }
 
     // MARK: - The menu bar, without which copy and paste do nothing in a web view.
 
