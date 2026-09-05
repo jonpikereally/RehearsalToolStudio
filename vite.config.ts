@@ -75,6 +75,15 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    /*
+     * Never empty dist/ on a build. A page already open keeps running the
+     * bundle it loaded, and it fetches more of it as it goes — the encoder
+     * spawns a worker per part from a file under assets/. A rebuild under
+     * that page used to sweep the folder first, and a renamed worker file
+     * would have failed every part after it. Old assets stay until the
+     * launcher prunes them, a day on, when no open page can still want them.
+     */
+    emptyOutDir: false,
   },
   worker: {
     format: 'es',

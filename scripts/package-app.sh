@@ -41,14 +41,17 @@ ARCHS="$(lipo -archs "$NODE_BIN" 2>/dev/null || echo unknown)"
 echo "bundling node $(node -v) ($ARCHS) from $NODE_BIN"
 case "$ARCHS" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "  note: single-architecture — it will only run on $ARCHS Macs" ;; esac
 
-# The build that ships, made now, so it is never yesterday's.
-echo "building the studio"
-npm run build >/dev/null
-STAMP="$(sed -n 's/.*"build":"\([^"]*\)".*/\1/p' dist/build.json)"
-
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/rts-package.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
+
+# The build that ships, made now into a clean folder of its own — never
+# dist/, which keeps earlier builds' files around for any page still on
+# them and would carry them into the bundle.
+echo "building the studio"
+npx tsc -b >/dev/null
+npx vite build --outDir "$BUILD/dist" --emptyOutDir >/dev/null
+STAMP="$(sed -n 's/.*"build":"\([^"]*\)".*/\1/p' "$BUILD/dist/build.json")"
 echo "compiling the window"
 "$SWIFTC" -O -sdk "$SDK" -target "$(uname -m)-apple-macos12.0" -module-cache-path "$BUILD/cache" \
   -o "$BUILD/$NAME" mac/RehearsalToolStudio/main.swift -framework Cocoa -framework WebKit
@@ -71,7 +74,7 @@ mkdir -p "$APP/Contents/MacOS" "$RES/scripts"
 mv "$BUILD/$NAME" "$APP/Contents/MacOS/$NAME"
 make_icns "$RES/app.icns"
 cp "$NODE_BIN" "$RES/node" && chmod 755 "$RES/node"
-cp -R dist "$RES/dist"
+cp -R "$BUILD/dist" "$RES/dist"
 # The servers, laid out as they are here, so serve-studio finds ../dist unchanged.
 cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/slate-helper.mjs "$RES/scripts/"
 cp scripts/packaged-launch.sh "$RES/launch.sh" && chmod 755 "$RES/launch.sh"

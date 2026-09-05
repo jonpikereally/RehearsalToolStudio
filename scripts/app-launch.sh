@@ -75,7 +75,9 @@ start_studio_server() {
   current="$(cd "$REPO" && /usr/bin/git rev-parse --short HEAD 2>/dev/null)"
   if [ ! -f "$REPO/dist/index.html" ] || [ -n "$newest" ] ||
      { [ -n "$current" ] && [ "$current" != "$stamped" ]; }; then
-    ( cd "$REPO" && "$NPM" run build ) >"$REPO/.studio-build.log" 2>&1 \
+    # Builds leave the last build's files in place for any page still on
+    # them; what nothing has referenced for a day is let go afterwards.
+    ( cd "$REPO" && "$NPM" run build && /bin/sh scripts/prune-build.sh ) >"$REPO/.studio-build.log" 2>&1 \
       || echo "build failed; serving the previous build" >>"$REPO/.studio-build.log"
   fi
 
