@@ -163,6 +163,10 @@ export default function PrepareSetDialog({
         setName: folderName,
         resolvePath: (relative) => resolveStemPath(setPath, relative),
         readFile: async (path) => (await readBytes(path)).bytes,
+        readSlice: async (path, start, end) => {
+          const got = await readBytes(path, undefined, undefined, { start, end });
+          return { bytes: got.bytes, size: got.size };
+        },
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
         decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
         // What everything is rendered at, so the lead-in is measured there too.

@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Stretch check</title>
+<style>body{font:14px/1.5 system-ui;padding:20px;max-width:720px}pre{background:#f4f4f4;padding:10px}</style>
+<h1>Pitch worker check</h1>
+<p>Renders a click train through <code>src/lib/pitch.worker.ts</code> in this browser and reports where the clicks land.</p>
+<pre id="out">running…</pre>
+<script type="module">
+  const out = document.getElementById('out');
+  const log = (line) => { out.textContent += `\n${line}`; console.log(line); };
+  const RATE = 48000, seconds = 6, inFrames = RATE * seconds;
+  const left = new Float32Array(inFrames), right = new Float32Array(inFrames);
+  const onsets = [];
+  for (let t = 0.5; t < seconds - 0.3; t += 0.5) {
+    const at = Math.round(t * RATE); onsets.push(at);
+    for (let i = 0; i < 240; i++) { const v = Math.sin(i * 0.5) * Math.exp(-i / 60); left[at + i] = v; right[at + i] = v * 0.7; }
+  }
+  const centroid = (buf, at, win) => { let n = 0, d = 0; for (let i = Math.max(0, at - win); i < Math.min(buf.length, at + win); i++) { const e = buf[i] * buf[i]; n += i * e; d += e; } return d ? n / d : NaN; };
+  const win = Math.round(RATE * 0.03);
+  const inC = onsets.map((o) => centroid(left, o + 60, win));
+  const results = [];
+  for (const [semitones, tempo] of [[3, 1], [0, 1.1], [-5, 0.9]]) {
+    const worker = new Worker(new URL('../src/lib/pitch.worker.ts', import.meta.url), { type: 'module' });
+    const t0 = performance.now();
+    const done = await new Promise((resolve, reject) => {
+      worker.onmessage = (e) => { if (e.data.type === 'done') resolve(e.data); else if (e.data.type === 'error') reject(new Error(e.data.message)); };
+      worker.onerror = (e) => reject(new Error(e.message));
+      worker.postMessage({ type: 'render', jobId: 'x', left: new Float32Array(left), right: new Float32Array(right), sampleRate: RATE, semitones, tempo, channels: 2 });
+    }).catch((err) => ({ error: err.message }));
+    worker.terminate();
+    if (done.error) { log(`semi ${semitones} tempo ${tempo}: ERROR ${done.error}`); results.push({ semitones, tempo, error: done.error }); continue; }
+    const ms = performance.now() - t0;
+    const mono = new Float32Array(done.frames);
+    for (let i = 0; i < done.frames; i++) mono[i] = done.pcm[i * 2] / 32768;
+    const worst = Math.max(...onsets.map((o, i) => Math.abs(centroid(mono, Math.round((o + 60) / tempo), win) - inC[i] / tempo) / RATE * 1000));
+    const want = Math.round(inFrames / tempo);
+    log(`semi ${semitones} tempo ${tempo}: frames ${done.frames} (want ${want}) worst drift ${worst.toFixed(2)} ms, ${(seconds * 1000 / ms).toFixed(0)}x realtime`);
+    results.push({ semitones, tempo, frames: done.frames, want, worst, ms });
+  }
+  // The same engine on this thread, timed in its parts.
+  const { loadStretch, stretchOffline } = await import('../src/lib/stretch.ts');
+  const source = (await import('../node_modules/signalsmith-stretch/SignalsmithStretch.mjs?raw')).default;
+  let t = performance.now();
+  const engine = await loadStretch(source);
+  log(`main thread: engine loaded in ${(performance.now() - t).toFixed(0)} ms`);
+  for (const preset of [false, true]) {
+    t = performance.now();
+    const out = stretchOffline(engine, { left, right, sampleRate: RATE, semitones: 3, tempo: 1, channels: 2, cheaper: preset });
+    const ms = performance.now() - t;
+    log(`main thread render ${preset ? 'cheaper' : 'default'}: ${out[0].length} frames in ${ms.toFixed(0)} ms = ${(seconds * 1000 / ms).toFixed(0)}x realtime`);
+  }
+  // One worker, many jobs: does it get faster as the engine warms up?
+  {
+    const worker = new Worker(new URL('../src/lib/pitch.worker.ts', import.meta.url), { type: 'module' });
+    const sine = new Float32Array(inFrames); for (let i = 0; i < inFrames; i++) sine[i] = Math.sin(i * 0.05) * 0.3;
+    const times = [];
+    for (let n = 0; n < 8; n++) {
+      const t0 = performance.now();
+      await new Promise((resolve, reject) => {
+        worker.onmessage = (e) => { if (e.data.type === 'done') resolve(); else if (e.data.type === 'error') reject(new Error(e.data.message)); };
+        worker.postMessage({ type: 'render', jobId: String(n), left: new Float32Array(sine), right: new Float32Array(sine), sampleRate: RATE, semitones: 3, tempo: 1, channels: 2 });
+      });
+      times.push(performance.now() - t0);
+    }
+    worker.terminate();
+    log(`one worker, 8 jobs of 6 s: ${times.map((ms) => `${(seconds * 1000 / ms).toFixed(0)}x`).join(' ')}`);
+    window.__warm = times;
+  }
+  // The studio's own path: the pool of warm workers behind getShiftedBuffer.
+  {
+    const { getShiftedBuffer } = await import('../src/lib/pitchService.ts');
+    const ctx = new AudioContext({ sampleRate: RATE });
+    const src = ctx.createBuffer(2, inFrames, RATE);
+    for (let i = 0; i < inFrames; i++) { src.getChannelData(0)[i] = Math.sin(i * 0.05) * 0.3; src.getChannelData(1)[i] = src.getChannelData(0)[i]; }
+    const times = [];
+    for (const semitones of [1, 2, 3, 4, 5, 6]) {
+      const t0 = performance.now();
+      const out = await getShiftedBuffer({ ctx, path: `check-${Date.now()}`, rev: 'x', semitones, tempo: 1, source: src, budgetBytes: 1e8 });
+      times.push({ ms: performance.now() - t0, frames: out.length });
+    }
+    log(`pooled workers, 6 jobs: ${times.map((t) => `${(seconds * 1000 / t.ms).toFixed(0)}x`).join(' ')} (frames ${times.map((t) => t.frames).join(',')})`);
+  }
+  window.__results = results;
+  log(results.every((r) => !r.error && r.frames === r.want && r.worst < 2) ? 'ALL GOOD' : 'PROBLEM');
+</script>

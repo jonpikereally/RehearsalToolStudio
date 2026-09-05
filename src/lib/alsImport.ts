@@ -56,6 +56,19 @@ export function externalEntry(absPath: string | undefined): FileEntry | undefine
 }
 
 /**
+ * A frozen track's file, which the scan never lists.
+ *
+ * Live writes it under `Samples/Processed/Freeze/`, and the scan leaves the
+ * whole of `Samples/` alone, rightly — it is a project's workings, not its
+ * songs. But the set names the file, by a path inside the folder, and that
+ * is enough to read it by. Named by its path rather than by Live's absolute
+ * one, so the same set on another Mac still finds it.
+ */
+export function frozenEntry(path: string): FileEntry {
+  return { path, name: path.split('/').pop() ?? path, rev: 'frozen', size: 0, modified: 0 };
+}
+
+/**
  * Where a stem is when it is not where the set says.
  *
  * A set moved to another machine, or copied out of the folder it was made
@@ -236,7 +249,10 @@ export function songsFromProject(
       const full = resolveStemPath(alsPath, stem.path);
       const first = (stem.clips ?? []).find((c) => !c.disabled) ?? stem.clips?.[0];
       const file =
-        byPath.get(full.toLowerCase()) ?? findByName(stem.path, available) ?? externalEntry(first?.absPath);
+        byPath.get(full.toLowerCase()) ??
+        findByName(stem.path, available) ??
+        (stem.frozen ? frozenEntry(full) : undefined) ??
+        externalEntry(first?.absPath);
       if (!file) continue;
 
       /*
@@ -246,13 +262,21 @@ export function songsFromProject(
        * it out. One clip is the ordinary part: the file, placed once.
        */
       const live = (stem.clips ?? []).filter((c) => !c.disabled);
-      const arranged = live.length > 1
+      /*
+       * A frozen track is carried as clips even when it has only one: its
+       * file runs the length of the set, and the clip is what says which
+       * stretch of it is this song's, so the player can read that and no
+       * more. An ordinary single clip stays the file, placed once.
+       */
+      const asClips = live.length > 1 || (stem.frozen && live.length === 1);
+      const arranged = asClips
         ? live
             .map((clip) => ({
               clip,
               file:
                 byPath.get(resolveStemPath(alsPath, clip.path).toLowerCase()) ??
                 findByName(clip.path, available) ??
+                (clip.frozen ? frozenEntry(resolveStemPath(alsPath, clip.path)) : undefined) ??
                 externalEntry(clip.absPath),
             }))
             .filter((x): x is { clip: AlsClip; file: FileEntry } => !!x.file)
@@ -268,6 +292,7 @@ export function songsFromProject(
         // The set knows by the folder, which a track name need not admit to:
         // one set files a plain "Lead Vox 1" under REF.
         reference: stem.reference || undefined,
+        frozen: stem.frozen || undefined,
         // One set, one version: a click or a cue from another folder is not
         // a version of the song, whatever folder it came from.
         versionId: setlistIdFor(alsPath),
@@ -278,12 +303,12 @@ export function songsFromProject(
         // The arrangement, not the file, decides where a part sounds — and
         // where its file begins.
         regions: stem.regions ?? undefined,
-        placement: arranged.length > 1 ? undefined : placementOf(stem.clips),
-        ...(arranged.length > 1 ? {} : ownShift(stem.clips)),
-        ...mixOf(stem, arranged.length > 1 ? undefined : stem.clips),
+        placement: arranged.length ? undefined : placementOf(stem.clips),
+        ...(arranged.length ? {} : ownShift(stem.clips)),
+        ...mixOf(stem, arranged.length ? undefined : stem.clips),
         ...routeOf(stem),
         clips:
-          arranged.length > 1
+          arranged.length
             ? arranged.map(({ clip, file: f }) => ({
                 path: f.path,
                 startBar: clip.startBar,
@@ -294,6 +319,7 @@ export function songsFromProject(
                 semitones: clip.semitones ?? 0,
                 speed: clip.speed ?? 1,
                 gain: clip.gain ?? 1,
+                ...(clip.frozen ? { frozen: true } : {}),
               }))
             : undefined,
       });

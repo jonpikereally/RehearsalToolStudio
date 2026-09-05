@@ -74,10 +74,12 @@ export async function readBytes(
   path: string,
   onProgress?: (loaded: number, total: number) => void,
   _signal?: AbortSignal,
-): Promise<{ bytes: ArrayBuffer; mime: string; from: 'local' | 'remote' }> {
+  /** Only this stretch of the file, by byte offsets; the whole file without. */
+  range?: local.ByteRange,
+): Promise<{ bytes: ArrayBuffer; mime: string; from: 'local' | 'remote'; size: number }> {
   if (!localReady()) throw new Error('No folder is chosen to read from.');
   // Disk reads are effectively instant, so there is no progress worth showing.
-  const result = await local.readBytes(config.folder!, config.root, path);
+  const result = await local.readBytes(config.folder!, config.root, path, range);
   onProgress?.(result.bytes.byteLength, result.bytes.byteLength);
   return { ...result, from: 'local' };
 }

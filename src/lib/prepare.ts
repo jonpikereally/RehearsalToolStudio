@@ -9,6 +9,7 @@ import { clipsFromMarks, laneList, roleForTrack, songIdFor, stemLabel } from './
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
+import { readPcmWindow, type RangeReader } from './audioSlice.ts';
 
 /**
  * Turning an Ableton set into a folder of songs anyone can play.
@@ -131,6 +132,12 @@ export interface PrepareOptions {
   /** Resolve a path as the set writes it to a path in the library. */
   resolvePath: (relative: string) => string | null;
   readFile: (path: string) => Promise<ArrayBuffer>;
+  /**
+   * A byte range of a file, and the file's whole length. A frozen track's
+   * file runs the length of the set, and with this a song reads only its
+   * own stretch; without it, the whole file, which a long set won't survive.
+   */
+  readSlice?: (path: string, start: number, end: number) => Promise<{ bytes: ArrayBuffer; size: number }>;
   writeFile: (path: string, data: Blob) => Promise<string>;
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
   /**
@@ -477,11 +484,24 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     }
   };
 
-  const loadFile = async (relative: string, absPath?: string): Promise<AudioBuffer | null> => {
+  /** Where a buffer cut from a longer file begins in that file, in seconds. */
+  const cutFrom = new WeakMap<AudioBuffer, number>();
+
+  /**
+   * A file decoded — or, given a window, the stretch of it from `startSec`
+   * for `durationSec`, when the file is PCM that can be cut. What comes back
+   * is placed by `cutFrom`, which says where the cut began.
+   */
+  const loadFile = async (
+    relative: string,
+    absPath?: string,
+    window?: { startSec: number; durationSec: number },
+  ): Promise<AudioBuffer | null> => {
     const path = resolvePath(relative);
     const candidates = [path, absPath ? `abs:${absPath}` : null].filter((p): p is string => !!p);
+    const suffix = window ? `#${window.startSec.toFixed(3)}+${window.durationSec.toFixed(2)}` : '';
     for (const [i, candidate] of candidates.entries()) {
-      const key = candidate.toLowerCase();
+      const key = candidate.toLowerCase() + suffix;
       const already = decoded.get(key);
       if (already) {
         // Touch it, so the Map's order stays "least recently used first".
@@ -490,8 +510,19 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         return already;
       }
       try {
-        const bytes = await readFile(candidate);
+        let bytes: ArrayBuffer | null = null;
+        let from = 0;
+        if (window && opts.readSlice) {
+          const read: RangeReader = (start, end) => opts.readSlice!(candidate, start, end);
+          const cut = await readPcmWindow(read, window.startSec, window.durationSec);
+          if (cut) {
+            bytes = cut.bytes;
+            from = cut.fromSec;
+          }
+        }
+        if (!bytes) bytes = await readFile(candidate);
         const buffer = await decode(bytes);
+        cutFrom.set(buffer, from);
         remember(key, buffer);
         return buffer;
       } catch (err) {
@@ -711,11 +742,22 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             continue;
           }
           for (const clip of live) {
-            let buffer = await loadFile(clip.path, clip.absPath);
+            // A frozen track's file is the whole set's; this song's stretch
+            // of it is all that is read, with a little over for the fade.
+            const window = clip.frozen
+              ? {
+                  startSec: clip.sourceStartSec,
+                  durationSec:
+                    barToSeconds(clip.endBar, bpm, project) - barToSeconds(clip.startBar, bpm, project) + clip.fadeOutSec + 0.25,
+                }
+              : undefined;
+            let buffer = await loadFile(clip.path, clip.absPath, window);
             if (!buffer) {
               skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
               continue;
             }
+            // Placed against where the cut began, when it was one.
+            const placed = cutFrom.get(buffer) ? { ...clip, sourceStartSec: clip.sourceStartSec - cutFrom.get(buffer)! } : clip;
             // As Live plays it: the clip's own transposition and warp speed —
             // rendered above and read back from the cache, or held from above
             // when the cache would not take it.
@@ -731,7 +773,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
                 })) ??
                 buffer;
             }
-            placements.push(placementOf(clip, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
+            placements.push(placementOf(placed, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
         }
         if (!placements.length) continue;

@@ -22,22 +22,49 @@ function spawnWorker(): Worker {
   return new Worker(new URL('./pitch.worker.ts', import.meta.url), { type: 'module' });
 }
 
-/** One worker per job so that cancelling is just a terminate(). */
+/*
+ * Workers kept warm between jobs.
+ *
+ * The engine is WebAssembly, and a browser compiles WebAssembly in tiers:
+ * quickly and slowly at first, then properly once it has seen the code run.
+ * Measured, that is one render at real time, one at five times it, and
+ * eighty times it from then on — so a worker thrown away after each job
+ * paid that every job, and a set of shifted stems never got to the fast
+ * part. Finished workers wait here for the next job instead; only a
+ * cancelled or failed one is terminated, since terminate() is what makes
+ * cancelling instant. A handful is enough, and any more are let go.
+ */
+const idle: Worker[] = [];
+const IDLE_WORKERS = 4;
+
+function acquireWorker(): Worker {
+  return idle.pop() ?? spawnWorker();
+}
+
+function releaseWorker(worker: Worker): void {
+  worker.onmessage = null;
+  worker.onerror = null;
+  if (idle.length < IDLE_WORKERS) idle.push(worker);
+  else worker.terminate();
+}
+
+/** A job on a warm worker; cancelling terminates it, and the pool grows one back. */
 function renderInWorker(
   req: Omit<RenderRequest, 'type' | 'jobId'>,
   onProgress: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<{ pcm: Int16Array; channels: number; frames: number }> {
   return new Promise((resolve, reject) => {
-    const worker = spawnWorker();
+    const worker = acquireWorker();
     const jobId = Math.random().toString(36).slice(2);
 
-    const cleanup = () => {
-      worker.terminate();
+    const finish = (keep: boolean) => {
       signal?.removeEventListener('abort', onAbort);
+      if (keep) releaseWorker(worker);
+      else worker.terminate();
     };
     const onAbort = () => {
-      cleanup();
+      finish(false);
       reject(new DOMException('Render cancelled', 'AbortError'));
     };
     if (signal?.aborted) return onAbort();
@@ -48,14 +75,14 @@ function renderInWorker(
       if (msg.jobId !== jobId) return;
       if (msg.type === 'progress') return onProgress(msg.ratio);
       if (msg.type === 'error') {
-        cleanup();
+        finish(false);
         return reject(new Error(msg.message));
       }
-      cleanup();
+      finish(true);
       resolve({ pcm: msg.pcm, channels: msg.channels, frames: msg.frames });
     };
     worker.onerror = (err) => {
-      cleanup();
+      finish(false);
       reject(new Error(err.message || 'Pitch worker failed'));
     };
 

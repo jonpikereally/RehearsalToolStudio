@@ -4,7 +4,7 @@
  * Run with `npm test`. Node 24 strips the TypeScript types natively, so these
  * import the real source files rather than a copy.
  */
-import { SimpleFilter, SoundTouch } from 'soundtouchjs';
+import { readFileSync } from 'node:fs';
 import { barToSec, secToBar, nudgeBars, secPerBar, formatBarBeat, totalBars } from '../src/lib/bars.ts';
 import { splitVariant, mergeScan, isAudio, parseNameMeta, defaultRole, parseFileName, isUnpitched, locateSong,
          isProjectScaffolding, setOwnedFolders, isUnderAnyFolder, newestSetPerFolder } from '../src/lib/scan.ts';
@@ -441,48 +441,12 @@ group('file grouping');
 
 group('pitch shifting');
 {
-  /** Mirrors ArraySource in src/lib/pitch.worker.ts, including the silent flush tail. */
-  class ArraySource {
-    constructor(left, right, tailFrames) {
-      this.left = left;
-      this.right = right;
-      this.total = left.length + tailFrames;
-    }
-    extract(target, numFrames, position) {
-      const available = Math.max(0, Math.min(numFrames, this.total - position));
-      const realEnd = this.left.length;
-      for (let i = 0; i < available; i++) {
-        const index = position + i;
-        const inRange = index < realEnd;
-        target[i * 2] = inRange ? this.left[index] : 0;
-        target[i * 2 + 1] = inRange ? this.right[index] : 0;
-      }
-      for (let i = available; i < numFrames; i++) { target[i * 2] = 0; target[i * 2 + 1] = 0; }
-      return available;
-    }
-  }
-
-  const CHUNK = 8192;
-  const FLUSH_TAIL_FRAMES = 1 << 18;
-  function render(left, right, semitones) {
-    const frames = left.length;
-    const outLeft = new Float32Array(frames);
-    const st = new SoundTouch();
-    st.rate = 1;
-    st.tempo = 1;
-    st.pitchSemitones = semitones;
-    const filter = new SimpleFilter(new ArraySource(left, right, FLUSH_TAIL_FRAMES), st);
-    const inter = new Float32Array(CHUNK * 2);
-    let written = 0;
-    while (written < frames) {
-      const got = filter.extract(inter, CHUNK);
-      if (got <= 0) break;
-      const n = Math.min(got, frames - written);
-      for (let i = 0; i < n; i++) outLeft[written + i] = inter[i * 2];
-      written += n;
-    }
-    return { outLeft, written };
-  }
+  // The real engine, loaded the way the worker loads it: from the package's own text.
+  const { loadStretch, stretchOffline } = await import('../src/lib/stretch.ts');
+  const source = readFileSync(new URL('../node_modules/signalsmith-stretch/SignalsmithStretch.mjs', import.meta.url), 'utf8');
+  const engine = await loadStretch(source);
+  const render = (left, right, semitones, tempo = 1, channels = 2) =>
+    stretchOffline(engine, { left, right, sampleRate: SR, semitones, tempo, channels });
 
   function goertzel(buf, freq, sr, start, len) {
     const coeff = 2 * Math.cos((2 * Math.PI * freq) / sr);
@@ -502,54 +466,60 @@ group('pitch shifting');
     return best;
   }
 
-  const SR = 44100, N = SR * 3, F0 = 440;
+  const SR = 48000, N = SR * 3, F0 = 440;
   const sine = new Float32Array(N);
   for (let i = 0; i < N; i++) sine[i] = Math.sin((2 * Math.PI * F0 * i) / SR) * 0.5;
 
   for (const semitones of [-5, -2, 2, 7, 12]) {
     const t0 = Date.now();
-    const { outLeft, written } = render(sine, sine, semitones);
+    const [outLeft] = render(sine, sine, semitones);
     const ms = Date.now() - t0;
     const expected = F0 * Math.pow(2, semitones / 12);
     const got = dominant(outLeft, SR, Math.floor(N * 0.4), 16384);
     const cents = 1200 * Math.log2(got / expected);
     let peak = 0;
-    for (let i = 0; i < written; i++) peak = Math.max(peak, Math.abs(outLeft[i]));
+    for (let i = 0; i < outLeft.length; i++) peak = Math.max(peak, Math.abs(outLeft[i]));
     check(
       `${semitones > 0 ? '+' : ''}${semitones} st → ${expected.toFixed(1)} Hz`,
-      Math.abs(cents) < 25 && written >= N * 0.98 && peak > 0.2,
-      `got ${got} Hz (${cents.toFixed(1)} cents), ${written}/${N} frames, peak ${peak.toFixed(2)}, ${ms}ms for 3s audio`,
+      Math.abs(cents) < 25 && outLeft.length === N && peak > 0.2,
+      `got ${got} Hz (${cents.toFixed(1)} cents), ${outLeft.length}/${N} frames, peak ${peak.toFixed(2)}, ${ms}ms for 3s audio`,
     );
   }
 
   const short = new Float32Array(1000);
-  const r = render(short, short, 3);
-  check('short buffer does not overrun the source', r.written <= 1000 && r.outLeft.length === 1000);
+  const [r] = render(short, short, 3);
+  check('a buffer shorter than the look-ahead still comes back its own length', r.length === 1000);
 
-  // Duration preservation is what keeps the bar grid valid after transposing.
+  // Duration is what keeps the bar grid valid after transposing, and every stem must agree.
   for (const semitones of [-7, -3, 4, 12]) {
-    const { written } = render(sine, sine, semitones);
-    check(`duration preserved exactly at ${semitones} st`, written === N, `${written}/${N}`);
+    const [out] = render(sine, sine, semitones);
+    check(`duration preserved exactly at ${semitones} st`, out.length === N, `${out.length}/${N}`);
   }
+  for (const tempo of [0.9, 1.1, 1.25]) {
+    const [out] = render(sine, sine, 0, tempo);
+    check(`a stretch by ${tempo} is round(frames / tempo) long`, out.length === Math.round(N / tempo), `${out.length}`);
+  }
+  check('mono in, mono out', render(sine, null, 2, 1, 1).length === 1);
 
   // The audio must not be time-shifted, or bar navigation would drift after a
-  // key change. Feed 1s of silence then a tone, and check where the tone starts.
-  const gated = new Float32Array(N);
-  const onsetFrame = SR; // 1.0 s
-  for (let i = onsetFrame; i < N; i++) gated[i] = Math.sin((2 * Math.PI * F0 * i) / SR) * 0.5;
-
-  for (const semitones of [-4, 5]) {
-    const { outLeft } = render(gated, gated, semitones);
-    let detected = -1;
-    for (let i = 0; i < N; i++) {
-      if (Math.abs(outLeft[i]) > 0.05) { detected = i; break; }
-    }
-    const driftMs = ((detected - onsetFrame) / SR) * 1000;
-    check(
-      `onset stays aligned at ${semitones} st`,
-      detected >= 0 && Math.abs(driftMs) < 50,
-      `onset at frame ${detected} vs ${onsetFrame} (${driftMs.toFixed(1)} ms drift)`,
-    );
+  // key change. Bursts every half second; each must land where it started.
+  const bursts = new Float32Array(N);
+  const onsets = [];
+  for (let t = 0.5; t < 2.8; t += 0.5) {
+    const at = Math.round(t * SR); onsets.push(at);
+    for (let i = 0; i < 240; i++) bursts[at + i] = Math.sin(i * 0.5) * Math.exp(-i / 60);
+  }
+  const centroid = (buf, at, win) => {
+    let num = 0, den = 0;
+    for (let i = Math.max(0, at - win); i < Math.min(buf.length, at + win); i++) { const e = buf[i] * buf[i]; num += i * e; den += e; }
+    return den ? num / den : NaN;
+  };
+  const win = Math.round(SR * 0.03);
+  const inCentre = onsets.map((o) => centroid(bursts, o + 60, win));
+  for (const [semitones, tempo] of [[-4, 1], [5, 1], [0, 1.1], [3, 0.9]]) {
+    const [out] = render(bursts, bursts, semitones, tempo);
+    const worst = Math.max(...onsets.map((o, i) => Math.abs(centroid(out, Math.round((o + 60) / tempo), win) - inCentre[i] / tempo) / SR * 1000));
+    check(`onsets stay aligned at ${semitones} st, tempo ${tempo}`, worst < 2, `worst drift ${worst.toFixed(2)} ms`);
   }
 }
 
@@ -3210,6 +3180,14 @@ group('the file API');
   const read = await call('read', { dir: songs, path: 'Band/Yellow/Yellow [drums].wav' });
   check('read hands back the bytes with a type',
     read.headers.get('content-type') === 'audio/wav' && (await read.arrayBuffer()).byteLength === 1000);
+  check('and says how long the whole file is', read.headers.get('x-file-size') === '1000');
+  // A stretch of a file: a frozen track's file is the set's length, and a song wants only its own part.
+  const part = await call('read', { dir: songs, path: 'Band/Yellow/Yellow [drums].wav', start: 100, end: 164 });
+  check('a byte range comes back alone', (await part.arrayBuffer()).byteLength === 64 && part.headers.get('x-file-size') === '1000');
+  const past = await call('read', { dir: songs, path: 'Band/Yellow/Yellow [drums].wav', start: 900, end: 5000 });
+  check('and is clipped to the file rather than refused', (await past.arrayBuffer()).byteLength === 100);
+  const nothing = await call('read', { dir: songs, path: 'Band/Yellow/Yellow [drums].wav', start: 2000, end: 3000 });
+  check('a range past the end is empty, not an error', nothing.status === 200 && (await nothing.arrayBuffer()).byteLength === 0);
 
   check('a library that is not there says so', (await ask('read-json', { dir: songs, path: '.rehearsal-tool.json' })).missing === true);
   const wrote = await ask('write-json', { dir: songs, path: '.rehearsal-tool.json', data: { songs: [1, 2] } });
@@ -3958,6 +3936,153 @@ group('sorting songs');
   check('choosing the field already chosen changes nothing', choose({ key: 'name', dir: 'desc' }, 'name').dir === 'desc');
   check('choosing another starts it the right way up', choose({ key: 'name', dir: 'desc' }, 'key').dir === 'asc');
   check('flipping turns it over and back', flip(flip({ key: 'set', dir: 'asc' })).dir === 'asc' && flip({ key: 'set', dir: 'asc' }).dir === 'desc');
+}
+
+/* ------------------------------ cutting a PCM file ------------------------------ */
+
+group('cutting a stretch out of a PCM file');
+{
+  const { probePcmHeader, byteRangeOf, frameAt, wrapPcmSlice, readPcmWindow } = await import('../src/lib/audioSlice.ts');
+
+  // A little float WAV, 48 kHz stereo, one second, with a JUNK chunk before fmt as Live writes.
+  const rate = 48000, ch = 2, frames = 48000;
+  const wav = (() => {
+    const junk = 28, fmt = 16, data = frames * ch * 4;
+    const out = new ArrayBuffer(12 + 8 + junk + 8 + fmt + 8 + data);
+    const v = new DataView(out), b = new Uint8Array(out);
+    const tag = (at, t) => { for (let i = 0; i < 4; i++) b[at + i] = t.charCodeAt(i); };
+    tag(0, 'RIFF'); v.setUint32(4, out.byteLength - 8, true); tag(8, 'WAVE');
+    let at = 12; tag(at, 'JUNK'); v.setUint32(at + 4, junk, true); at += 8 + junk;
+    tag(at, 'fmt '); v.setUint32(at + 4, fmt, true); v.setUint16(at + 8, 3, true); v.setUint16(at + 10, ch, true);
+    v.setUint32(at + 12, rate, true); v.setUint32(at + 16, rate * ch * 4, true); v.setUint16(at + 20, ch * 4, true); v.setUint16(at + 22, 32, true);
+    at += 8 + fmt; tag(at, 'data'); v.setUint32(at + 4, data, true); at += 8;
+    const f = new Float32Array(out, at, frames * ch);
+    for (let i = 0; i < frames; i++) { f[i * 2] = i / frames; f[i * 2 + 1] = -i / frames; } // a ramp, so any sample says where it is
+    return out;
+  })();
+  const h = probePcmHeader(wav.slice(0, 4096), wav.byteLength);
+  check('a float WAV is read past its junk', h?.kind === 'wav' && h.sampleRate === 48000 && h.channels === 2 && h.bitsPerSample === 32 && h.frames === frames, JSON.stringify(h && { ...h, fmt: undefined }));
+  check('and its data found', h.dataOffset === 12 + 8 + 28 + 8 + 16 + 8);
+  const r = byteRangeOf(h, frameAt(h, 0.5), 0.25 * rate);
+  check('a range is frames times bytes per frame', r.frames === 12000 && r.end - r.start === 12000 * 8 && r.start === h.dataOffset + 24000 * 8);
+  check('and is clipped to the file', byteRangeOf(h, 47000, 5000).frames === 1000 && byteRangeOf(h, 50000, 10).frames === 0);
+
+  const readRange = async (a, z) => ({ bytes: wav.slice(a, z), size: wav.byteLength });
+  const cut = await readPcmWindow(readRange, 0.5, 0.25);
+  const h2 = probePcmHeader(cut.bytes, cut.bytes.byteLength);
+  check('the cut is a WAV of its own, of the right length', h2?.kind === 'wav' && h2.frames === 12000 && h2.format === 3 && cut.fromSec === 0.5, JSON.stringify(h2 && { ...h2, fmt: undefined }));
+  const first = new Float32Array(cut.bytes, h2.dataOffset, 2);
+  check('holding the samples from where the cut began', Math.abs(first[0] - 24000 / frames) < 1e-6 && Math.abs(first[1] + 24000 / frames) < 1e-6, String(first[0]));
+  const beyond = await readPcmWindow(readRange, 5, 1);
+  const h3 = probePcmHeader(beyond.bytes, beyond.bytes.byteLength);
+  check('a window past the end is a few frames of silence, not the whole file', h3?.frames === 64 && beyond.bytes.byteLength < 1000 && beyond.fromSec === 5, JSON.stringify(h3 && { ...h3, fmt: undefined }));
+  check('a file that is not PCM cannot be cut', probePcmHeader(new TextEncoder().encode('ID3      mp3 bytes here').buffer, 100) === null);
+  check('nor a WAV squeezed with something', (() => {
+    const gone = wav.slice(0, 4096); new DataView(gone).setUint16(12 + 8 + 28 + 8, 85, true); // fmt tag: MP3
+    return probePcmHeader(gone, wav.byteLength) === null;
+  })());
+
+  // AIFF-C as Live writes floats: big-endian header, fl32.
+  const aiff = (() => {
+    const compression = new Uint8Array([0x66, 0x6c, 0x33, 0x32, 5, 0x66, 0x6c, 0x33, 0x32, 0]); // 'fl32' + pstring "fl32" + pad
+    const comm = 18 + compression.length, data = frames * ch * 4;
+    const out = new ArrayBuffer(12 + 8 + comm + 16 + data);
+    const v = new DataView(out), b = new Uint8Array(out);
+    const tag = (at, t) => { for (let i = 0; i < 4; i++) b[at + i] = t.charCodeAt(i); };
+    tag(0, 'FORM'); v.setUint32(4, out.byteLength - 8); tag(8, 'AIFC');
+    let at = 12; tag(at, 'COMM'); v.setUint32(at + 4, comm); v.setInt16(at + 8, ch); v.setUint32(at + 10, frames); v.setInt16(at + 14, 32);
+    // 48000 as an 80-bit float: exponent 16383+15, mantissa 48000<<48
+    v.setUint8(at + 16, 0x40); v.setUint8(at + 17, 0x0e); v.setUint32(at + 18, 0xbb800000); v.setUint32(at + 22, 0);
+    b.set(compression, at + 26); at += 8 + comm;
+    tag(at, 'SSND'); v.setUint32(at + 4, 8 + data); v.setUint32(at + 8, 0); v.setUint32(at + 12, 0);
+    return out;
+  })();
+  const a = probePcmHeader(aiff.slice(0, 4096), aiff.byteLength);
+  check('an AIFF-C of floats is read, rate and all', a?.kind === 'aiff' && a.sampleRate === 48000 && a.channels === 2 && a.frames === frames && a.format === 'fl32', JSON.stringify(a && { ...a, aifcCompression: undefined }));
+  const acut = await readPcmWindow(async (x, y) => ({ bytes: aiff.slice(x, y), size: aiff.byteLength }), 0.25, 0.5);
+  const a2 = probePcmHeader(acut.bytes, acut.bytes.byteLength);
+  check('and its cut is an AIFF-C of its own, at the same rate', a2?.kind === 'aiff' && a2.frames === 24000 && a2.sampleRate === 48000 && a2.format === 'fl32', JSON.stringify(a2 && { ...a2, aifcCompression: undefined }));
+  check('the wrapper never writes more than it was given', wrapPcmSlice(h, new ArrayBuffer(8 * 10 + 3)).byteLength === 12 + h.fmt.byteLength + 8 + 80);
+}
+
+/* ------------------------------- frozen tracks ------------------------------ */
+
+group('frozen tracks');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const clip = (id, start, end, path, extra = '') => `
+        <AudioClip Id="${id}" Time="${start}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" />
+          <LoopStart Value="0" /><LoopEnd Value="${end - start}" /><StartRelative Value="0" />
+          <Disabled Value="false" /><Fade Value="false" /><IsWarped Value="true" />
+          <SampleRef><FileRef><RelativePath Value="${path}" /></FileRef><DefaultSampleRate Value="48000" /></SampleRef>
+          <WarpMarkers><WarpMarker Id="0" SecTime="0" BeatTime="0" /><WarpMarker Id="1" SecTime="0.015625" BeatTime="0.03125" /></WarpMarkers>
+          ${extra}
+        </AudioClip>`;
+  const track = (id, group, name, frozen, main, freeze, devices = '') => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      <Speaker><LomId Value="0" /><Manual Value="true" /></Speaker>
+      <Freeze Value="${frozen}" />
+      <DeviceChain>
+        <MainSequencer><Sample><ArrangerAutomation><Events>${main}</Events></ArrangerAutomation></Sample></MainSequencer>
+        <FreezeSequencer><Sample><ArrangerAutomation><Events>${freeze}</Events></ArrangerAutomation></Sample></FreezeSequencer>
+        <DeviceChain>${devices}</DeviceChain>
+      </DeviceChain>
+    </AudioTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="32" /><Name Value="Clocks" /></Locator>
+    <Locator Id="3"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Clocks" /></GroupTrack>
+    ${track(11, 10, 'Bass', 'true',
+      clip(1, 0, 32, 'Stems/Bass.wav', '<PitchCoarse Value="-2" /><PitchFine Value="0" />'),
+      clip(0, 0, 32, 'Samples/Processed/Freeze/Freeze Bass [x].wav'),
+      '<Eq8 Id="1"><On><Manual Value="true" /></On></Eq8>')}
+    ${track(12, 10, 'Keys', 'false',
+      clip(1, 0, 32, 'Stems/Keys.wav', '<PitchCoarse Value="-2" /><PitchFine Value="0" />'),
+      '')}
+    ${track(21, 20, 'Drums', 'true',
+      clip(1, 32, 64, 'Stems/Drums.wav'),
+      clip(0, 0, 64, 'Samples/Processed/Freeze/Freeze Drums [x].wav'))}
+  </Ableton>`;
+  const project = parseAlsXml(xml);
+  const yellow = project.songs.find((s) => s.title === 'Yellow');
+  const bass = yellow.stems.find((s) => s.name === 'Bass');
+  const keys = yellow.stems.find((s) => s.name === 'Keys');
+  check("a frozen track's clip is its freeze file", bass?.frozen === true && bass.clips.length === 1 && /Freeze Bass/.test(bass.clips[0].path), JSON.stringify(bass?.clips));
+  check('at pitch, at speed, and marked', bass.clips[0].semitones === 0 && bass.clips[0].speed === 1 && bass.clips[0].frozen === true);
+  check('with its own devices inside the render, so none listed', bass.devices.length === 0);
+  check('an unfrozen track beside it keeps its clip and its transposition', keys?.frozen === false && /Stems\/Keys/.test(keys.clips[0].path) && keys.clips[0].semitones === -2);
+  check('and the arrangement is not doubled', yellow.stems.every((s) => s.clips.length === 1));
+
+  // A freeze file spanning the set: the song's stretch of it begins where the song does.
+  const clocks = project.songs.find((s) => s.title === 'Clocks');
+  const drums = clocks.stems.find((s) => s.name === 'Drums');
+  check('a freeze clip running from the set start is cut to the song', drums?.frozen === true && Math.abs(drums.clips[0].startBar - 1) < 1e-9 && Math.abs(drums.clips[0].endBar - 9) < 1e-9, JSON.stringify(drums?.clips));
+  check('and starts in the file where the song starts, in seconds along the set', Math.abs(drums.clips[0].sourceStartSec - 32 * 60 / 120) < 1e-9, String(drums.clips[0].sourceStartSec));
+
+  // The checker points a shifted track at freezing, and names a frozen one.
+  const { checkSet } = await import('../src/lib/setReview.ts');
+  const findings = checkSet(project).filter((f) => f.song === 'Yellow' && f.topic === 'playback');
+  check('the checker names the frozen track', findings.some((f) => /frozen — Bass —/.test(f.message)), findings.map((f) => f.message).join(' | '));
+  check('and suggests freezing the shifted one', findings.some((f) => /Keys — and will be shifted here/.test(f.message)));
+
+  // Into the library: the freeze file is under Samples/, which the scan never
+  // lists, so the set's own path to it is what the part is built on.
+  const { songsFromProject } = await import('../src/lib/alsImport.ts');
+  const alsPath = '/Band/Show/Show.als';
+  const listed = (p) => ({ path: p, name: p.split('/').pop(), rev: 'r', size: 10, modified: 1 });
+  const imported = songsFromProject(project, alsPath, [listed('/Band/Show/Stems/Keys.wav')], new Map());
+  const yellowSong = imported.songs.find((s) => s.title === 'Yellow');
+  const bassPart = yellowSong?.variants.find((v) => v.name === 'Bass');
+  check('a frozen track becomes a part by its freeze file, though the scan never saw it',
+    bassPart?.frozen === true && /\/Band\/Show\/Samples\/Processed\/Freeze\/Freeze Bass/.test(bassPart.path), JSON.stringify(bassPart));
+  check('carried as its one clip, so the player reads only its stretch of the file',
+    bassPart?.clips?.length === 1 && bassPart.clips[0].frozen === true && bassPart.placement === undefined, JSON.stringify(bassPart?.clips));
+  check('an ordinary part beside it is placed once, as ever',
+    yellowSong?.variants.find((v) => v.name === 'Keys')?.clips === undefined);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

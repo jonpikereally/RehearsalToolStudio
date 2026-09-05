@@ -157,6 +157,35 @@ export function checkSet(project: AlsProject): Finding[] {
     for (const stem of song.stems) {
       for (const d of stem.devices ?? []) if (d.on && !d.supported) cannot.add(d.name ? `${d.kind} “${d.name}”` : d.kind);
     }
+    /*
+     * Frozen tracks are Live's own render — nothing to imitate, nothing to
+     * shift — and are the answer to the two findings that follow. So they
+     * are named, and any track still shifted in software is pointed at them.
+     */
+    const frozen = song.stems.filter((s) => s.frozen).map((s) => s.name);
+    if (frozen.length) {
+      out.push({
+        severity: 'info',
+        topic: 'playback',
+        song: song.title,
+        message: `${frozen.length === 1 ? 'One track is' : `${frozen.length} tracks are`} frozen — ${frozen.join(', ')} — so Live's own render plays, at Live's quality, with nothing to shift or imitate here.`,
+      });
+    }
+    const shifted = song.stems
+      .filter(
+        (s) =>
+          !s.frozen &&
+          s.clips.some((c) => !c.disabled && ((c.semitones ?? 0) !== 0 || Math.abs((c.speed ?? 1) - 1) > 1e-6)),
+      )
+      .map((s) => s.name);
+    if (shifted.length) {
+      out.push({
+        severity: 'info',
+        topic: 'playback',
+        song: song.title,
+        message: `${shifted.length === 1 ? 'One track plays' : `${shifted.length} tracks play`} transposed or warped in Live — ${shifted.join(', ')} — and will be shifted here in software. Freeze ${shifted.length === 1 ? 'it' : 'them'} in Live and the set gets Live's own render instead: truer, and nothing to wait for when preparing.`,
+      });
+    }
     if (cannot.size) {
       out.push({
         severity: 'warning',

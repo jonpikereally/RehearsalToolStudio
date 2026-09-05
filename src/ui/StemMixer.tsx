@@ -79,7 +79,8 @@ export default function StemMixer({
     ...stems.map((v) => ({
       id: v.id,
       name: partName(v),
-      note: isReferenceStem(v) ? 'reference' : undefined,
+      // Said under the name: the record's own part, and a track Live rendered.
+      note: [isReferenceStem(v) ? 'reference' : null, v.frozen ? 'frozen' : null].filter(Boolean).join(' · ') || undefined,
       storedName: v.name,
       kind: 'stem' as const,
       order: v.order ?? LAST,

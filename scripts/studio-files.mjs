@@ -354,16 +354,28 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       await loaded;
 
       if (op === 'read') {
-        const { dir, path } = await json(req);
+        const { dir, path, start, end } = await json(req);
         const full = inside(dir, path, { file: true });
         const st = await stat(full).catch(() => null);
         if (!st?.isFile()) throw new Refusal(404, `not found: ${path}`);
+        /*
+         * A byte range, when asked for: a frozen track's file runs the length
+         * of the set, and a song wants only its own stretch of it. `end` is
+         * exclusive, and both are clipped to the file rather than refused.
+         */
+        const from = Number.isFinite(start) ? Math.max(0, Math.min(st.size, Math.floor(start))) : 0;
+        const to = Number.isFinite(end) ? Math.max(from, Math.min(st.size, Math.floor(end))) : st.size;
         res.writeHead(200, {
           'content-type': MIME[extname(full).toLowerCase()] ?? 'application/octet-stream',
-          'content-length': st.size,
+          'content-length': to - from,
+          'x-file-size': st.size,
           'cache-control': 'no-store',
         });
-        await pipeline(createReadStream(full), res);
+        if (to === from) {
+          res.end();
+          return true;
+        }
+        await pipeline(createReadStream(full, { start: from, end: to - 1 }), res);
         return true;
       }
 

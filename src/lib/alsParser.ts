@@ -97,6 +97,12 @@ export interface AlsSong {
     gain: number;
     /** The track's pan with its groups' added, -1..1. */
     pan: number;
+    /**
+     * Frozen in Live: what plays is Live's render of the track, so the
+     * clips are its freeze file and the track's own devices are inside it.
+     * The groups' devices are not, and are still listed.
+     */
+    frozen: boolean;
     /** The devices on the track and then on each group above it, in order. */
     devices: Device[];
     /** Return buses the signal is sent into on its way, by index. */
@@ -144,6 +150,12 @@ interface RawClip {
   gain: number;
   /** The file's absolute path as Live also writes it, for one outside the project. */
   absPath: string | null;
+  /**
+   * A clip of the track's freeze file rather than of its own: Live's render
+   * of the track, with its warping, its transposition and its devices already
+   * in it. Plays at its own pitch and speed, and never through the devices.
+   */
+  frozen: boolean;
 }
 
 /**
@@ -174,6 +186,12 @@ export interface AlsClip {
   speed: number;
   /** The clip's own gain in Live, linear; 1 for none. */
   gain: number;
+  /**
+   * The clip plays Live's own render of the track — a frozen track's file —
+   * so it is already at pitch and speed, through its devices. The studio and
+   * the preparer shift nothing and imitate nothing for such a clip.
+   */
+  frozen?: true;
   /**
    * The file's absolute path, when Live wrote one. A sample outside the
    * project — a click, a bank of cues — is found by this when the relative
@@ -631,9 +649,42 @@ export function songKey(name: string): string {
     .trim();
 }
 
+/** One named element of a track's chunk, or null when it has none. */
+function section(chunk: string, tag: string): string | null {
+  const at = chunk.indexOf(`<${tag}>`);
+  if (at < 0) return null;
+  const end = chunk.indexOf(`</${tag}>`, at);
+  return end < 0 ? null : chunk.slice(at, end);
+}
+
+/** Whether the track is frozen: Live plays its render, not its clips. */
+function isFrozen(track: Track): boolean {
+  return /<Freeze Value="true"\s*\/>/.test(track.chunk);
+}
+
+/**
+ * Every clip on a track, read in full — from the right list.
+ *
+ * A track's chunk holds two lists of clips. `MainSequencer` is the
+ * arrangement as you see it; `FreezeSequencer` is what Live wrote when the
+ * track was frozen — clips of a file it rendered itself, warping,
+ * transposition and devices included, sitting at the same beats. Live plays
+ * the second whenever the track is frozen, so that is what is read then, and
+ * it is read as already finished: at its own pitch and speed. Reading every
+ * clip in the chunk, as this once did, gave a frozen track both lists and
+ * played the song twice over.
+ */
 function clipsOfTrack(track: Track): RawClip[] {
+  const frozen = isFrozen(track);
+  const freeze = frozen ? section(track.chunk, 'FreezeSequencer') : null;
+  const useFreeze = !!freeze && /<AudioClip /.test(freeze);
+  const from = useFreeze ? freeze : (section(track.chunk, 'MainSequencer') ?? track.chunk);
+  return rawClipsIn(from, useFreeze);
+}
+
+function rawClipsIn(chunk: string, frozen: boolean): RawClip[] {
   const clips: RawClip[] = [];
-  for (const m of track.chunk.matchAll(/<AudioClip Id="\d+"[^>]*>([\s\S]*?)<\/AudioClip>/g)) {
+  for (const m of chunk.matchAll(/<AudioClip Id="\d+"[^>]*>([\s\S]*?)<\/AudioClip>/g)) {
     const body = m[1];
     const num = (re: RegExp): number =>
       parseFloat((body.match(re) ?? [])[1] ?? 'NaN');
@@ -683,9 +734,12 @@ function clipsOfTrack(track: Track): RawClip[] {
       })(),
       absPath,
       // Coarse in semitones, fine in cents — the clip's own transposition.
-      semitones:
-        (Number.isNaN(num(/<PitchCoarse Value="([-\d.]+)"/)) ? 0 : num(/<PitchCoarse Value="([-\d.]+)"/)) +
-        (Number.isNaN(num(/<PitchFine Value="([-\d.]+)"/)) ? 0 : num(/<PitchFine Value="([-\d.]+)"/) / 100),
+      // A freeze clip's is already in its file.
+      semitones: frozen
+        ? 0
+        : (Number.isNaN(num(/<PitchCoarse Value="([-\d.]+)"/)) ? 0 : num(/<PitchCoarse Value="([-\d.]+)"/)) +
+          (Number.isNaN(num(/<PitchFine Value="([-\d.]+)"/)) ? 0 : num(/<PitchFine Value="([-\d.]+)"/) / 100),
+      frozen,
     });
   }
   return clips.sort((a, b) => a.startBeat - b.startBeat);
@@ -941,6 +995,36 @@ export function parseAlsXml(xml: string): AlsProject {
     }
   }
 
+  /**
+   * Seconds along the set between two beats, through the tempo automation.
+   *
+   * A freeze file is rendered in real time along the arrangement, so where
+   * a song begins inside it is a matter of seconds elapsed on the timeline
+   * — not of beats at any one tempo. Steps, as the tempo map is read
+   * everywhere else here: each change holds until the next.
+   */
+  const secondsBetween = (fromBeat: number, toBeat: number): number => {
+    if (!(toBeat > fromBeat)) return 0;
+    let bpm = tempoChanges.filter((t) => t.beat <= fromBeat + 1e-9).pop()?.bpm ?? tempo;
+    let at = fromBeat;
+    let sec = 0;
+    for (const t of tempoChanges) {
+      if (t.beat <= fromBeat + 1e-9) continue;
+      if (t.beat >= toBeat) break;
+      sec += ((t.beat - at) * 60) / bpm;
+      at = t.beat;
+      bpm = t.bpm;
+    }
+    return sec + ((toBeat - at) * 60) / bpm;
+  };
+
+  /**
+   * Where in a frozen clip's file a beat of the set falls, in seconds. The
+   * file's own start is the clip's start less whatever the clip skips.
+   */
+  const frozenSourceSec = (c: RawClip, atBeat: number): number =>
+    secondsBetween(c.startBeat - c.sourceStartBeat, atBeat);
+
   const sections = clipsOf(trackByFlag(tracks, /\+\s*SECTIONS\b|^sections\b/i)?.chunk ?? '', 'MidiClip');
 
   /*
@@ -1155,7 +1239,10 @@ export function parseAlsXml(xml: string): AlsProject {
             const folders: string[] = [];
             let gain = t.gain;
             let pan = t.pan;
-            const devices: Device[] = [...t.devices];
+            // A frozen track's own devices are in its render already; its
+            // groups' are not, and are gathered below as for any track.
+            const frozen = isFrozen(t);
+            const devices: Device[] = frozen ? [] : [...t.devices];
             const sends = [...t.sends];
             let output = t.output;
             for (let c = byId.get(t.groupId), i = 0; c && c !== group && i < 8; i++) {
@@ -1193,7 +1280,9 @@ export function parseAlsXml(xml: string): AlsProject {
               path: c.path,
               startBar: relBar(Math.max(c.startBeat, loc.beat)),
               endBar: relBar(Math.min(c.endBeat, endBeat)),
-              sourceStartSec: sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
+              sourceStartSec: c.frozen
+                ? frozenSourceSec(c, Math.max(c.startBeat, loc.beat))
+                : sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
               disabled: c.disabled,
               fadeInSec: c.fadeInSec,
               fadeOutSec: c.fadeOutSec,
@@ -1203,15 +1292,18 @@ export function parseAlsXml(xml: string): AlsProject {
               absPath: c.absPath ?? undefined,
               // A warped file at another tempo is stretched to this song's:
               // its beats per second against the song's, where they differ.
+              // A freeze file was rendered along the timeline and needs none.
               speed:
-                c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
+                !c.frozen && c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
                   ? startBpm / 60 / c.warpBps
                   : 1,
+              ...(c.frozen ? { frozen: true as const } : {}),
             }));
             const sounding = mine.find((c) => !c.disabled) ?? mine[0];
             return {
               name: t.name,
               reference,
+              frozen: frozen && mine.some((c) => c.frozen),
               gain,
               pan,
               devices,
@@ -1302,7 +1394,9 @@ export function parseAlsXml(xml: string): AlsProject {
             path: c.path,
             startBar: relBar(Math.max(c.startBeat, loc.beat)),
             endBar: relBar(Math.min(c.endBeat, endBeat)),
-            sourceStartSec: sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
+            sourceStartSec: c.frozen
+              ? frozenSourceSec(c, Math.max(c.startBeat, loc.beat))
+              : sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
             disabled: false,
             fadeInSec: c.fadeInSec,
             fadeOutSec: c.fadeOutSec,
@@ -1310,8 +1404,12 @@ export function parseAlsXml(xml: string): AlsProject {
             semitones: c.semitones,
             gain: c.gain * level,
             absPath: c.absPath ?? undefined,
-            speed: c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005 ? startBpm / 60 / c.warpBps : 1,
+            speed:
+              !c.frozen && c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
+                ? startBpm / 60 / c.warpBps
+                : 1,
             track: t.name.trim(),
+            ...(c.frozen ? { frozen: true as const } : {}),
           });
         }
       }
@@ -1320,6 +1418,7 @@ export function parseAlsXml(xml: string): AlsProject {
       stems.push({
         name: label,
         reference: false,
+        frozen: false,
         gain: 1,
         pan: 0,
         devices: [],

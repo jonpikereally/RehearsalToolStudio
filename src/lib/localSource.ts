@@ -207,15 +207,29 @@ export async function exists(folder: FolderHandle, root: string, path: string): 
   return (await call<{ exists: boolean }>('exists', { dir: open(folder).dir, path: below(root, path) })).exists;
 }
 
+/** A stretch of a file, by byte offsets; `end` is exclusive. */
+export interface ByteRange {
+  start: number;
+  end: number;
+}
+
 export async function readBytes(
   folder: FolderHandle,
   root: string,
   path: string,
-): Promise<{ bytes: ArrayBuffer; mime: string }> {
-  const res = await post('read', JSON.stringify({ dir: open(folder).dir, path: below(root, path) }), 'application/json');
+  range?: ByteRange,
+): Promise<{ bytes: ArrayBuffer; mime: string; size: number }> {
+  const res = await post(
+    'read',
+    JSON.stringify({ dir: open(folder).dir, path: below(root, path), ...(range ? { start: range.start, end: range.end } : {}) }),
+    'application/json',
+  );
+  const bytes = await res.arrayBuffer();
   return {
-    bytes: await res.arrayBuffer(),
+    bytes,
     mime: res.headers.get('content-type') || 'application/octet-stream',
+    // The whole file's length, whatever stretch of it came back.
+    size: Number(res.headers.get('x-file-size')) || bytes.byteLength,
   };
 }
 

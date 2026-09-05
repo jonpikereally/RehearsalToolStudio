@@ -7,6 +7,7 @@ import { loadMix, loadedVariants, settingFor } from './stemMix';
 import { isReferenceName, isUnpitched } from './scan';
 import { renderTrack, type ClipPlacement } from './arrangement.ts';
 import { barToSec } from './bars';
+import { readPcmWindow } from './audioSlice.ts';
 
 /**
  * Fetch → decode → (optionally) transpose every variant of a song, then hand
@@ -488,8 +489,10 @@ async function buildSong(
      * of its sample, the same way a click straight out of a set is. Velocity
      * is squared, as the band's player squares it, so the two sound alike.
      */
+    // A frozen track is one clip carried as an arrangement, so it goes this
+    // way too: the clip says which stretch of a set-long file is the song's.
     const sampler = variant.kind === 'sampler' ? samplerClips(variant) : null;
-    const arranged = sampler ?? (variant.clips && variant.clips.length > 1 ? variant.clips : null);
+    const arranged = sampler ?? (variant.clips && variant.clips.length ? variant.clips : null);
     const rev = arranged
       ? `${variant.rev}|${arranged.map((c) => `${c.path}@${c.startBar}-${c.endBar}+${c.sourceStartSec}`).join(';')}`
       : variant.rev;
@@ -504,22 +507,46 @@ async function buildSong(
       const files = new Map<string, AudioBuffer>();
       const placements: ClipPlacement[] = [];
       const unread = new Map<string, string>();
+      // Where a sliced file's samples begin, for placing the clip against it.
+      const fromSec = new Map<string, number>();
       for (const [i, clip] of arranged.entries()) {
-        let buffer = files.get(clip.path.toLowerCase());
+        /*
+         * A frozen track's file is Live's render of the whole set, and only
+         * the song's stretch of it is read — from the clip's own offset, for
+         * as long as the clip plays at whatever speed it is played. A file
+         * that cannot be cut is read whole, as any other.
+         */
+        const span = (barToSec(clip.endBar, song) - barToSec(clip.startBar, song)) * Math.max(1, tempo) * 1.05 + 1;
+        const fileKey = clip.frozen ? `${clip.path.toLowerCase()}#${clip.sourceStartSec.toFixed(3)}` : clip.path.toLowerCase();
+        let buffer = files.get(fileKey);
         if (!buffer) {
-          if (unread.has(clip.path.toLowerCase())) continue;
+          if (unread.has(fileKey)) continue;
           try {
-            const { bytes } = await readBytes(clip.path, undefined, signal);
+            let bytes: ArrayBuffer;
+            if (clip.frozen) {
+              const cut = await readPcmWindow(
+                async (start, end) => {
+                  const got = await readBytes(clip.path, undefined, signal, { start, end });
+                  return { bytes: got.bytes, size: got.size };
+                },
+                clip.sourceStartSec,
+                span,
+              );
+              bytes = cut ? cut.bytes : (await readBytes(clip.path, undefined, signal)).bytes;
+              fromSec.set(fileKey, cut ? cut.fromSec : 0);
+            } else {
+              bytes = (await readBytes(clip.path, undefined, signal)).bytes;
+            }
             report('decoding', i / arranged.length, true);
             buffer = await engine.decode(bytes);
           } catch (err) {
             if ((err as { name?: string })?.name === 'AbortError') throw err;
             // One clip whose file is not to be had, or will not decode: the
             // rest still play, and the page says which was left out.
-            unread.set(clip.path.toLowerCase(), err instanceof Error ? err.message : String(err));
+            unread.set(fileKey, err instanceof Error ? err.message : String(err));
             continue;
           }
-          files.set(clip.path.toLowerCase(), buffer);
+          files.set(fileKey, buffer);
         }
         /*
          * Each clip is shifted by its own transposition in Live plus the
@@ -546,7 +573,7 @@ async function buildSong(
           buffer,
           startSec: barToSec(clip.startBar, song),
           endSec: barToSec(clip.endBar, song),
-          sourceStartSec: clip.sourceStartSec / clipTempo,
+          sourceStartSec: (clip.sourceStartSec - (fromSec.get(fileKey) ?? 0)) / clipTempo,
           fadeInSec: clip.fadeInSec,
           fadeOutSec: clip.fadeOutSec,
           gain: clip.gain,

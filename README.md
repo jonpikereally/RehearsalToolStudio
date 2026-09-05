@@ -14,10 +14,13 @@ with its own repo. This one is only Rehearsal Tool Studio.
 
 - **Reads Ableton sets.** Every `.als` in the folder is opened on a rescan.
   Locators name the songs, group tracks hold their stems, `+SECTIONS` and
-  `+LYRICS` tracks carry the words — no exports, no file naming.
+  `+LYRICS` tracks carry the words — no exports, no file naming. A frozen
+  track plays Live's own render of itself, at pitch, at speed and through its
+  devices, so freezing the transposed tracks in Live is how to get Live's
+  quality out of the studio and the band's set.
 - **Plays them.** Every version of a song decoded and played together with one
   audible, so switching is instant and sample-accurate. Bar-accurate jumps and
-  loops, transposition rendered offline and cached, a metronome, markers,
+  loops, transposition rendered offline (Signalsmith Stretch) and cached, a metronome, markers,
   setlists, a mixer over the stems.
 - **Opens a run of songs.** Tick several on the Songs page and they open
   together, in the order the setlist plays them. They are decoded and held

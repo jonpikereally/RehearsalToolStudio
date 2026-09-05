@@ -55,6 +55,13 @@ export interface Variant {
   kind?: 'sampler';
   samples?: SamplerSample[];
   notes?: SamplerNote[];
+  /**
+   * Frozen in Live: the file is Live's own render of the track, already at
+   * pitch and speed and through its devices, so the player shifts nothing
+   * and imitates nothing for it. The set's own reason for the fact is the
+   * only one — a frozen track's file is not a stem anybody exported.
+   */
+  frozen?: boolean;
   /** Hidden from the variant switcher without deleting it. */
   hidden?: boolean;
   /** Manual ordering within the song. */
@@ -150,6 +157,12 @@ export interface VariantClip {
   speed: number;
   /** The clip's own gain in Live, linear. */
   gain: number;
+  /**
+   * A clip of a frozen track's file: Live's render, at pitch and speed
+   * already. The player reads only the song's stretch of such a file, since
+   * it runs the length of the set.
+   */
+  frozen?: boolean;
 }
 
 export interface Marker {
