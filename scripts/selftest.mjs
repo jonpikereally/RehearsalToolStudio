@@ -3217,6 +3217,18 @@ group('the file API');
   check('a subfolder of a picked one is fine',
     (await ask('list', { dir: join(songs, 'Band') })).files.length === 2);
 
+  // An Ableton set is never written over, whoever asks; the studio's own copies are.
+  const putAls = (path) => fetch(`${base()}/__fs/write?${new URLSearchParams({ dir: songs, path })}`, {
+    method: 'POST', headers: { 'x-rehearsal-studio': 'test' }, body: 'x',
+  });
+  check('an existing set is never overwritten', (await putAls('Band/Yellow/Yellow.als')).status === 403);
+  check('and is still exactly what it was', (await readFile(join(songs, 'Band/Yellow/Yellow.als'), 'utf8')).length === 15);
+  check('a copy of it may be written', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
+  check('and written again', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
+  check('a set that is not there yet may be written', (await putAls('Band/Yellow/Brand New.als')).status === 200);
+  check('but not a second time', (await putAls('Band/Yellow/Brand New.als')).status === 403);
+
+
   answer = join(elsewhere, 'Neighbour.txt');
   check('a lone file of the wrong kind is refused',
     (await call('pick', { kind: 'file', extensions: ['als'] })).status === 400);

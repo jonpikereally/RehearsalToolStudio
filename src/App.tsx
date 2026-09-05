@@ -10,6 +10,7 @@ import SetlistView from './ui/SetlistView';
 import SettingsView from './ui/SettingsView';
 import Onboarding from './ui/Onboarding';
 import ChooseSet from './ui/ChooseSet';
+import { toolsAlone } from './lib/toolsAlone';
 import SetToolsView from './ui/SetToolsView';
 
 /**
@@ -76,8 +77,9 @@ export default function App() {
     // reachable before a folder is chosen — as Settings always has.
   } else if (!usingLocalFolder && section !== 'settings' && section !== 'tools') {
     body = <Onboarding />;
-    // Everything is about one set, so a launch chooses it before anything else.
-  } else if (usingLocalFolder && !currentSet && section !== 'settings') {
+    // Everything is about one set, so a launch chooses it before anything
+    // else — unless the chooser was skipped for the tools that need none.
+  } else if (usingLocalFolder && !currentSet && section !== 'settings' && !(section === 'tools' && toolsAlone())) {
     body = <ChooseSet />;
   } else if (section === 'setlists') {
     body = <SetlistsView />;

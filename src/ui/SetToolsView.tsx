@@ -49,10 +49,10 @@ export default function SetToolsView() {
   const [lone, setLone] = useState<{ name: string; bytes: ArrayBuffer } | null>(null);
   const [outDir, setOutDir] = useState<local.FolderHandle | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
+  const { library, currentSet } = useStore();
   const [tool, setTool] = useState<
     'check' | 'slates' | 'lyrics' | 'chords' | 'patches' | 'setlist' | 'update'
-  >('check');
-  const { library, currentSet } = useStore();
+  >(currentSet ? 'check' : 'slates');
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<string | null>(null);
@@ -373,7 +373,7 @@ export default function SetToolsView() {
               <span className="hint">
                 {currentSet
                   ? 'The set chosen on opening — change it from the bar above.'
-                  : 'No set chosen yet — pick one from the Songs tab.'}
+                  : 'No set chosen. Slates and Lyrics work without one; the rest need a set, from the Songs tab or a single .als here.'}
               </span>
             </label>
             <div className="btn-row">
@@ -408,9 +408,9 @@ export default function SetToolsView() {
           </div>
         )}
 
-        {!project && (
+        {!project && tool !== 'slates' && tool !== 'lyrics' && (
           <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-            Choose a set above — every tool here works on one.
+            Choose a set above — this tool works on one. Slates and Lyrics work without.
           </div>
         )}
 
@@ -566,8 +566,8 @@ export default function SetToolsView() {
                     </div>
                   )}
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    Save and close the set in Live first — Lyrics Studio writes to the .als itself,
-                    keeping a backup beside it.
+                    Save and close the set in Live first. Lyrics Studio never touches the set itself:
+                    it writes a copy beside it, named “… Lyrics.als”, for you to open in Live.
                   </div>
                 </>
               )}

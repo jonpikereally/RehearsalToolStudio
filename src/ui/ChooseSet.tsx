@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../lib/store';
 import { navigate } from '../lib/router';
+import { setToolsAlone } from '../lib/toolsAlone';
 
 /**
  * The first question on opening: which set?
@@ -62,6 +63,26 @@ export default function ChooseSet() {
           </div>
         </div>
       )}
+
+      {/*
+        Two of the set tools need no set: a slate spoken from typed words, and
+        Lyrics Studio, which takes any file. A way straight to them, so a title
+        to say or a song to transcribe doesn't wait on choosing a set first.
+      */}
+      <div className="panel btn-row" style={{ alignItems: 'center' }}>
+        <button
+          className="btn"
+          onClick={() => {
+            setToolsAlone(true);
+            navigate('/tools');
+          }}
+        >
+          Skip — open the set tools without a set
+        </button>
+        <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+          Speak a slate, or open Lyrics Studio. Anything that works on a set still needs one.
+        </span>
+      </div>
 
       {sets.map((set) => (
         <button key={set.path} className="row" onClick={() => chooseSet(set.path)}>

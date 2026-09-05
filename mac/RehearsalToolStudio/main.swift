@@ -66,6 +66,23 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         config.mediaTypesRequiringUserActionForPlayback = []
         // The page's way of asking things of the app: for now, to be kept awake.
         config.userContentController.add(self, name: "studio")
+        /*
+         * The page runs in WebKit's own WebContent process, and WebKit naps
+         * that process whenever the window is covered or the app is behind —
+         * its timers throttled, its priority dropped — whatever the app
+         * itself asserts. A prepare then wrote a part every eight seconds
+         * while somebody watched and nothing for minutes while they didn't.
+         * These are WebKit's private switches for exactly that, reached the
+         * way developerExtrasEnabled is above, and only when this build of
+         * WebKit answers to them, so a WebKit that has renamed them costs
+         * nothing but the setting.
+         */
+        for key in ["pageVisibilityBasedProcessSuppressionEnabled", "hiddenPageDOMTimerThrottlingEnabled"] {
+            let setter = Selector("_set\(key.prefix(1).uppercased())\(key.dropFirst()):")
+            if config.preferences.responds(to: setter) {
+                config.preferences.setValue(false, forKey: key)
+            }
+        }
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         // "Inspect Element" in the context menu: the studio is a tool, and tools get opened up.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")

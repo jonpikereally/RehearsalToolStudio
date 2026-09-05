@@ -59,6 +59,9 @@ import { pipeline } from 'node:stream/promises';
  */
 export const SLOTS = new Set(['songs', 'publish', 'resources']);
 
+/** The set copies the studio and Lyrics Studio make, and may make again. */
+export const OWN_SET_COPY = /( \((slates|chords|rehearsaltool)\)| Lyrics)\.als$/i;
+
 /**
  * Besides its own page, the one other place a call may come from: the dev
  * server (`npm run dev:studio`), which passes `/__fs` along to this one.
@@ -381,6 +384,17 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
       if (op === 'write') {
         const full = inside(url.searchParams.get('dir') ?? '', url.searchParams.get('path') ?? '');
+        /*
+         * An Ableton set is never overwritten. Everything the studio does to
+         * a set — slates, chords, rig patches, lyrics — goes into a copy
+         * beside it, named for what was added, and those copies are the only
+         * .als files this will write over. The rule sits here, below every
+         * caller, so no page can break it by mistake.
+         */
+        if (extname(full).toLowerCase() === '.als' && !OWN_SET_COPY.test(basename(full))) {
+          const there = await stat(full).catch(() => null);
+          if (there) throw new Refusal(403, `${basename(full)} is an Ableton set; the studio writes copies, never over one`);
+        }
         await mkdir(dirname(full), { recursive: true });
         // Written beside its destination and moved in whole, so a write that
         // dies halfway leaves the old file, never half a new one.

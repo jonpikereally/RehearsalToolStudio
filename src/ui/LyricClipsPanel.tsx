@@ -100,8 +100,8 @@ export default function LyricClipsPanel() {
         </button>
       </div>
       <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-        Save and close the set in Live first — Lyrics Studio writes to the .als itself, keeping a
-        backup beside it.
+        Save and close the set in Live first. Lyrics Studio never touches the set itself: it writes
+        a copy beside it, named “… Lyrics.als”, for you to open in Live.
       </div>
     </SettingsSection>
   );
