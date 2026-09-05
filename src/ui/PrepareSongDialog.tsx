@@ -3,7 +3,7 @@ import type { Song } from '../types';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
-import { partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
+import { overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
 import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
@@ -27,6 +27,17 @@ import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
  */
 
 type Choice = 'print' | 'combine' | 'skip';
+
+const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
+  const pct = Math.round(overallProgress(progress) * 100);
+  return (
+    <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+      aria-label="Preparing">
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
+      <span className="progress-text">{pct}%</span>
+    </div>
+  );
+};
 
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
   const { publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
@@ -295,11 +306,14 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         )}
 
         {progress && (
-          <div className="notice">
-            {progress.stage === 'done'
-              ? 'Finishing…'
-              : `${progress.partName} — ${progress.stage}${progress.stage === 'encoding' ? ` ${Math.round(progress.ratio * 100)}%` : ''}`}
-          </div>
+          <>
+            <PrepareBar progress={progress} />
+            <div className="notice">
+              {progress.stage === 'done'
+                ? 'Finishing…'
+                : `${progress.partName} — ${progress.stage}${progress.stage === 'encoding' ? ` ${Math.round(progress.ratio * 100)}%` : ''} (part ${progress.partIndex} of ${progress.partCount})`}
+            </div>
+          </>
         )}
         {error && <div className="notice error">{error}</div>}
         {result && (

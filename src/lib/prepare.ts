@@ -29,9 +29,28 @@ export interface PrepareProgress {
   songCount: number;
   songTitle: string;
   partName: string;
+  /** 1-based, within the song, for the overall figure. 0 of 0 once done. */
+  partIndex: number;
+  partCount: number;
   stage: 'reading' | 'rendering' | 'encoding' | 'writing' | 'done';
   /** 0..1 within the current part, where it can be known. */
   ratio: number;
+}
+
+/**
+ * How far through the whole run, 0..1, for a bar.
+ *
+ * Songs count equally, and within a song so do its parts; within a part the
+ * encode is nearly all of the time, so reading and rendering are given a
+ * sliver and the encode's own ratio carries the rest. Honest enough to move
+ * steadily and never go backwards, which is all a bar is for.
+ */
+export function overallProgress(p: PrepareProgress): number {
+  if (p.stage === 'done') return 1;
+  const inPart =
+    p.stage === 'reading' ? 0 : p.stage === 'rendering' ? 0.15 : p.stage === 'encoding' ? 0.15 + 0.8 * Math.min(1, Math.max(0, p.ratio)) : 0.98;
+  const inSong = (Math.max(1, p.partIndex) - 1 + inPart) / Math.max(1, p.partCount);
+  return Math.min(1, Math.max(0, (Math.max(1, p.songIndex) - 1 + inSong) / Math.max(1, p.songCount)));
 }
 
 export interface PrepareOptions {
@@ -470,7 +489,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     /** How many of this song's parts were written as patterns, not files. */
     let samplerHere = 0;
 
-    for (const part of partsFor(song, opts.plan?.[song.title])) {
+    const parts = partsFor(song, opts.plan?.[song.title]);
+    for (const [partAt, part] of parts.entries()) {
       if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
       const report = (stage: PrepareProgress['stage'], ratio: number) =>
@@ -479,6 +499,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           songCount: chosen.length,
           songTitle: song.title,
           partName: part.name,
+          partIndex: partAt + 1,
+          partCount: parts.length,
           stage,
           ratio,
         });
@@ -672,7 +694,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
   onProgress?.({
     songIndex: chosen.length, songCount: chosen.length,
-    songTitle: '', partName: '', stage: 'done', ratio: 1,
+    songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
   return { folder, songsWritten, partsWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec };

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject } from '../lib/alsParser';
-import { prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
+import { overallProgress, prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
 import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
@@ -25,6 +25,17 @@ import { defaultSetName, rememberSetName, safeSetName, setNameFor } from '../lib
  * thing to go looking for among the cache budget and the jump sizes.
  * `preselect` ticks a setlist's songs to start with; without it, the whole set.
  */
+const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
+  const pct = Math.round(overallProgress(progress) * 100);
+  return (
+    <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+      aria-label="Preparing">
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
+      <span className="progress-text">{pct}%</span>
+    </div>
+  );
+};
+
 export default function PrepareSetDialog({
   onClose,
   preselect,
@@ -220,7 +231,14 @@ export default function PrepareSetDialog({
             The band's own folder, which is the only one they can read. Asked for once.
           </span>
         </label>
-        <span className="code">{publishFolderName ?? 'not chosen yet'}</span>
+        <div className="btn-row">
+          <span className="code">{publishFolderName ?? 'not chosen yet'}</span>
+          {publishFolderName && (
+            <button className="btn" onClick={() => void pickPublishFolder()} disabled={busy}>
+              Change folder
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="field">
@@ -242,7 +260,6 @@ export default function PrepareSetDialog({
             onBlur={() => setSetName((v) => safeSetName(v) || defaultSetName(setPath))}
             disabled={busy}
             aria-label="Name of the prepared set's folder"
-            style={{ flex: 1, minWidth: 200 }}
           />
           {safeSetName(setName) !== defaultSetName(setPath) && (
             <button className="btn" disabled={busy} onClick={() => setSetName(defaultSetName(setPath))}>
@@ -302,11 +319,14 @@ export default function PrepareSetDialog({
       )}
 
       {progress && (
-        <div className="notice">
-          {progress.stage === 'done'
-            ? 'Finishing…'
-            : `${progress.songTitle} · ${progress.partName} — ${progress.stage} (song ${progress.songIndex} of ${progress.songCount})`}
-        </div>
+        <>
+          <PrepareBar progress={progress} />
+          <div className="notice">
+            {progress.stage === 'done'
+              ? 'Finishing…'
+              : `${progress.songTitle} · ${progress.partName} — ${progress.stage} (song ${progress.songIndex} of ${progress.songCount}, part ${progress.partIndex} of ${progress.partCount})`}
+          </div>
+        </>
       )}
 
       {error && <div className="notice error">{error}</div>}
@@ -358,11 +378,6 @@ export default function PrepareSetDialog({
                     : `${selected.size} song${selected.size === 1 ? '' : 's'}`
                 }`}
         </button>
-        {publishFolderName && (
-          <button className="btn" onClick={() => void pickPublishFolder()} disabled={busy}>
-            Change folder
-          </button>
-        )}
         <button
           className={busy ? 'btn danger' : 'btn'}
           onClick={() => (busy ? running.current?.abort() : onClose())}

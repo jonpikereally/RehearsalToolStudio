@@ -570,6 +570,32 @@ button {
   text-underline-offset: 3px;
 }
 
+/* A run's progress, whole: a bar that fills, with the figure on it. */
+.progress {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease-out;
+}
+
+.progress-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 600 12px ui-monospace, Menlo, monospace;
+  color: var(--text);
+  mix-blend-mode: difference;
+}
+
 /* Not a warning: a song in this state is not worth opening at all. */
 .badge.bad {
   background: #4c1d24;
@@ -1673,6 +1699,32 @@ button {
 
 .dialog .field label {
   flex: none;
+}
+
+/*
+ * A name beside a button in a dialog row: the name takes the room the button
+ * leaves and wraps only where it must, rather than being broken mid-word to
+ * fit beside it. A text input in such a row grows from a real basis, since a
+ * percentage one had nothing definite to resolve against and sat at its
+ * minimum.
+ */
+.dialog .btn-row .code {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: center;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.dialog .btn-row .text-input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* The settings page caps a field's text input at what fits beside its label;
+   in a dialog the field is stacked and the cap only shortens the input. */
+.dialog .field input[type='text'] {
+  max-width: none;
 }
 
 .field .hint {

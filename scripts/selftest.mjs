@@ -3886,5 +3886,23 @@ group('naming a prepared set');
   check('and a set with no path is called Set', /^Set \d{4}-/.test(defaultSetName(null)));
 }
 
+/* ------------------------------ a whole run's bar ------------------------------ */
+
+group('overall progress of a prepare');
+{
+  const { overallProgress } = await import('../src/lib/prepare.ts');
+  const at = (songIndex, partIndex, stage, ratio = 0) =>
+    overallProgress({ songIndex, songCount: 2, songTitle: '', partName: '', partIndex, partCount: 2, stage, ratio });
+  check('starts at nothing', at(1, 1, 'reading') === 0);
+  check('halfway through encoding part 1 of 2 in song 1 of 2 is a little over a tenth',
+    Math.abs(at(1, 1, 'encoding', 0.5) - 0.1375) < 1e-9, String(at(1, 1, 'encoding', 0.5)));
+  const steps = [at(1,1,'reading'), at(1,1,'rendering'), at(1,1,'encoding',0.2), at(1,1,'encoding',0.9), at(1,1,'writing'), at(1,2,'reading'), at(1,2,'encoding',0.5), at(2,1,'reading'), at(2,2,'writing')];
+  check('and never goes backwards', steps.every((v, i) => i === 0 || v >= steps[i - 1]), steps.map((v) => v.toFixed(3)).join(' '));
+  check('the second song starts at half', Math.abs(at(2, 1, 'reading') - 0.5) < 1e-9);
+  check('done is full', overallProgress({ songIndex: 2, songCount: 2, songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1 }) === 1);
+  check('a run of nothing does not divide by zero',
+    Number.isFinite(overallProgress({ songIndex: 0, songCount: 0, songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'reading', ratio: 0 })));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);
