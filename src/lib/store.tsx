@@ -53,6 +53,12 @@ export interface Settings {
   keepAwake: boolean;
   /** Read from the chosen folder on this machine. */
   useLocal: boolean;
+  /**
+   * The output device to play out of, where the browser lets a page choose.
+   * Kept with its label as well as its id: ids are opaque, and a device that
+   * has gone missing is worth naming rather than showing as a code.
+   */
+  outputDevice: { id: string; label: string } | null;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -62,6 +68,7 @@ const DEFAULT_SETTINGS: Settings = {
   jumpSizes: [1, 4, 8, 16],
   keepAwake: true,
   useLocal: false,
+  outputDevice: null,
 };
 
 /** Settings saved by earlier builds, which named their source differently. */

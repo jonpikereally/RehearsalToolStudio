@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { getShiftedBuffer } from '../lib/pitchService';
 import { parseAls, type AlsProject } from '../lib/alsParser';
@@ -10,7 +10,6 @@ import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import { PREPARED_FOLDER, PRINTS_FOLDER } from '../lib/prints';
 import { resolveStemPath } from '../lib/alsImport';
-import SettingsSection from './SettingsSection';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -19,8 +18,19 @@ import SettingsSection from './SettingsSection';
  * reads every stem the set points at, which is gigabytes, and writes a whole
  * library back. That belongs to a moment you chose, on a machine that has the
  * files locally, not to opening the app.
+ *
+ * A dialog over the setlist or the song, not a section of Settings: preparing
+ * is something you do *to* the set you are looking at, and it was a strange
+ * thing to go looking for among the cache budget and the jump sizes.
+ * `preselect` ticks a setlist's songs to start with; without it, the whole set.
  */
-export default function PrepareSet() {
+export default function PrepareSetDialog({
+  onClose,
+  preselect,
+}: {
+  onClose: () => void;
+  preselect?: string[];
+}) {
   const { currentSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
@@ -29,6 +39,8 @@ export default function PrepareSet() {
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<AlsProject | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
+  /** The run in progress, so it can be stopped: minutes is too long to be locked in. */
+  const running = useRef<AbortController | null>(null);
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
@@ -47,7 +59,12 @@ export default function PrepareSet() {
       try {
         const { bytes } = await readBytes(setPath);
         const parsed = await parseAls(bytes);
-        if (live) setProject(parsed);
+        if (!live) return;
+        setProject(parsed);
+        if (preselect) {
+          const wanted = new Set(preselect);
+          setChosen(new Set(parsed.songs.map((s) => s.title).filter((t) => wanted.has(t))));
+        }
       } catch (err) {
         if (live) setError(err instanceof Error ? err.message : String(err));
       }
@@ -84,6 +101,7 @@ export default function PrepareSet() {
    */
   const go = async (folder: local.FolderHandle) => {
     if (!setPath) return;
+    running.current = new AbortController();
     setBusy(true);
     setError(null);
     setResult(null);
@@ -146,13 +164,19 @@ export default function PrepareSet() {
             budgetBytes: settings.cacheBudgetGB * 1e9,
           }),
         onProgress: setProgress,
+        signal: running.current.signal,
       });
       void ctx.close();
       setResult(done);
       setPublished(await publishLibrary(folder));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if ((err as { name?: string })?.name === 'AbortError') {
+        setError('Stopped. Songs already written are in the folder; running it again rewrites the rest.');
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
+      running.current = null;
       setBusy(false);
       setProgress(null);
     }
@@ -168,14 +192,17 @@ export default function PrepareSet() {
     }
   };
 
-  if (!setPath) return null;
-
   return (
-    <SettingsSection
-      id="prepare"
-      title="Prepare for Rehearsal Tool"
-      summary={busy ? 'preparing…' : alsName ?? 'no set chosen'}
-    >
+    <div className="sheet-backdrop" onClick={() => !busy && onClose()}>
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Prepare for Rehearsal Tool"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>Prepare {alsName ?? 'the set'} for Rehearsal Tool</h3>
+        {!setPath && <p className="dialog-note">No set is open. Choose one from the Songs tab first.</p>}
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         Reads the set's current arrangement and writes each song out as small files anyone can
         play — phones included, with no Ableton needed at the other end.
@@ -302,11 +329,19 @@ export default function PrepareSet() {
             Change folder
           </button>
         )}
+        <button
+          className={busy ? 'btn danger' : 'btn'}
+          onClick={() => (busy ? running.current?.abort() : onClose())}
+          title={busy ? 'Stop preparing. What is already written stays.' : undefined}
+        >
+          {busy ? 'Stop' : result ? 'Close' : 'Cancel'}
+        </button>
       </div>
       <div style={{ color: '#6b7789', fontSize: 12.5 }}>
         Reads every stem the set points at, which is gigabytes, so it wants the machine those files
         are actually on. What it writes is small enough for a phone.
       </div>
-    </SettingsSection>
+      </div>
+    </div>
   );
 }

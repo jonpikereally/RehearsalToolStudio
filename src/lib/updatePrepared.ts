@@ -131,6 +131,7 @@ export function songInfoFor(
      */
     parts,
     originalKey: song.key ?? undefined,
+    notes: song.notes || undefined,
     tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
     markers: song.sections.length
       ? song.sections.map((s) => ({ bar: s.bar, name: s.text }))

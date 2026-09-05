@@ -993,7 +993,7 @@ group('clips');
     <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
     <Locator Id="1"><Time Value="0" /><Name Value="Test Song" /></Locator>
     <Locator Id="2"><Time Value="32" /><Name Value="AUTOSTOP" /></Locator>
-    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Test Song" /></GroupTrack>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Test Song" /><Annotation Value="Piano intro&#10;Watch the drummer" /></GroupTrack>
     <AudioTrack Id="11"><TrackGroupId Value="10" /><EffectiveName Value="Bass" />
       <Speaker><LomId Value="0" /><Manual Value="true" /></Speaker>
       ${clip(0, 16, 0, 'false', 0.25)}
@@ -1002,6 +1002,21 @@ group('clips');
   </Ableton>`;
 
   const song = parseAlsXml(xml).songs[0];
+  check('the group track\'s info text is the song\'s notes, line breaks kept',
+    song.notes === 'Piano intro\nWatch the drummer', JSON.stringify(song.notes));
+  {
+    // The set's words win over what was typed here; silence from the set keeps them.
+    const { songsFromProject, songIdFor } = await import('../src/lib/alsImport.ts');
+    const parsed = parseAlsXml(xml);
+    const id = songIdFor('/Set.als', 'Test Song');
+    const typed = new Map([[id, { id, title: 'Test Song', variants: [], notes: 'typed in the app', transpose: 0 }]]);
+    const spoken = songsFromProject(parsed, '/Set.als', [], typed).songs[0];
+    check('when the set has notes, they replace what was typed in the app',
+      spoken.notes === 'Piano intro\nWatch the drummer', JSON.stringify(spoken.notes));
+    const silent = { ...parsed, songs: parsed.songs.map((s) => ({ ...s, notes: '' })) };
+    const kept = songsFromProject(silent, '/Set.als', [], typed).songs[0];
+    check('and when it has none, what was typed stays', kept.notes === 'typed in the app', JSON.stringify(kept.notes));
+  }
   const bass = song?.stems[0];
   check('the track is found', !!bass && bass.name === 'Bass', bass?.name);
   check('both clips are read, not just the first', bass?.clips.length === 2, bass?.clips.length);

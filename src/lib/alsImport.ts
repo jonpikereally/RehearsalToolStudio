@@ -377,7 +377,8 @@ export function songsFromProject(
       chords: alsSong.chords.length ? alsSong.chords.map(toTimedText) : undefined,
       lanes: laneList(alsSong),
       variants,
-      notes: prev?.notes,
+      // The set's own words when it has any; otherwise what was typed here stays.
+      notes: alsSong.notes || prev?.notes,
       updatedAt: Date.now(),
     });
   }

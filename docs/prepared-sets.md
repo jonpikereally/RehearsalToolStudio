@@ -164,6 +164,7 @@ way a hand-made folder would.
       "title": "Cruel Summer",
       "firstBarOffsetSec": 0.0261,
       "originalKey": "G",
+      "notes": "Piano intro. Watch the drummer for the stop.",
       "tempoMap": [{ "bar": 1, "bpm": 85 }, { "bar": 41, "bpm": 90 }],
       "markers": [{ "bar": 1, "name": "Intro" }, { "bar": 5, "name": "Verse 1" }],
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
@@ -205,6 +206,7 @@ way a hand-made folder would.
 | `songs[].title` | no | the song's title, in case the folder name had to be cleaned |
 | `songs[].firstBarOffsetSec` | no | seconds from the start of each file to the downbeat of bar 1 |
 | `songs[].originalKey` | no | the key the set gave the song |
+| `songs[].notes` | no | free text about the song, from the info text of its group track in Live; line breaks kept, worth showing as typed |
 | `songs[].tempoMap` | no | `{bar, bpm}` list, 1-based bars; the full map, first entry included |
 | `songs[].markers` | no | `{bar, name}` list of sections |
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |

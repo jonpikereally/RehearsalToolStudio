@@ -635,6 +635,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         title: song.title,
         firstBarOffsetSec: paddingSec,
         originalKey: song.key ?? undefined,
+        notes: song.notes || undefined,
         tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
         markers: song.sections.length
           ? song.sections.map((s) => ({ bar: s.bar, name: s.text }))

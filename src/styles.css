@@ -480,6 +480,25 @@ button {
   margin-top: 1px;
 }
 
+/* What the set says about the song, as typed on its group track in Live. */
+.song-notes {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0 2px;
+}
+
+.song-notes p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  /* Line breaks as they were typed; a band's notes are a list, not prose. */
+  white-space: pre-wrap;
+}
+
 /* Not a warning: a song in this state is not worth opening at all. */
 .badge.bad {
   background: #4c1d24;
@@ -1568,6 +1587,21 @@ button {
   flex: 1;
   color: var(--text-dim);
   font-size: 14px;
+}
+
+/*
+ * In a dialog the row has no room to be a row: a label beside a tick list and
+ * a column of buttons was being squeezed to one word a line. Stacked, the
+ * label reads as a heading over what it labels, which at this width it is.
+ */
+.dialog .field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.dialog .field label {
+  flex: none;
 }
 
 .field .hint {

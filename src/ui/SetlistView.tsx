@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PrepareSetDialog from './PrepareSetDialog';
 import { useStore } from '../lib/store';
 import { navigate, songUrl } from '../lib/router';
 import { formatClock, runningOrder } from '../lib/runningOrder';
@@ -12,6 +13,7 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
   const setlist = library.setlists.find((s) => s.id === setlistId);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
+  const [preparing, setPreparing] = useState(false);
 
   if (!setlist) {
     return (
@@ -196,6 +198,26 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
             {order.unknown === 1 ? 'it' : 'them'} once and the running order fills in.
           </div>
         </div>
+      )}
+
+      {/*
+        Preparing belongs here, on the running order it prepares, with these
+        songs ticked to start with. It used to live in Settings, which is
+        where you go to change how the app behaves, not to hand a set to the
+        band.
+      */}
+      {songs.length > 0 && (
+        <div className="panel btn-row">
+          <button className="btn primary" onClick={() => setPreparing(true)}>
+            Prepare for Rehearsal Tool
+          </button>
+          <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
+            {songs.length === 1 ? 'this song' : `these ${songs.length} songs`}, as small files the band's app plays
+          </span>
+        </div>
+      )}
+      {preparing && (
+        <PrepareSetDialog preselect={songs.map((s) => s.title)} onClose={() => setPreparing(false)} />
       )}
 
       <div className="panel btn-row">

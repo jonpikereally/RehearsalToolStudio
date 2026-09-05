@@ -174,6 +174,9 @@ export class SongEngine {
       const Ctor: typeof AudioContext =
         (window as any).AudioContext ?? (window as any).webkitAudioContext;
       this.ctx = new Ctor({ latencyHint: 'interactive' });
+      // A pinned output is a property of the context, so it is re-asked for
+      // whenever there is a new one — not only when the setting changes.
+      if (this.sinkId) void this.applySink(this.ctx, this.sinkId);
       this.master = this.ctx.createGain();
       this.master.gain.value = 1;
       this.master.connect(this.ctx.destination);
@@ -262,6 +265,43 @@ export class SongEngine {
 
   get context(): AudioContext | null {
     return this.ctx;
+  }
+
+  /* ------------------------------ the output ------------------------------ */
+
+  /**
+   * Which device the studio plays out of, when the engine it runs on lets a
+   * page choose. Chromium does (`AudioContext.setSinkId`); WebKit — the Mac
+   * app's window — does not, and there everything goes to the system's
+   * default output whatever is asked. So this is offered where it works and
+   * said to be unavailable where it doesn't, rather than quietly ignored.
+   */
+  private sinkId = '';
+
+  static get supportsOutputSelection(): boolean {
+    return typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+  }
+
+  /**
+   * Pin playback to a device by id, or '' for the system default. Resolves
+   * false when the device is not there to be chosen — unplugged, say — in
+   * which case the previous output stays and the caller can say so.
+   */
+  async setOutputDevice(deviceId: string): Promise<boolean> {
+    this.sinkId = deviceId;
+    if (!this.ctx) return true;
+    return this.applySink(this.ctx, deviceId);
+  }
+
+  private async applySink(ctx: AudioContext, deviceId: string): Promise<boolean> {
+    const withSink = ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    if (!withSink.setSinkId) return false;
+    try {
+      await withSink.setSinkId(deviceId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Decode compressed bytes into a buffer at the context's sample rate. */

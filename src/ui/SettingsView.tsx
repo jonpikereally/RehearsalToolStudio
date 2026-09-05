@@ -3,11 +3,11 @@ import { useStore } from '../lib/store';
 import { cacheStats, clearCache, clearLocalDuplicates, type CacheStats } from '../lib/idb';
 import { isLocal } from '../lib/source';
 import { formatBytes } from '../lib/songLoader';
-import PrepareSet from './PrepareSet';
 import LocalFolderSettings from './LocalFolderSettings';
 import CueSettings from './CueSettings';
 import MidiSettings from './MidiSettings';
 import SettingsSection from './SettingsSection';
+import OutputDevice from './OutputDevice';
 
 /**
  * `onClose` is passed when Settings is opened over the player rather than as a
@@ -61,8 +61,6 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
 
       <LocalFolderSettings />
 
-      <PrepareSet />
-
       <CueSettings />
 
       <MidiSettings />
@@ -102,7 +100,7 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
       <SettingsSection
         id="device"
         title="Device settings"
-        summary={settings.keepAwake ? 'screen stays awake' : 'screen may sleep'}
+        summary={`${settings.outputDevice ? `out: ${settings.outputDevice.label}` : 'system output'} · ${settings.keepAwake ? 'screen stays awake' : 'screen may sleep'}`}
       >
         <div className="field">
           <label htmlFor="awake">
@@ -117,6 +115,8 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
             style={{ width: 24, height: 24 }}
           />
         </div>
+
+        <OutputDevice />
 
         <div className="field">
           <label>

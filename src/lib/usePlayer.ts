@@ -65,6 +65,7 @@ export function usePlayer(
   keepAwake: boolean,
   ahead: Song[] = [],
   runMemoryGB = 4,
+  outputDeviceId: string | null = null,
 ) {
   const [state, setState] = useState<PlayerState>({
     loading: false,
@@ -140,6 +141,25 @@ export function usePlayer(
       cancelled = true;
     };
   }, [song?.id]);
+
+  /* ------------------------------- the output ------------------------------- */
+
+  /*
+   * Follow the chosen output, live. Settings opens over the player, so a
+   * device picked there takes effect on the song that is playing; a device
+   * that cannot be chosen — gone, or an engine with no say in the matter —
+   * leaves playback where it was and is reported on the settings page.
+   */
+  const [outputLost, setOutputLost] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void engine.setOutputDevice(outputDeviceId ?? '').then((ok) => {
+      if (live) setOutputLost(!!outputDeviceId && !ok);
+    });
+    return () => {
+      live = false;
+    };
+  }, [outputDeviceId]);
 
   /* ---------------------------------- a run --------------------------------- */
 
@@ -667,6 +687,8 @@ export function usePlayer(
     resetStemMix,
     /** The songs of the run that are decoded and would open instantly. */
     readySongIds: readyIds,
+    /** The chosen output could not be used, so playback is on the default. */
+    outputLost,
     supportsPanning: engine.supportsPanning,
     unlock: () => engine.unlock().then(() => setState((s) => ({ ...s, audioState: engine.state }))),
   };

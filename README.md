@@ -138,7 +138,8 @@ The studio holds two, kept apart on purpose. **Your sets** is the workshop it
 reads: sets, stems, gigabytes of WAV. **Publish to** is the band's own Dropbox
 app folder — a different app folder, and the only one their app can read — so
 what the studio prepares is written there rather than beside what it was made
-from. Both are chosen once in Settings and remembered.
+from. Your sets folder is chosen once in Settings; the band's is asked for the
+first time you prepare — from the setlist or the song — and both are remembered.
 
 ## What a prepared set looks like
 

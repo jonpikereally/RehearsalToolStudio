@@ -30,6 +30,8 @@ export interface PreparedSongInfo {
    */
   firstBarOffsetSec: number;
   originalKey?: string;
+  /** Free text about the song — the info text on its group track in Live. */
+  notes?: string;
   tempoMap?: TempoPoint[];
   markers?: { bar: number; name: string }[];
   chords?: TimedText[];
@@ -146,6 +148,7 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
     if (!song || typeof song !== 'object') return bad('not an object');
     if (typeof song.folder !== 'string' || !song.folder) bad('"folder" must name the song\'s folder');
     if (song.title !== undefined && typeof song.title !== 'string') bad('"title" must be text');
+    if (song.notes !== undefined && typeof song.notes !== 'string') bad('"notes" must be text');
     if (song.firstBarOffsetSec !== undefined && typeof song.firstBarOffsetSec !== 'number') {
       bad('"firstBarOffsetSec" must be a number of seconds');
     }
@@ -238,6 +241,7 @@ export function manifestFromSongs(
         firstBarOffsetSec: song.firstBarOffsetSec ?? 0,
       };
       if (song.originalKey) info.originalKey = song.originalKey;
+      if (song.notes) info.notes = song.notes;
       if (song.tempoMap?.length) info.tempoMap = song.tempoMap;
       if (song.markers?.length) info.markers = song.markers.map((m) => ({ bar: m.bar, name: m.name }));
       if (song.chords?.length) info.chords = song.chords;
@@ -295,6 +299,7 @@ export function applyManifest(
 
     song.firstBarOffsetSec = info.firstBarOffsetSec ?? song.firstBarOffsetSec;
     if (info.originalKey) song.originalKey = info.originalKey;
+    if (info.notes !== undefined) song.notes = info.notes || undefined;
     if (info.tempoMap?.length) song.tempoMap = info.tempoMap;
     if (info.chords?.length) song.chords = info.chords;
     if (info.lanes?.length) song.lanes = info.lanes;

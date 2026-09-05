@@ -71,6 +71,12 @@ export interface AlsSong {
    */
   caveats: string[];
   /**
+   * What the set says about the song: the info text on the group track named
+   * after it, as typed in Live. "Piano intro", "watch the drummer for the
+   * stop" — the things a band writes to itself. Empty when there is none.
+   */
+  notes: string;
+  /**
    * The set's own rig tracks — MIDI to a pedalboard or the lights, a video
    * track, a timecode track — cut down to what plays inside this song.
    */
@@ -332,6 +338,8 @@ interface Track {
   groupId: string;
   name: string;
   chunk: string;
+  /** The track's info text, as Live's Annotation field. */
+  annotation: string;
   /** The fader, as a linear gain: 1 is 0 dB. */
   gain: number;
   /** -1 hard left, 0 centre, 1 hard right. */
@@ -891,6 +899,8 @@ export function parseAlsXml(xml: string): AlsProject {
       id: (chunk.match(/^<\w+ Id="(\d+)"/) ?? [])[1] ?? '',
       groupId: (chunk.match(/<TrackGroupId Value="(-?\d+)"/) ?? [])[1] ?? '-1',
       name: decodeXml((chunk.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? ''),
+      // The track's own comes first in the element, before its clips' and devices'.
+      annotation: decodeXml((chunk.match(/<Annotation Value="([^"]*)"/) ?? [])[1] ?? ''),
       chunk,
       ...mixerOf(chunk),
       devices: devicesOf(chunk),
@@ -1351,6 +1361,7 @@ export function parseAlsXml(xml: string): AlsProject {
     return {
       title: meta.title,
       raw: loc.name,
+      notes: group?.annotation.trim() ?? '',
       startBar: toBar(loc.beat),
       endBar: Number.isFinite(endBeat) ? toBar(endBeat) : toBar(loc.beat),
       bpm: meta.bpm ?? region?.bpm ?? null,

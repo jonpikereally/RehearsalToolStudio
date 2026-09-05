@@ -330,6 +330,12 @@ export interface Song {
    * are the merged view of the same events.
    */
   lanes?: ChartLane[];
+  /**
+   * Free text about the song. Typed here, or — where the set has any — the
+   * info text on the song's group track in Live, which a rescan brings in and
+   * which wins over what was typed: the set is where the band writes to
+   * itself, and two places to keep the same note is one too many.
+   */
   notes?: string;
 
   /**

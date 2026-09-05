@@ -31,6 +31,7 @@ import PatchDialog from './PatchDialog';
 import TempoDialog from './TempoDialog';
 import TimecodeDialog from './TimecodeDialog';
 import PrepareSongDialog from './PrepareSongDialog';
+import PrepareSetDialog from './PrepareSetDialog';
 import { hasDevices } from '../lib/usePlayer';
 import { isAbsoluteRef } from '../lib/localSource';
 import type { FileStanding } from '../lib/songLoader';
@@ -80,7 +81,10 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
       .filter((s): s is Song => !!s);
   }, [run, runAt?.index, library.songs]);
 
-  const player = usePlayer(song, settings.cacheBudgetGB, settings.keepAwake, ahead, settings.runMemoryGB);
+  const player = usePlayer(
+    song, settings.cacheBudgetGB, settings.keepAwake, ahead, settings.runMemoryGB,
+    settings.outputDevice?.id ?? null,
+  );
   const [jump, setJump] = useState(settings.jumpSizes[1] ?? 4);
   const [editing, setEditing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -88,6 +92,7 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
   const [setMenu, setSetMenu] = useState(false);
   const [timecode, setTimecode] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [preparingSet, setPreparingSet] = useState(false);
   const [cues, setCues] = useState(cuesEnabled);
   /*
    * Held in state rather than read while rendering. Settings opens as a panel
@@ -689,13 +694,22 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
         </div>
 
         {song.setPath && song.variants.length > 0 && (
-          <button className="btn primary prepare-btn" onClick={() => setPreparing(true)}>
-            Prepare song for Rehearsal Tool
-            <span className="unit">choose the parts, print them small, hand them to the band</span>
-          </button>
+          <>
+            <button className="btn primary prepare-btn" onClick={() => setPreparing(true)}>
+              Prepare song for Rehearsal Tool
+              <span className="unit">choose the parts, print them small, hand them to the band</span>
+            </button>
+            {/* The whole set, from here as well: the song is where you are when you decide. */}
+            <div className="controls" style={{ justifyContent: 'center', paddingTop: 0 }}>
+              <button className="chip" onClick={() => setPreparingSet(true)}>
+                Prepare the whole set…
+              </button>
+            </div>
+          </>
         )}
 
         {preparing && <PrepareSongDialog song={song} onClose={() => setPreparing(false)} />}
+        {preparingSet && <PrepareSetDialog onClose={() => setPreparingSet(false)} />}
 
         <div className="blocks" onPointerMove={blocks.onMove} onPointerUp={blocks.endDrag} onPointerCancel={blocks.endDrag}>
           {blocks.order.map((id) => {
@@ -961,6 +975,12 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
                         </span>
                       </div>
                       <TempoControl song={song} />
+                      {song.notes && (
+                        <div className="song-notes" role="note" aria-label="Notes from the set">
+                          <span className="control-label">Notes</span>
+                          <p>{song.notes}</p>
+                        </div>
+                      )}
 
                     </>
                   )}
