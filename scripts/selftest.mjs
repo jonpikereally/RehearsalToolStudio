@@ -3047,6 +3047,12 @@ group('checking a set before it matters');
   check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, 4), 32), songDurationSec(yellow, 4));
 
   const findings = checkSet(project);
+  {
+    const { TOPIC_LABEL } = await import('../src/lib/setReview.ts');
+    check('every finding is filed under a subject with a name',
+      findings.length > 0 && findings.every((f) => typeof TOPIC_LABEL[f.topic] === 'string'),
+      JSON.stringify([...new Set(findings.map((f) => f.topic))]));
+  }
   const about = (song, part) =>
     findings.find((f) => f.song === song && f.message.includes(part));
 

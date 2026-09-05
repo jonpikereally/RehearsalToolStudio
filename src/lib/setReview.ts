@@ -15,8 +15,35 @@ import type { AlsProject, AlsSong } from './alsParser.ts';
 
 export type Severity = 'problem' | 'warning' | 'info';
 
+/**
+ * What a finding is about, so a long report can be read by subject as well
+ * as by song. A closed set: a finding with no topic is a finding nobody can
+ * file, and the panel groups and names these.
+ */
+export type Topic =
+  | 'set' | 'flow' | 'key' | 'tempo' | 'length' | 'sections' | 'slates' | 'devices' | 'parts' | 'playback';
+
+export const TOPIC_LABEL: Record<Topic, string> = {
+  set: 'The set',
+  flow: 'Stops and segues',
+  key: 'Keys',
+  tempo: 'Tempo',
+  length: 'Lengths',
+  sections: 'Sections',
+  slates: 'Slates',
+  devices: 'Devices',
+  parts: 'Parts',
+  playback: 'Playback',
+};
+
+/** The order subjects are shown in: what bites hardest at a gig first. */
+export const TOPIC_ORDER: Topic[] = [
+  'set', 'flow', 'parts', 'playback', 'devices', 'tempo', 'key', 'length', 'sections', 'slates',
+];
+
 export interface Finding {
   severity: Severity;
+  topic: Topic;
   /** Which song it concerns, or null for the set as a whole. */
   song: string | null;
   message: string;
@@ -74,6 +101,7 @@ export function checkSet(project: AlsProject): Finding[] {
   if (!project.songs.length) {
     out.push({
       severity: 'problem',
+      topic: 'set',
       song: null,
       message: 'No locators name any songs — there is nothing here to play as a set.',
     });
@@ -88,6 +116,7 @@ export function checkSet(project: AlsProject): Finding[] {
     if (n > 1) {
       out.push({
         severity: 'warning',
+        topic: 'set',
         song: null,
         message: `“${title}” is named by ${n} locators — jumps and setlists cannot tell them apart.`,
       });
@@ -97,6 +126,7 @@ export function checkSet(project: AlsProject): Finding[] {
   if (project.songs.every((s) => !s.sections.length)) {
     out.push({
       severity: 'warning',
+      topic: 'sections',
       song: null,
       message:
         'No sections anywhere — without a +SECTIONS track there is no jumping to a chorus in rehearsal.',
@@ -107,6 +137,7 @@ export function checkSet(project: AlsProject): Finding[] {
   if (!anySlates) {
     out.push({
       severity: 'info',
+      topic: 'slates',
       song: null,
       message: 'No slate track — the Slates tool can speak each title onto one.',
     });
@@ -115,7 +146,7 @@ export function checkSet(project: AlsProject): Finding[] {
   // The parser already noticed songs it could find no audio for.
   // What the player cannot follow, said before the gig rather than at it.
   for (const song of project.songs) {
-    for (const caveat of song.caveats ?? []) out.push({ severity: 'warning', song: song.title, message: caveat });
+    for (const caveat of song.caveats ?? []) out.push({ severity: 'warning', topic: 'playback', song: song.title, message: caveat });
     /*
      * Devices are imitated at best. Any that cannot be — a plugin, a rack —
      * mean the raw file is not what the song sounds like; worth a warning
@@ -129,6 +160,7 @@ export function checkSet(project: AlsProject): Finding[] {
     if (cannot.size) {
       out.push({
         severity: 'warning',
+        topic: 'devices',
         song: song.title,
         message: `Runs through devices this app cannot imitate — ${[...cannot].join(', ')} — so it will not sound as it does in Live.`,
       });
@@ -136,7 +168,7 @@ export function checkSet(project: AlsProject): Finding[] {
   }
 
   for (const warning of project.warnings) {
-    out.push({ severity: 'problem', song: null, message: warning });
+    out.push({ severity: 'problem', topic: 'set', song: null, message: warning });
   }
 
   /* ------------------------------- per song ------------------------------- */
@@ -146,29 +178,32 @@ export function checkSet(project: AlsProject): Finding[] {
   project.songs.forEach((song, index) => {
     const last = index === project.songs.length - 1;
     const next = project.songs[index + 1];
-    const push = (severity: Severity, message: string) =>
-      out.push({ severity, song: song.title, message });
+    const push = (topic: Topic, severity: Severity, message: string) =>
+      out.push({ severity, topic, song: song.title, message });
 
     const stopped = song.endsAtStop || song.flags.includes('END') || song.flags.includes('PAUSE');
     if (!stopped && last) {
       push(
+        'flow',
         'problem',
         'Nothing ever stops it — the set has no STOP locator or +END after the last song, so playback runs off the end.',
       );
     } else if (!stopped && next) {
       push(
+        'flow',
         'info',
         `Runs straight into “${next.title}” — no STOP locator or +PAUSE/+END flag between them. Fine if that segue is meant.`,
       );
     }
 
     if (!song.key) {
-      push('warning', 'No key in the locator — chord conversion and transposition have nothing to count from.');
+      push('key', 'warning', 'No key in the locator — chord conversion and transposition have nothing to count from.');
     }
     if (song.bpm == null) {
-      push('info', `The locator names no tempo; it plays at ${Math.round(song.startBpm)} BPM.`);
+      push('tempo', 'info', `The locator names no tempo; it plays at ${Math.round(song.startBpm)} BPM.`);
     } else if (Math.abs(song.bpm - song.startBpm) > 0.5) {
       push(
+        'tempo',
         'warning',
         `The locator says ${song.bpm} BPM but the tempo there is actually ${Math.round(song.startBpm)} — one of them is out of date.`,
       );
@@ -180,6 +215,7 @@ export function checkSet(project: AlsProject): Finding[] {
       const actual = songDurationSec(song, beatsPerBar);
       if (pinned != null && Math.abs(pinned - actual) > DURATION_SLACK_SEC) {
         push(
+          'length',
           'warning',
           `The locator pins it at ${song.durationText} but the arrangement runs ${formatSec(actual)}.`,
         );
@@ -187,17 +223,17 @@ export function checkSet(project: AlsProject): Finding[] {
     }
 
     if (anySlates && !song.slateBars.length) {
-      push('info', 'No slate — the Slates tool can add the spoken title.');
+      push('slates', 'info', 'No slate — the Slates tool can add the spoken title.');
     }
     if (anySections && !song.sections.length) {
-      push('info', 'No sections, though the rest of the set has them.');
+      push('sections', 'info', 'No sections, though the rest of the set has them.');
     }
     if (song.tempoChanges.length > 1) {
       const spots = song.tempoChanges
         .slice(0, 3)
         .map((t) => `${Math.round(t.bpm)} at bar ${Math.round(t.bar)}`)
         .join(', ');
-      push('info', `The tempo moves inside the song: ${spots}${song.tempoChanges.length > 3 ? '…' : ''}.`);
+      push('tempo', 'info', `The tempo moves inside the song: ${spots}${song.tempoChanges.length > 3 ? '…' : ''}.`);
     }
 
     for (const stem of song.stems) {
@@ -207,6 +243,7 @@ export function checkSet(project: AlsProject): Finding[] {
       // The finished record playing under the band is the classic live horror.
       if (stem.reference && active.length && !muted) {
         push(
+          'parts',
           'problem',
           `The reference recording “${stem.name}” is active — the record itself would sound at the gig. Mute the track or deactivate its clips.`,
         );
@@ -214,11 +251,12 @@ export function checkSet(project: AlsProject): Finding[] {
       if (!stem.reference) {
         const off = stem.clips.length - active.length;
         if (off) {
-          push('info', `${off} deactivated clip${off === 1 ? '' : 's'} on “${stem.name}” will stay silent.`);
+          push('parts', 'info', `${off} deactivated clip${off === 1 ? '' : 's'} on “${stem.name}” will stay silent.`);
         }
         const drifty = active.find((c) => !c.warped && c.endBar - c.startBar > UNWARPED_BARS);
         if (drifty) {
           push(
+            'parts',
             'warning',
             `“${stem.name}” has an unwarped clip ${Math.round(drifty.endBar - drifty.startBar)} bars long — it plays at the file's own speed and will drift from the click if the tempos differ.`,
           );

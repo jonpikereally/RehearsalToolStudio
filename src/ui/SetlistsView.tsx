@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { useStore } from '../lib/store';
+import PrepareSetDialog from './PrepareSetDialog';
 import { navigate, setlistUrl } from '../lib/router';
 import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 
 export default function SetlistsView() {
   const { library, createSetlist, currentSet } = useStore();
+  const [preparing, setPreparing] = useState(false);
+  const inSetCount = library.songs.filter((s) => s.setPath === currentSet).length;
 
   // The set's own running order, and any made by hand out of its songs.
   const inSet = new Set(library.songs.filter((s) => s.setPath === currentSet).map((s) => s.id));
@@ -47,6 +51,23 @@ export default function SetlistsView() {
           )}
         </div>
       )}
+
+      {/*
+        The whole set, from the page that lists its running orders: a setlist's
+        own button prepares that setlist, and this is the one place to prepare
+        everything without first choosing which order to do it from.
+      */}
+      {currentSet && inSetCount > 0 && (
+        <div className="panel btn-row">
+          <button className="btn primary" onClick={() => setPreparing(true)}>
+            Prepare the whole set for Rehearsal Tool
+          </button>
+          <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
+            all {inSetCount} song{inSetCount === 1 ? '' : 's'}, as small files the band's app plays
+          </span>
+        </div>
+      )}
+      {preparing && <PrepareSetDialog onClose={() => setPreparing(false)} />}
 
       {setlists.map((setlist) => (
         <button key={setlist.id} className="row" onClick={() => navigate(setlistUrl(setlist.id))}>

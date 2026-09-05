@@ -13,13 +13,14 @@ import {
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
 import { parseKey } from '../lib/nashville';
-import { checkSet, setlistText, type Severity } from '../lib/setReview';
+import { setlistText } from '../lib/setReview';
 import { LYRICS_STUDIO } from './LyricClipsPanel';
 
 
 import SlatesPanel from './SlatesPanel';
 import LyricClipsPanel from './LyricClipsPanel';
 import UpdatePreparedPanel from './UpdatePreparedPanel';
+import CheckSetPanel from './CheckSetPanel';
 import { useStore } from '../lib/store';
 import { writeClipsToSet } from '../lib/alsWrite';
 
@@ -588,7 +589,7 @@ export default function SetToolsView() {
                 </>
               )}
 
-              {tool === 'check' && <CheckPanel project={project} selected={selected} />}
+              {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={lone ? null : setPath} />}
 
               {tool === 'setlist' && <SetlistPanel project={project} selected={selected} />}
 
@@ -673,63 +674,6 @@ export default function SetToolsView() {
   );
 }
 
-/**
- * The preflight: everything the parser can see that would go wrong live,
- * reported the moment a set is chosen rather than discovered at the gig.
- * Set-wide findings always show; per-song ones follow the tick list, so a
- * check can be narrowed to the song being worked on.
- */
-function CheckPanel({ project, selected }: { project: AlsProject; selected: Set<string> }) {
-  const findings = checkSet(project).filter((f) => !f.song || selected.has(f.song));
-  const count = (severity: Severity) => findings.filter((f) => f.severity === severity).length;
-  const problems = count('problem');
-  const warnings = count('warning');
-
-  const MARK: Record<Severity, { glyph: string; color: string }> = {
-    problem: { glyph: '●', color: 'var(--bad)' },
-    warning: { glyph: '●', color: 'var(--accent)' },
-    info: { glyph: '○', color: 'var(--text-faint)' },
-  };
-
-  // Set-wide first, then song findings in set order — the order they'd bite.
-  const order = new Map(project.songs.map((s, i) => [s.title, i]));
-  const sorted = [...findings].sort(
-    (a, b) => (a.song ? (order.get(a.song) ?? 0) : -1) - (b.song ? (order.get(b.song) ?? 0) : -1),
-  );
-
-  return (
-    <div className="field">
-      <label>
-        What the checker sees
-        <span className="hint">
-          Red would go wrong at the gig, amber deserves a look, hollow is worth knowing.
-        </span>
-      </label>
-      <div className="notice">
-        {problems
-          ? `${problems} problem${problems === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}.`
-          : warnings
-            ? `No problems, ${warnings} warning${warnings === 1 ? '' : 's'}.`
-            : 'Nothing would go wrong live that this checker can see.'}
-      </div>
-      <div style={{ display: 'grid', gap: 6 }}>
-        {sorted.map((f, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 13.5 }}>
-            <span aria-hidden style={{ color: MARK[f.severity].color }}>
-              {MARK[f.severity].glyph}
-            </span>
-            <span>
-              {f.song && <strong style={{ marginRight: 6 }}>{f.song}</strong>}
-              <span style={{ color: f.severity === 'info' ? 'var(--text-dim)' : 'var(--text)' }}>
-                {f.message}
-              </span>
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** The running order as text, ready for a green room door or a front desk. */
 function SetlistPanel({ project, selected }: { project: AlsProject; selected: Set<string> }) {
