@@ -1,7 +1,7 @@
 import type { AlsClip, AlsProject, AlsSong } from './alsParser';
 import { needsRender, renderTrack, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
-import { PREPARED_FOLDER, PRINTS_FOLDER } from './prints.ts';
+import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
 import type { SamplerNote, SamplerSample } from '../types';
@@ -222,7 +222,7 @@ export function partInfoFor(songTitle: string, partName: string, reference: bool
 /* ------------------------------ sampler parts ------------------------------ */
 
 /** Where the samples go: the root of the band's folder, shared by every set. */
-export const RESOURCES_FOLDER = 'Resources';
+export { RESOURCES_FOLDER };
 /** Under it, the spoken slates — apart from the clicks and cues they play among. */
 export const SLATES_FOLDER = 'slates';
 
@@ -362,7 +362,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     onProgress, signal, bitrate = DEFAULT_BITRATE,
   } = opts;
 
-  const folder = `${normalisePath(root)}/${PRINTS_FOLDER}/${PREPARED_FOLDER}/${safeName(setName)}`;
+  const folder = `${setsFolder(root)}/${safeName(setName)}`;
   const wanted = opts.only?.length ? new Set(opts.only) : null;
   const chosen = wanted ? project.songs.filter((s) => wanted.has(s.title)) : project.songs;
   const skipped: PrepareResult['skipped'] = [];

@@ -2,7 +2,7 @@ import { emptyLibrary, type Library } from '../types';
 import * as local from './localSource';
 import { mergeScan } from './scan';
 import { applyManifest, isManifestName } from './preparedSet';
-import { isPreparedSet } from './prints';
+import { isPreparedSet, isPrint } from './prints';
 
 /**
  * Handing a prepared set to the band.
@@ -52,7 +52,9 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
 
   // The band's folder has no Ableton sets in it and nothing to claim, so this
   // is the plain folder scan — the same one their app would have run.
-  const result = mergeScan(existing, files, '');
+  // Not the prints: a mix of a song that exists is not a song, and the
+  // website attaches those itself on its own scan.
+  const result = mergeScan(existing, files.filter((f) => !isPrint(f.path)), '');
   const songs = result.library.songs;
 
   // Facts the folder names had no room for: sections, chords, lyrics.

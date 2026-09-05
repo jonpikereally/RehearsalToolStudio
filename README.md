@@ -143,8 +143,8 @@ first time you prepare — from the setlist or the song — and both are remembe
 
 ## What a prepared set looks like
 
-Each song becomes a folder of small files under `Rehearsal Tool/Sets/<set>/`
-in the band's folder, with a `set.json` manifest beside them carrying the
+Each song becomes a folder of small files under `Sets/<set>/` in the band's
+folder, with a `set.json` manifest beside them carrying the
 tempo map, sections, chords and lyrics. The whole contract, file by file and
 field by field, is in [docs/prepared-sets.md](docs/prepared-sets.md). The
 files follow one naming convention so nothing depends on this app to read

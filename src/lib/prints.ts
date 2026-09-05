@@ -3,47 +3,56 @@ import { normalisePath } from './paths.ts';
 import { isAudio, parseNameMeta } from './scan.ts';
 
 /**
- * Where mixes printed by the app live, and how they find their way back.
+ * The shape of what the app writes, and how it is read back.
  *
- * They go in one folder of the app's own rather than into the Ableton project
- * they came from. A set's stem folders are the project's business — dropping
- * files into them muddles what Ableton exported with what this app made, and
- * anyone re-exporting stems would be picking through both.
+ *   <root>/
+ *     Sets/<set name>/...         sets prepared from Ableton: a library in
+ *                                 their own right, scanned like any folder
+ *     Prints/<version>/...        mixes printed of songs that already exist,
+ *                                 attached to those songs on scan
+ *     Resources/...               the samples sampler parts strike, shared
  *
- *   <root>/Rehearsal Tool/<version>/Fix You (no vocal v1 2026-08-13 rehearsaltool).wav
+ * It used to all sit under a folder called "Rehearsal Tool", and prints were
+ * whatever was under it but not under Sets/. The band's folder already lives
+ * inside a Dropbox app folder of that name, so the path read the app's name
+ * twice for nothing — and once the wrapper is gone, "not under Sets/" would
+ * sweep in anything else the band keeps beside their sets. So prints are now
+ * named by their folder rather than inferred from position.
  *
- * The version folder is what puts a print back with the parts it was made from.
- * Without it the print would sit in a folder of its own, and a folder is what
- * makes a version, so every print would look like a new rendering of the song.
+ * Both shapes are read; only the new one is written. Every band has the old
+ * one, nothing moves anyone's files, and a band that prepares again ends up
+ * with the two side by side, which is fine: a folder called Sets or Prints
+ * counts wherever it sits, which is the rule the website reads by too.
  */
 
-export const PRINTS_FOLDER = 'Rehearsal Tool';
+/** The wrapper everything used to sit under. Read, never written. */
+export const APP_FOLDER = 'Rehearsal Tool';
+export const SETS_FOLDER = 'Sets';
+export const PRINTS_FOLDER = 'Prints';
+export const RESOURCES_FOLDER = 'Resources';
+/** Kept for the studio's own manifest paths; the same thing as SETS_FOLDER. */
+export const PREPARED_FOLDER = SETS_FOLDER;
 
-/**
- * Sets prepared from Ableton live under here.
- *
- * They are a library in their own right — songs with parts, to be scanned like
- * any other folder — where a print is an extra part belonging to a song that
- * already exists. Both are written by the app, so both sit under its folder,
- * but only one of them is attached to something else afterwards.
- */
-export const PREPARED_FOLDER = 'Sets';
-
-function underAppFolder(path: string): boolean {
-  return new RegExp(`(^|/)${PRINTS_FOLDER}(/|$)`, 'i').test(path);
-}
+/** A path with this folder as one of its segments, wherever it sits. */
+const hasSegment = (path: string, name: string) => new RegExp(`(^|/)${name}(/|$)`, 'i').test(path);
 
 /** True for a set the app prepared, which is scanned as an ordinary library. */
 export function isPreparedSet(path: string): boolean {
-  return (
-    underAppFolder(path) &&
-    new RegExp(`(^|/)${PRINTS_FOLDER}/${PREPARED_FOLDER}(/|$)`, 'i').test(path)
-  );
+  return hasSegment(path, SETS_FOLDER);
 }
 
-/** True for a print: written by the app, and attached to a song that exists. */
+/**
+ * True for a print: written by the app, and attached to a song that exists.
+ * Under Prints/ now; under the old wrapper but not under Sets/ before.
+ */
 export function isPrint(path: string): boolean {
-  return underAppFolder(path) && !isPreparedSet(path);
+  if (isPreparedSet(path)) return false;
+  return hasSegment(path, PRINTS_FOLDER) || hasSegment(path, APP_FOLDER);
+}
+
+/** Where prepared sets are written under a root. */
+export function setsFolder(root: string): string {
+  return `${normalisePath(root)}/${SETS_FOLDER}`;
 }
 
 /** The folder a print belongs in, given the version it was made from. */
@@ -78,7 +87,7 @@ export function baseTitleOf(fileName: string): string {
   return parseNameMeta(withoutTags).title.trim();
 }
 
-/** Every print in the app's folder, with the song and version it claims. */
+/** Every print, wherever it sits, with the song and version it claims. */
 export function findPrints(files: FileEntry[]): FoundPrint[] {
   const found: FoundPrint[] = [];
   for (const file of files) {
@@ -86,9 +95,12 @@ export function findPrints(files: FileEntry[]): FoundPrint[] {
     const title = baseTitleOf(file.name);
     if (!title) continue;
 
-    // The folder directly under "Rehearsal Tool" is the version, if there is one.
+    // The folders between the prints root — Prints/, or the old wrapper — and
+    // the file are the version, if there are any.
     const parts = file.path.split('/').filter(Boolean);
-    const at = parts.findIndex((p) => p.toLowerCase() === PRINTS_FOLDER.toLowerCase());
+    const lower = parts.map((p) => p.toLowerCase());
+    let at = lower.indexOf(PRINTS_FOLDER.toLowerCase());
+    if (at < 0) at = lower.indexOf(APP_FOLDER.toLowerCase());
     const between = parts.slice(at + 1, parts.length - 1);
     found.push({ file, title, versionName: between.join('/') });
   }

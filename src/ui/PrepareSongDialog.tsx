@@ -9,8 +9,9 @@ import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
 import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
-import { PREPARED_FOLDER, PRINTS_FOLDER } from '../lib/prints';
+import { SETS_FOLDER } from '../lib/prints';
 import { resolveStemPath } from '../lib/alsImport';
+import { setNameFor } from '../lib/setName';
 import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
@@ -84,8 +85,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const printing = stems.filter((s) => choice[s.name] === 'print');
   const combining = stems.filter((s) => choice[s.name] === 'combine');
   const partCount = printing.length + (combining.length ? 1 : 0);
-  const alsName = song.setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? 'Set';
-  const setName = `${alsName} ${new Date().toISOString().slice(0, 10)}`;
+  // The folder the rest of the set went into, if it was ever named; else today's.
+  const setName = setNameFor(song.setPath ?? null);
   const folderName = alsSong && project ? songFolderName(alsSong, project) : '';
 
   const stop = () => running.current?.abort();
@@ -123,7 +124,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         only: [alsSong.title],
         plan: { [alsSong.title]: plan },
         readManifest: async () => {
-          const path = `${PRINTS_FOLDER}/${PREPARED_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}/${MANIFEST_NAME}`;
+          const path = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}/${MANIFEST_NAME}`;
           try {
             const { bytes: raw } = await local.readBytes(folder, '', path);
             return JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
@@ -278,7 +279,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
               {partCount > 0 && (
                 <>
                   <span className="code">
-                    {PRINTS_FOLDER}/{PREPARED_FOLDER}/{setName}/{folderName}/
+                    {SETS_FOLDER}/{setName}/{folderName}/
                   </span>{' '}
                   in {publishFolderName ? `“${publishFolderName}”` : "the band's folder, asked for first"}
                   {' — '}

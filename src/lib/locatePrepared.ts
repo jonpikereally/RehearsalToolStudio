@@ -1,6 +1,6 @@
 import * as local from './localSource';
 import { isManifestName, setFolderOf, type PreparedManifest } from './preparedSet';
-import { PREPARED_FOLDER, PRINTS_FOLDER } from './prints';
+import { isPreparedSet } from './prints';
 import { setFor, type PreparedSetAt } from './updatePrepared';
 
 /**
@@ -23,11 +23,11 @@ export async function locatePrepared(
   alsPath: string,
 ): Promise<LocatedSet | { error: string }> {
   const files = await local.listFiles(folder, '');
-  const under = new RegExp(`(^|/)${PRINTS_FOLDER}/${PREPARED_FOLDER}/`, 'i');
 
   const candidates: PreparedSetAt[] = [];
   for (const file of files) {
-    if (!isManifestName(file.name) || !under.test(file.path)) continue;
+    // Any Sets folder, wherever it sits: the old wrapper's and the new root's alike.
+    if (!isManifestName(file.name) || !isPreparedSet(file.path)) continue;
     try {
       const { bytes } = await local.readBytes(folder, '', file.path);
       const manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;

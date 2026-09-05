@@ -1858,6 +1858,16 @@ group('preparing a set');
   const print = '/S/Rehearsal Tool/136 Stems/Fix You (no vocal v1 2026-08-13 rehearsaltool).wav';
   check('a prepared set is scanned as a library', isPreparedSet(set) && !isPrint(set));
   check('a print is not', isPrint(print) && !isPreparedSet(print));
+
+  // The wrapper is gone from what is written; both shapes are still read.
+  const newSet = '/S/Sets/Coldplay 2026-08-13/Fix You {136}/Fix You [bass].mp3';
+  const newPrint = '/S/Prints/136 Stems/Fix You (no vocal v1 2026-08-13 rehearsaltool).wav';
+  check('a set at the root is a set', isPreparedSet(newSet) && !isPrint(newSet));
+  check('and a print under Prints/ is a print', isPrint(newPrint) && !isPreparedSet(newPrint));
+  check('but a stray file beside them is neither',
+    !isPrint('/S/Photos/gig.wav') && !isPreparedSet('/S/Photos/gig.wav'));
+  check('nor is a Resources sample a set or a print',
+    !isPrint('/S/Resources/kick-1a2b3c4d.wav') && !isPreparedSet('/S/Resources/kick-1a2b3c4d.wav'));
 }
 
 /* ---------------------- what a folder name can't carry --------------------- */
@@ -1957,7 +1967,7 @@ group('prints');
 
   // Written into the app's folder, under the version it was made from.
   const folder = printFolder('/C', source[0].name);
-  check('prints go to the app folder', folder === '/C/Rehearsal Tool/136BPM Stems', folder);
+  check('prints go under Prints/, named for their version', folder === '/C/Prints/136BPM Stems', folder);
 
   const name = bounceFileName('Fix You', 'no vocal', 1, new Date(2026, 7, 13));
   const path = folder + '/' + name;
@@ -1967,6 +1977,8 @@ group('prints');
   const found = findPrints([{ path, name, rev: 'r', size: 1, modified: 0 }]);
   check('the print names its song', found[0]?.title === 'Fix You', found[0]?.title);
   check('and the version it came from', found[0]?.versionName === '136BPM Stems', found[0]?.versionName);
+  const old = findPrints([{ path: '/C/Rehearsal Tool/136BPM Stems/' + name, name, rev: 'r', size: 1, modified: 0 }]);
+  check('a print under the old wrapper still names its version', old[0]?.versionName === '136BPM Stems', old[0]?.versionName);
 
   // Attached, it joins that version rather than making one of its own.
   const joined = versionsOf(
@@ -3858,6 +3870,20 @@ group('the click and cues as sampler parts');
   const hot = validateManifest({ preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0,
     songs: [{ folder: 'f', parts: [{ ...samplerPart, notes: [{ bar: 1, note: 44, velocity: 1.5 }] }] }] });
   check('as is a velocity outside 0..1', !hot.ok && /velocity/.test(hot.errors.join()));
+}
+
+/* ------------------------------ naming a set ------------------------------ */
+
+group('naming a prepared set');
+{
+  const { safeSetName, defaultSetName } = await import('../src/lib/setName.ts');
+  check('a name loses what a folder cannot carry, and keeps the rest',
+    safeSetName('Friday: at the Dock / late?') === 'Friday at the Dock late', safeSetName('Friday: at the Dock / late?'));
+  check('runs of space collapse and the ends are trimmed', safeSetName('  Friday   night  ') === 'Friday night');
+  check('an empty name is empty, so the default can stand in', safeSetName('  ') === '');
+  check('the default is the set\'s file name and the day',
+    /^TS TEST FOR RTS \d{4}-\d{2}-\d{2}$/.test(defaultSetName('/x/TS TEST FOR RTS.als')), defaultSetName('/x/TS TEST FOR RTS.als'));
+  check('and a set with no path is called Set', /^Set \d{4}-/.test(defaultSetName(null)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

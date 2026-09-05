@@ -8,8 +8,9 @@ import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
 import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
-import { PREPARED_FOLDER, PRINTS_FOLDER } from '../lib/prints';
+import { SETS_FOLDER } from '../lib/prints';
 import { resolveStemPath } from '../lib/alsImport';
+import { defaultSetName, rememberSetName, safeSetName, setNameFor } from '../lib/setName';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -44,6 +45,9 @@ export default function PrepareSetDialog({
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
+  /** What the band will see the set called: their folder's name. */
+  const [setName, setSetName] = useState(() => setNameFor(setPath));
+  useEffect(() => setSetName(setNameFor(setPath)), [setPath]);
 
   /*
    * The song list comes from the set itself, so it has to be read before
@@ -121,8 +125,9 @@ export default function PrepareSetDialog({
       const { bytes } = await readBytes(setPath);
       const full = project ?? (await parseAls(bytes));
       const ctx = new AudioContext();
-      const stamp = new Date().toISOString().slice(0, 10);
-      const setName = `${alsName ?? 'Set'} ${stamp}`;
+      // A blank field means today's name, the same as never having typed one.
+      const folderName = safeSetName(setName) || defaultSetName(setPath);
+      rememberSetName(setPath, folderName === defaultSetName(setPath) ? '' : folderName);
 
       const done = await prepareSet({
         project: full,
@@ -133,7 +138,7 @@ export default function PrepareSetDialog({
          * songs prepared before it describing themselves as they did.
          */
         readManifest: async () => {
-          const path = `${PRINTS_FOLDER}/${PREPARED_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}/${MANIFEST_NAME}`;
+          const path = `${SETS_FOLDER}/${folderName}/${MANIFEST_NAME}`;
           try {
             const { bytes: raw } = await local.readBytes(folder, '', path);
             return JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
@@ -144,7 +149,7 @@ export default function PrepareSetDialog({
         // The band's folder is its own root; nothing of the studio's path
         // structure comes with it.
         root: '',
-        setName,
+        setName: folderName,
         resolvePath: (relative) => resolveStemPath(setPath, relative),
         readFile: async (path) => (await readBytes(path)).bytes,
         writeFile: (path, data) => local.writeFile(folder, '', path, data),
@@ -216,6 +221,35 @@ export default function PrepareSetDialog({
           </span>
         </label>
         <span className="code">{publishFolderName ?? 'not chosen yet'}</span>
+      </div>
+
+      <div className="field">
+        <label htmlFor="set-folder">
+          Call the set
+          <span className="hint">
+            The folder the band opens, under{' '}
+            <span className="code">{SETS_FOLDER}/</span>. Remembered for this set,
+            so a song prepared later lands in the same folder.
+          </span>
+        </label>
+        <div className="btn-row">
+          <input
+            id="set-folder"
+            className="text-input"
+            type="text"
+            value={setName}
+            onChange={(e) => setSetName(e.target.value)}
+            onBlur={() => setSetName((v) => safeSetName(v) || defaultSetName(setPath))}
+            disabled={busy}
+            aria-label="Name of the prepared set's folder"
+            style={{ flex: 1, minWidth: 200 }}
+          />
+          {safeSetName(setName) !== defaultSetName(setPath) && (
+            <button className="btn" disabled={busy} onClick={() => setSetName(defaultSetName(setPath))}>
+              Today's name
+            </button>
+          )}
+        </div>
       </div>
 
       {titles.length > 0 && (

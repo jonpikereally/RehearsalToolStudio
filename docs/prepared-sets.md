@@ -26,36 +26,48 @@ player, and both are what make the set more than a pile of audio.
 ```
 <band folder>/                         the band's Dropbox app folder
   .rehearsal-tool.json                 the band's library, rebuilt on publish
-  Rehearsal Tool/
-    Sets/
-      TS TEST FOR RTS 2026-09-02/      one prepared set: "<set name> <date>"
-        set.json                       the manifest
-        Cruel Summer {85, G, 4-4}/     one song
-          Cruel Summer [ref drums].mp3
-          Cruel Summer [ref vox].mp3
-          Cruel Summer [bass].mp3
-          Cruel Summer [guitar].mp3
-          Cruel Summer [band].mp3      a combined part, named in the Studio
-          Cruel Summer.lrc
-          Cruel Summer.cho
-        august {90, 4-4}/
-          ...
+  Sets/
+    TS TEST FOR RTS 2026-09-02/        one prepared set, named in the Studio
+      set.json                         the manifest
+      Cruel Summer {85, G, 4-4}/       one song
+        Cruel Summer [ref drums].mp3
+        Cruel Summer [ref vox].mp3
+        Cruel Summer [bass].mp3
+        Cruel Summer [guitar].mp3
+        Cruel Summer [band].mp3        a combined part, named in the Studio
+        Cruel Summer.lrc
+        Cruel Summer.cho
+      august {90, 4-4}/
+        ...
   Resources/                           the one-shots sampler parts strike,
     MetronomeUp-1a2b3c4d.wav           once for every set in the folder
     MetronomeDown-5e6f7a8b.wav
     Chorus-9c0d1e2f.wav
     slates/                            the spoken titles, kept apart
       Fix You-3d4e5f6a.wav
+  Prints/                              mixes of songs that already exist
+    136BPM Stems/
+      Fix You (no vocal v1 2026-08-13 rehearsaltool).wav
 ```
 
-- `Rehearsal Tool/Sets/` is the only place prepared sets are written. Anything
-  under `Rehearsal Tool/` that is **not** under `Sets/` is a print: a mix the
-  Studio rendered of a song that already exists, attached to that song on
-  scan rather than listed as a song of its own.
-- The set folder is the Ableton set's file name plus the day it was prepared,
-  `YYYY-MM-DD`. Preparing one song writes into the same day's folder as the
-  rest of the set, so a set prepared a song at a time still ends up in one
-  place.
+- `Sets/`, at the root of the band's folder, is the only place prepared sets
+  are written; every folder directly inside it is one set. `Prints/` holds
+  mixes the Studio rendered of songs that already exist, to be attached to
+  those songs on scan rather than listed as songs of their own; `Resources/`
+  holds the samples sampler parts strike. All three sit at the root.
+- **Older bands have all of this under a wrapper folder,** `Rehearsal
+  Tool/Sets/`, with prints as anything under `Rehearsal Tool/` that was not
+  under `Sets/`. The wrapper doubled the app's name in the path — the band's
+  folder already lives inside a Dropbox app folder called Rehearsal Tool —
+  and is not written any more, but nobody's files are moved: a reader looks
+  for a folder called `Sets` (and `Prints`, and `Resources`) wherever it
+  sits, and a band that prepares again simply has the two shapes side by
+  side.
+- The set folder is named in the Studio when the set is prepared: by default
+  the Ableton set's file name plus the day, `YYYY-MM-DD`, but it can be
+  called anything the band would recognise. The Studio remembers the name
+  per set, so preparing one song later writes into the same folder as the
+  rest, and a set prepared a song at a time still ends up in one place.
 - Characters a file name cannot carry (`\ / : * ? " < > |`) are stripped from
   every name, and runs of spaces are collapsed to one.
 
@@ -256,12 +268,14 @@ the same way.
 
 ## What the website is expected to do
 
-1. Scan `Rehearsal Tool/Sets/` as an ordinary library folder. Group files by
+1. Find every folder called `Sets`, at whatever depth, and scan each folder
+   directly inside it as a set: an ordinary library folder. Group files by
    base name once every tag is stripped; `[square]` files are stems, `(round)`
    files are versions, `{curly}` values are tempo, key and time signature.
-2. Treat anything else under `Rehearsal Tool/` as a print and attach it to the
-   song whose title it carries.
-3. Apply every `set.json` under `Rehearsal Tool/Sets/` by the rules above.
+2. Treat what is under a folder called `Prints` — or, for an older band,
+   under `Rehearsal Tool/` but not under `Sets/` — as a print, and attach it
+   to the song whose title it carries. Never read `Resources/`.
+3. Apply every `set.json` found under a `Sets` folder by the rules above.
 4. Offset all bar maths by the song's `firstBarOffsetSec`.
 5. Play a `kind: "sampler"` part by striking its samples: at each note's
    `bar` — through the tempo map, with `firstBarOffsetSec` added as for every
