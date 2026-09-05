@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { inflateAls, parseAls, type AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
+import { isFromMidiClip } from '../lib/alsImport';
 import {
   defaultVoice,
   helperVoices,
@@ -429,7 +430,11 @@ export default function SetToolsView() {
       const result = await writeClipsToSet({
         alsPath: setPath,
         project,
-        songs: library.songs.filter((song) => selected.has(song.title)),
+        // Only what was programmed here: a change the set already sends
+        // from a MIDI clip would be written back as a locator, and fire twice.
+        songs: library.songs
+          .filter((song) => selected.has(song.title))
+          .map((song) => ({ ...song, patchClips: song.patchClips?.filter((c) => !isFromMidiClip(c)) })),
         readBytes: async (path) => (await local.readBytes(folder.handle, '', path)).bytes,
         writeFile: (path, data) => local.writeFile(folder.handle, '', path, data),
       });

@@ -4287,5 +4287,62 @@ group('song info as AbleSet clips');
   check('lines are joined with AbleSet\'s break', /\*\*Yellow\*\* \\ Key: Bb \\ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 }
 
+/* ------------------------------ patch changes from MIDI clips ------------------------------ */
+
+group('patch changes the set sends from MIDI clips');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { clipsFromRig, isFromMidiClip } = await import('../src/lib/alsImport.ts');
+  const envelope = (pointee, events) => `
+              <ClipEnvelope Id="1"><EnvelopeTarget><PointeeId Value="${pointee}" /></EnvelopeTarget>
+                <Automation><Events>${events.map(([t, v], i) => `<FloatEvent Id="${i}" Time="${t}" Value="${v}" />`).join('')}</Events></Automation>
+              </ClipEnvelope>`;
+  const clip = (id, start, end, name, pgm, coarse, fine, envs = '') => `
+            <MidiClip Id="${id}" Time="${start}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" />
+              <Name Value="${name}" /><Disabled Value="false" />
+              <BankSelectCoarse Value="${coarse}" /><BankSelectFine Value="${fine}" /><ProgramChange Value="${pgm}" />
+              <Envelopes><Envelopes>${envs}</Envelopes></Envelopes>
+            </MidiClip>`;
+  // Live numbers controller targets from pitch bend: 45 is CC 43, 47 is CC 45.
+  const targets = Array.from({ length: 131 }, (_, i) => `<ControllerTargets.${i} Id="${9000 + i}"><LomId Value="0" /></ControllerTargets.${i}>`).join('');
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="Clocks" /></Locator>
+    <Locator Id="3"><Time Value="128" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Clocks" /></GroupTrack>
+    <MidiTrack Id="30"><TrackGroupId Value="-1" /><EffectiveName Value="MIDI - Quad Cortex" />
+      <DeviceChain>
+        <MidiOutputRouting><Target Value="MidiOut/External.Dev:Box/2" /><UpperDisplayString Value="Box" /><LowerDisplayString Value="Ch. 3" /></MidiOutputRouting>
+        <MainSequencer><ClipTimeable><ArrangerAutomation><Events>
+          ${clip(1, 0, 4, 'A', 3, 0, 2, envelope(9045, [[-63072000, 0], [0, 0]]))}
+          ${clip(2, 16, 24, 'C then D', -1, -1, -1, envelope(9045, [[-63072000, 2], [0, 2], [4, 3.7]]))}
+          ${clip(3, 64, 68, 'Toggle Tuner', -1, -1, -1, envelope(9047, [[-63072000, 127], [0, 127]]))}
+          ${clip(4, 72, 76, 'bend only', -1, -1, -1, envelope(9000, [[0, 0.5]]))}
+        </Events></ArrangerAutomation></ClipTimeable></MainSequencer>
+        <MidiControllers>${targets}</MidiControllers>
+      </DeviceChain>
+    </MidiTrack>
+  </Ableton>`;
+  const project = parseAlsXml(xml);
+  const yellow = project.songs.find((s) => s.title === 'Yellow');
+  const clocks = project.songs.find((s) => s.title === 'Clocks');
+  check('a clip with a program and bank sends them on the track\'s channel, as the wire has them',
+    yellow?.rigPatches[0]?.bar === 1 && yellow.rigPatches[0].channel === 3 && yellow.rigPatches[0].program === 3 && yellow.rigPatches[0].bank === 2,
+    JSON.stringify(yellow?.rigPatches));
+  check('and its scene envelope as CC 43, rounded', JSON.stringify(yellow?.rigPatches[0]?.controls) === '[{"cc":43,"value":0}]');
+  check('an envelope that steps mid-clip is a change of its own, on its bar',
+    yellow?.rigPatches.length === 3 && yellow.rigPatches[1].bar === 5 && yellow.rigPatches[2].bar === 6 && yellow.rigPatches[2].controls[0].value === 4,
+    JSON.stringify(yellow?.rigPatches.map((r) => [r.bar, r.controls])));
+  check('a clip in the next song belongs to it', clocks?.rigPatches.length === 1 && clocks.rigPatches[0].name === 'Toggle Tuner' && clocks.rigPatches[0].controls[0].cc === 45);
+  check('pitch bend is not a patch change', !clocks?.rigPatches.some((r) => r.name === 'bend only'));
+
+  const clips = clipsFromRig(yellow.rigPatches, 'yellow');
+  check('they become patch clips the player fires, naming their clip', clips[0].patch.source === 'MIDI - Quad Cortex: A' && clips[0].patch.channel === 3);
+  check('and are known for what they are, so the locator writer leaves them out', clips.every(isFromMidiClip) && !isFromMidiClip({ id: 'als:x:0' }));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

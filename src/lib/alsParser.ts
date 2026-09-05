@@ -81,6 +81,8 @@ export interface AlsSong {
    * track, a timecode track — cut down to what plays inside this song.
    */
   rigTracks: AlsRigTrack[];
+  /** Patch changes the rig tracks' MIDI clips send inside this song. */
+  rigPatches: AlsRigPatch[];
   /**
    * Audio files Ableton has on this song's tracks, when it has its own group.
    * `regions` is null when the track plays throughout, which is the usual case.
@@ -121,6 +123,31 @@ export interface AlsRigTrack {
   name: string;
   kind: 'midi' | 'audio' | 'video';
   clips: { name: string; startBar: number; endBar: number }[];
+}
+
+/**
+ * A patch change a MIDI clip sends, as Live would send it.
+ *
+ * A clip on a rig track carries a program change and bank in its own box,
+ * and control changes as envelopes; when it starts, Live sends the program
+ * and every envelope's value, and each later step of an envelope as it
+ * comes. All on the channel the track is routed to. That is how a set
+ * drives a Quad Cortex or a Helix without a locator in sight, and it is
+ * read here as what goes down the wire — bank and program as the bytes,
+ * not as Live's one-based display of them.
+ */
+export interface AlsRigPatch {
+  /** Song-relative, 1-based, fractional where an envelope steps mid-bar. */
+  bar: number;
+  /** The clip's name, for saying what the change is. */
+  name: string;
+  track: string;
+  /** 1–16, from the track's MIDI output routing. */
+  channel: number;
+  program?: number;
+  /** MSB × 128 + LSB, as the two bank-select messages carry it. */
+  bank?: number;
+  controls?: { cc: number; value: number }[];
 }
 
 /**
@@ -649,6 +676,103 @@ export function songKey(name: string): string {
     .trim();
 }
 
+/** A patch change at a beat of the set, as a rig track's clip sends it. */
+interface RawRigPatch {
+  beat: number;
+  name: string;
+  channel: number;
+  program?: number;
+  bank?: number;
+  controls: { cc: number; value: number }[];
+}
+
+/**
+ * The channel a MIDI track sends on: "Ch. 3" in its output routing. A track
+ * routed nowhere still gets 1, so its clips read as something rather than
+ * nothing — the routing is a thing to fix in Live, not a reason to hide them.
+ */
+function midiChannelOf(chunk: string): number {
+  const routing = section(chunk, 'MidiOutputRouting') ?? '';
+  const shown = routing.match(/<LowerDisplayString Value="Ch\. (\d+)"/)?.[1];
+  if (shown) return Math.min(16, Math.max(1, parseInt(shown, 10)));
+  const target = routing.match(/<Target Value="[^"]*\/(\d+)"/)?.[1];
+  return target ? Math.min(16, Math.max(1, parseInt(target, 10) + 1)) : 1;
+}
+
+/**
+ * Live numbers a clip's controller envelopes with pitch bend and channel
+ * pressure first, so envelope 45 is CC 43. The numbering lives on the
+ * track, and each clip's envelope points into it by id.
+ */
+function controllerIndexes(chunk: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const m of chunk.matchAll(/<ControllerTargets\.(\d+) Id="(\d+)"/g)) out.set(m[2], parseInt(m[1], 10));
+  return out;
+}
+
+function midiPatchesOf(track: Track): RawRigPatch[] {
+  const channel = midiChannelOf(track.chunk);
+  const indexes = controllerIndexes(track.chunk);
+  const timeline = section(track.chunk, 'ClipTimeable') ?? track.chunk;
+  const out: RawRigPatch[] = [];
+  const num = (body: string, tag: string): number | null => {
+    const v = body.match(new RegExp(`<${tag} Value="([-\\d.]+)"`))?.[1];
+    return v === undefined ? null : parseFloat(v);
+  };
+  for (const m of timeline.matchAll(/<MidiClip Id="\d+"[^>]*>([\s\S]*?)<\/MidiClip>/g)) {
+    const body = m[1];
+    const start = num(body, 'CurrentStart');
+    const end = num(body, 'CurrentEnd');
+    if (start === null || end === null || end <= start) continue;
+    if (/<Disabled Value="true"/.test(body)) continue;
+    const name = decodeXml(body.match(/<Name Value="([^"]*)"/)?.[1] ?? '');
+
+    // Live's box shows these one-based; the file, and the wire, are zero-based. -1 is none.
+    const programRaw = num(body, 'ProgramChange');
+    const coarse = num(body, 'BankSelectCoarse');
+    const fine = num(body, 'BankSelectFine');
+    const program = programRaw !== null && programRaw >= 0 ? Math.round(programRaw) : undefined;
+    const bank =
+      (coarse !== null && coarse >= 0) || (fine !== null && fine >= 0)
+        ? Math.max(0, Math.round(coarse ?? 0)) * 128 + Math.max(0, Math.round(fine ?? 0))
+        : undefined;
+
+    // Each envelope: its value as the clip starts, and every step after.
+    const atStart: { cc: number; value: number }[] = [];
+    const later = new Map<number, { cc: number; value: number }[]>();
+    for (const e of body.matchAll(/<ClipEnvelope Id="\d+">([\s\S]*?)<\/ClipEnvelope>/g)) {
+      const pointee = e[1].match(/<PointeeId Value="(\d+)"/)?.[1];
+      const index = pointee ? indexes.get(pointee) : undefined;
+      if (index === undefined || index < 2) continue; // pitch bend and pressure are not patch changes
+      const cc = index - 2;
+      const events = [...e[1].matchAll(/<FloatEvent Id="\d+" Time="([-\d.]+)" Value="([-\d.]+)"/g)]
+        .map((f) => ({ time: parseFloat(f[1]), value: parseFloat(f[2]) }))
+        .sort((a, b) => a.time - b.time);
+      if (!events.length) continue;
+      const opening = events.filter((f) => f.time <= 1e-9).pop();
+      if (opening) atStart.push({ cc, value: Math.min(127, Math.max(0, Math.round(opening.value))) });
+      for (const f of events) {
+        if (f.time <= 1e-9 || start + f.time >= end) continue;
+        const key = Math.round(f.time * 1e6) / 1e6;
+        const list = later.get(key) ?? [];
+        // The last value written at one time is the one that stands.
+        const value = Math.min(127, Math.max(0, Math.round(f.value)));
+        const same = list.find((c) => c.cc === cc);
+        if (same) same.value = value;
+        else list.push({ cc, value });
+        later.set(key, list);
+      }
+    }
+    if (program !== undefined || bank !== undefined || atStart.length) {
+      out.push({ beat: start, name, channel, program, bank, controls: atStart });
+    }
+    for (const [time, controls] of [...later.entries()].sort((a, b) => a[0] - b[0])) {
+      out.push({ beat: start + time, name, channel, controls });
+    }
+  }
+  return out.sort((a, b) => a.beat - b.beat);
+}
+
 /** One named element of a track's chunk, or null when it has none. */
 function section(chunk: string, tag: string): string | null {
   const at = chunk.indexOf(`<${tag}>`);
@@ -1068,7 +1192,7 @@ export function parseAlsXml(xml: string): AlsProject {
     })
     .map((t) => {
       if (t.kind === 'MidiTrack') {
-        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip', 'clip') };
+        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip', 'clip'), patches: midiPatchesOf(t) };
       }
       const raw = clipsOfTrack(t);
       const kind = raw.some((c) => VIDEO_FILE.test(c.path)) || /\b(video|vid)\b/i.test(t.name) ? 'video' as const : 'audio' as const;
@@ -1503,6 +1627,20 @@ export function parseAlsXml(xml: string): AlsProject {
             })),
         }))
         .filter((t) => t.clips.length),
+      // What those tracks' clips send inside this song, on the set's timeline.
+      rigPatches: rigTrackDefs.flatMap((t) =>
+        (t.kind === 'midi' ? t.patches : [])
+          .filter((r) => r.beat >= loc.beat - 1e-6 && r.beat < endBeat)
+          .map((r) => ({
+            bar: Math.round(relBar(r.beat) * 4) / 4,
+            name: r.name,
+            track: t.name,
+            channel: r.channel,
+            ...(r.program !== undefined ? { program: r.program } : {}),
+            ...(r.bank !== undefined ? { bank: r.bank } : {}),
+            ...(r.controls.length ? { controls: r.controls } : {}),
+          })),
+      ),
       stems,
     };
   });

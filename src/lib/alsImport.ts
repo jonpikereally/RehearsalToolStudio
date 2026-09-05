@@ -1,4 +1,4 @@
-import type { AlsClip, AlsProject, AlsSong } from './alsParser';
+import type { AlsClip, AlsProject, AlsRigPatch, AlsSong } from './alsParser';
 import type { FileEntry } from './files';
 import type {
   Device,
@@ -405,8 +405,8 @@ export function songsFromProject(
        * otherwise a scan of a set nobody has written to yet would wipe changes
        * programmed in the app.
        */
-      patchClips: alsSong.rigMarks?.length
-        ? clipsFromMarks(alsSong.rigMarks, id)
+      patchClips: alsSong.rigMarks?.length || alsSong.rigPatches?.length
+        ? [...clipsFromMarks(alsSong.rigMarks ?? [], id), ...clipsFromRig(alsSong.rigPatches ?? [], id)].sort((a, b) => a.bar - b.bar)
         : prev?.patchClips,
       rig: alsSong.rigTracks?.length
         ? alsSong.rigTracks.map((t) => ({
@@ -517,6 +517,32 @@ function markersFrom(song: AlsSong, previous: Marker[] | undefined): Marker[] {
  * every clip with an identical one under a new name — which would look like no
  * change at all, and be a fresh conflict on every device each time.
  */
+/**
+ * Patch changes the set's MIDI clips send, as the app's own clips.
+ *
+ * Ids carry `:midi:` so the writer that puts the app's clips into a set as
+ * locators knows to leave these out — they are in the set already, as the
+ * clips they came from.
+ */
+export function clipsFromRig(patches: AlsRigPatch[], songId: string): PatchClip[] {
+  return patches.map((r, i) => ({
+    id: `als:${songId}:midi:${i}`,
+    bar: r.bar,
+    patch: {
+      channel: r.channel,
+      ...(r.program !== undefined ? { program: r.program } : {}),
+      ...(r.bank !== undefined ? { bank: r.bank } : {}),
+      ...(r.controls?.length ? { controls: r.controls } : {}),
+      source: `${r.track}: ${r.name || 'clip'}`,
+    },
+  }));
+}
+
+/** Whether a patch clip came from a MIDI clip in the set rather than being programmed here. */
+export function isFromMidiClip(clip: Pick<PatchClip, 'id'>): boolean {
+  return /^als:.*:midi:\d+$/.test(clip.id);
+}
+
 export function clipsFromMarks(marks: { bar: number; name: string }[], songId: string): PatchClip[] {
   return marks
     .map((mark, i) => {
