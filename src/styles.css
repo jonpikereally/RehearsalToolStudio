@@ -2154,6 +2154,25 @@ input[type='range'] {
   padding: 6px 0;
 }
 
+/* the row of orders above a list of songs */
+
+.sortbar {
+  align-items: center;
+  padding: 8px 0 0;
+}
+
+.sortbar .chip {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  gap: 4px;
+}
+
+.sort-arrow {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
 .control-label {
   font-size: 11px;
   font-weight: 700;

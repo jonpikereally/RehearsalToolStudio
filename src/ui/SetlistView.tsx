@@ -6,6 +6,8 @@ import { formatClock, runningOrder } from '../lib/runningOrder';
 import { isFromSet } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 import { useMissingAudio } from '../lib/useMissingAudio';
+import { sortSongs } from '../lib/songSort';
+import SortBar, { useSort } from './SortBar';
 import type { Song } from '../types';
 
 export default function SetlistView({ setlistId }: { setlistId: string }) {
@@ -14,6 +16,7 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
   const [preparing, setPreparing] = useState(false);
+  const [sort, setSort] = useSort('ls.sort.setlist');
 
   if (!setlist) {
     return (
@@ -42,8 +45,14 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
     updateSetlist(setlist.id, { songIds: setlist.songIds.filter((id) => id !== songId) });
   };
 
-  // How long the set runs, and where each song falls in it.
+  // How long the set runs, and where each song falls in it — always worked
+  // out from the running order, whichever way the list is shown.
   const order = runningOrder(songs);
+  const byId = new Map(order.entries.map((e) => [e.song.id, e]));
+  const setOrder = new Map(setlist.songIds.map((id, i) => [id, i]));
+  const shown = sortSongs(songs, sort, setOrder).map((song) => byId.get(song.id)!);
+  // Moving a song up or down means something only in the order it's played.
+  const inSetOrder = sort.key === 'set' && sort.dir === 'asc';
 
   /*
    * A setlist that came from an Ableton set is rebuilt from it on every scan,
@@ -129,9 +138,17 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
         </div>
       )}
 
-      {order.entries.map(({ song, durationSec, startsAtSec }, i) => (
+      {songs.length > 1 && (
+        <div style={{ padding: '6px 16px 0' }}>
+          <SortBar sort={sort} onChange={setSort} />
+        </div>
+      )}
+
+      {shown.map(({ song, durationSec, startsAtSec }) => {
+        const i = setOrder.get(song.id) ?? 0;
+        return (
         <div className="row" key={song.id}>
-          <span className="mono" style={{ color: 'var(--text-dim)', width: 22 }}>
+          <span className="mono" style={{ color: 'var(--text-dim)', width: 22 }} title="Where it comes in the set">
             {i + 1}
           </span>
           <button
@@ -159,7 +176,7 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
             >
               {durationSec === null ? '––––' : formatClock(durationSec)}
             </span>
-            {!fromSet && (
+            {!fromSet && inSetOrder && (
               <>
                 <button
                   className="icon-btn"
@@ -188,7 +205,8 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {order.unknown > 0 && songs.length > 0 && (
         <div className="panel">

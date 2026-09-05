@@ -3,6 +3,9 @@ import { useStore } from '../lib/store';
 import { groupSongs } from '../lib/songSets';
 import { navigate, songUrl } from '../lib/router';
 import { openRun, orderForRun, useRun } from '../lib/run';
+import { setlistIdFor } from '../lib/alsImport';
+import { sortSongs } from '../lib/songSort';
+import SortBar, { useSort } from './SortBar';
 import { formatSemitones } from '../lib/pitchService';
 import { mixesOf, stemsOf } from '../lib/stemMix';
 import { useMissingAudio } from '../lib/useMissingAudio';
@@ -14,6 +17,7 @@ export default function LibraryView() {
     library, rescan, scanning, scanProgress, lastScan, dismissScanResult, syncError, currentSet,
   } = useStore();
   const [filter, setFilter] = useState('');
+  const [sort, setSort] = useSort('ls.sort.songs');
 
   /*
    * Picking several songs to open together.
@@ -60,6 +64,12 @@ export default function LibraryView() {
     [library.songs, currentSet],
   );
 
+  // Where each song falls in the set's own running order, when it has one.
+  const setOrder = useMemo(() => {
+    const own = currentSet ? library.setlists.find((l) => l.id === setlistIdFor(currentSet)) : null;
+    return new Map((own?.songIds ?? []).map((id, i) => [id, i]));
+  }, [library.setlists, currentSet]);
+
   const groups = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     const songs = needle
@@ -70,8 +80,20 @@ export default function LibraryView() {
             (s.artist ?? '').toLowerCase().includes(needle),
         )
       : inSet;
-    return groupSongs(songs);
-  }, [inSet, filter]);
+    /*
+     * Each artist's songs in the chosen order, and the groups themselves in
+     * the order their first song comes up when that order is the set's — so a
+     * set that opens with a cover isn't filed under the headliner.
+     */
+    const grouped = groupSongs(songs).map((group) => ({
+      ...group,
+      songs: sortSongs(group.songs, sort, setOrder),
+    }));
+    if (sort.key !== 'set') return grouped;
+    const first = (g: (typeof grouped)[number]) =>
+      Math.min(...g.songs.map((s) => setOrder.get(s.id) ?? Number.POSITIVE_INFINITY));
+    return grouped.sort((a, b) => first(a) - first(b));
+  }, [inSet, filter, sort, setOrder]);
 
   const needTempo = inSet.filter((s) => s.tempoUnset).length;
 
@@ -146,6 +168,7 @@ export default function LibraryView() {
             placeholder="Filter songs…"
             aria-label="Filter songs"
           />
+          <SortBar sort={sort} onChange={setSort} />
         </div>
       )}
 

@@ -3904,5 +3904,36 @@ group('overall progress of a prepare');
     Number.isFinite(overallProgress({ songIndex: 0, songCount: 0, songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'reading', ratio: 0 })));
 }
 
+/* ------------------------------ the orders a list takes ------------------------------ */
+
+group('sorting songs');
+{
+  const { sortSongs, keyRank, choose, flip } = await import('../src/lib/songSort.ts');
+  const song = (id, title, bpm, originalKey, tempoUnset = false) =>
+    ({ id, title, bpm, originalKey, tempoUnset, variants: [], transpose: 0 });
+  const songs = [
+    song('c', 'Cold Water', 96, 'Am'),
+    song('a', 'Anthem', 128, 'D'),
+    song('b', 'Bridge', 120, 'C#m'),
+    song('d', 'Drift', 0, undefined, true),
+  ];
+  const setOrder = new Map([['b', 0], ['a', 1], ['c', 2]]);
+  const ids = (spec) => sortSongs(songs, spec, setOrder).map((s) => s.id).join('');
+
+  check('set order follows the running order, with a song not in it last', ids({ key: 'set', dir: 'asc' }) === 'bacd', ids({ key: 'set', dir: 'asc' }));
+  check('turned over, the set runs backwards but the stray still sits last', ids({ key: 'set', dir: 'desc' }) === 'cabd', ids({ key: 'set', dir: 'desc' }));
+  check('by name', ids({ key: 'name', dir: 'asc' }) === 'abcd');
+  check('by name, reversed', ids({ key: 'name', dir: 'desc' }) === 'dcba');
+  check('by tempo, and a song with none last either way',
+    ids({ key: 'tempo', dir: 'asc' }) === 'cbad' && ids({ key: 'tempo', dir: 'desc' }) === 'abcd', ids({ key: 'tempo', dir: 'desc' }));
+  check('by key: chromatic from C, minor after its major, none last',
+    ids({ key: 'key', dir: 'asc' }) === 'bacd', ids({ key: 'key', dir: 'asc' }));
+  check('C before Cm before C#', keyRank('C') < keyRank('Cm') && keyRank('Cm') < keyRank('C#') && keyRank('Db') === keyRank('C#'));
+  check('a key that is not one has no rank', keyRank('nope') === null && keyRank(undefined) === null);
+  check('choosing the field already chosen changes nothing', choose({ key: 'name', dir: 'desc' }, 'name').dir === 'desc');
+  check('choosing another starts it the right way up', choose({ key: 'name', dir: 'desc' }, 'key').dir === 'asc');
+  check('flipping turns it over and back', flip(flip({ key: 'set', dir: 'asc' })).dir === 'asc' && flip({ key: 'set', dir: 'asc' }).dir === 'desc');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);
