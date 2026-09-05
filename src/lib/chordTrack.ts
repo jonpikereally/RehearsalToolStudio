@@ -83,7 +83,10 @@ export function chordClipsFor(
     for (const item of added.items) {
       // Song-relative bars onto the set's own ruler.
       const bar = song.startBar + (item.bar - 1);
-      if (item.text.trim()) clips.push({ bar, text: item.text.trim() });
+      const text = item.text.trim();
+      // In brackets, as AbleSet reads a chord on a lyrics track: the parser
+      // took them off on the way in, and a bare name would show as a word.
+      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]` });
     }
   }
 

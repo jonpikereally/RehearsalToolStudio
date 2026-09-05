@@ -74,18 +74,25 @@ export function toNashville(chord: string, key: Key): string | null {
   return `${degree}${suffix}${bassPart}`;
 }
 
-/** `1m7/5` → the chord it names in the given key, e.g. `C#m7/G#`. */
+/**
+ * `1m7/5` → the chord it names in the given key, e.g. `C#m7/G#`.
+ *
+ * Numbers or numerals: `ii7` is the same chord as `2m7`. A lowercase
+ * numeral is a minor chord by the convention that writes them, unless its
+ * suffix already says what it is, so `vii°` stays a diminished seventh
+ * degree and `ii` becomes `F#m` in E.
+ */
 export function fromNashville(number: string, key: Key): string | null {
   const text = number.trim();
   if (!text) return null;
   const [head, bass] = splitSlash(text);
-  const semis = degreeSemitones(head);
-  if (semis === null) return null;
+  const degree = parseDegree(head);
+  if (!degree) return null;
 
   const names = key.flats ? FLAT : SHARP;
-  const suffix = head.replace(/^[b#♭♯]?[1-7]/, '');
+  const quality = degree.minorByCase && !/^(m(?!aj)|min|dim|°|ø|o)/.test(degree.suffix) ? 'm' : '';
   const bassPart = bass ? bassName(bass, key) : '';
-  return `${names[(key.tonic + semis + 12) % 12]}${suffix}${bassPart}`;
+  return `${names[(key.tonic + degree.semis + 12) % 12]}${quality}${degree.suffix}${bassPart}`;
 }
 
 /** Whether a lane's text reads as numbers rather than names. */
@@ -103,11 +110,33 @@ function splitSlash(text: string): [string, string | null] {
   return at < 0 ? [text, null] : [text.slice(0, at), text.slice(at + 1)];
 }
 
+const ROMAN: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7 };
+
+/**
+ * A scale degree at the head of a chord, written as a number (`b3`, `5`) or
+ * a Roman numeral (`bIII`, `V`, `ii`): its distance from the tonic, what
+ * follows it, and whether its case said minor.
+ */
+function parseDegree(text: string): { semis: number; suffix: string; minorByCase: boolean } | null {
+  const head = text.trim();
+  const accidental = (a: string) => (a === '#' || a === '♯' ? 1 : a === 'b' || a === '♭' ? -1 : 0);
+  const digits = /^([b#♭♯]?)([1-7])/.exec(head);
+  if (digits) {
+    return { semis: DEGREE[Number(digits[2]) - 1] + accidental(digits[1]), suffix: head.slice(digits[0].length), minorByCase: false };
+  }
+  // The numeral must end where a letter would not follow it: "vi" is not the start of "vim".
+  const roman = /^([b#♭♯]?)(vii|vi|iv|v|iii|ii|i)(?![a-hj-uw-z])/i.exec(head);
+  if (!roman) return null;
+  const numeral = roman[2];
+  return {
+    semis: DEGREE[ROMAN[numeral.toLowerCase()] - 1] + accidental(roman[1]),
+    suffix: head.slice(roman[0].length),
+    minorByCase: numeral === numeral.toLowerCase(),
+  };
+}
+
 function degreeSemitones(text: string): number | null {
-  const m = /^([b#♭♯]?)([1-7])/.exec(text.trim());
-  if (!m) return null;
-  const shift = m[1] === '#' || m[1] === '♯' ? 1 : m[1] === 'b' || m[1] === '♭' ? -1 : 0;
-  return DEGREE[Number(m[2]) - 1] + shift;
+  return parseDegree(text)?.semis ?? null;
 }
 
 function bassNumber(bass: string, key: Key): string {

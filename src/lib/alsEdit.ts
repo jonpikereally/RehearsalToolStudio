@@ -66,14 +66,20 @@ export function idMinter(xml: string): { next: () => number; renumber: (chunk: s
   };
 }
 
-/** Where a new top-level track goes: before the returns, else at the end. */
+/**
+ * Where a new top-level track goes: the top of the track list.
+ *
+ * Live shows tracks in the order the file lists them, and a track the
+ * studio adds — slates, chords, song info — is the one somebody opens the
+ * copy to look at. At the top it is the first thing seen; at the bottom it
+ * was under every stem of every song, which is where nobody looks. The
+ * track carries no group, so the top of the list is where it lands.
+ */
 export function trackInsertPoint(xml: string): number {
-  const tracksClose = xml.indexOf('</Tracks>');
-  if (tracksClose < 0) throw new Error('The set has no Tracks section.');
-  const firstReturn = xml.indexOf('<ReturnTrack Id=');
-  return firstReturn >= 0 && firstReturn < tracksClose
-    ? xml.lastIndexOf('\n', firstReturn) + 1
-    : xml.lastIndexOf('\n', tracksClose) + 1;
+  const tracksOpen = xml.indexOf('<Tracks>');
+  if (tracksOpen < 0) throw new Error('The set has no Tracks section.');
+  const lineEnd = xml.indexOf('\n', tracksOpen);
+  return lineEnd < 0 ? tracksOpen + '<Tracks>'.length : lineEnd + 1;
 }
 
 /** Strip a cloned track of the handles and envelopes belonging to its original. */

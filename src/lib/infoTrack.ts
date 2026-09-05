@@ -2,16 +2,16 @@ import type { AlsProject, AlsSong } from './alsParser';
 import type { ChordClip } from './chordTrack.ts';
 
 /**
- * Song information as AbleSet lyrics clips.
+ * Song information as MIDI clips.
  *
- * AbleSet shows the current clip of any `+LYRICS` track as a line on
- * screen, and a clip's name can hold several lines with `\` between them.
- * So one clip at the top of each song, on a track of its own, puts the
- * song's facts in front of whoever is looking — the key it's played in,
- * the tempo, the length, the sections, the notes from the set — without a
- * word being typed twice. Which facts is a choice, since a singer wants
- * the key and a drummer the tempo and neither wants the other's screen
- * full.
+ * One clip at the top of each song, on a track of its own, whose name
+ * carries the song's facts — the key it's played in, the tempo, the
+ * length, the sections, the notes from the set — so they sit on the
+ * timeline in Live for whoever is looking, without a word being typed
+ * twice. Which facts is a choice, since a singer wants the key and a
+ * drummer the tempo and neither wants the other's screen full. Named with
+ * +LYRICS, the track is AbleSet's too, and the clip is written in its
+ * markup; named anything else, it is plain text for Live.
  *
  * The clip runs the length of the song by default, so the information is
  * on screen throughout; a first-bar clip shows it only as the song starts.
@@ -50,10 +50,21 @@ export const INFO_FIELD_LABEL: Record<keyof InfoFields, string> = {
   tags: 'Tags',
 };
 
-export const DEFAULT_INFO_TRACK = 'SONG INFO +LYRICS';
+export const DEFAULT_INFO_TRACK = 'SONG INFO';
+
+/**
+ * How a clip's lines are joined depends on who reads it. A track flagged
+ * +LYRICS is read by AbleSet, which breaks a name at a backslash and bolds
+ * between double stars; any other track is read by a person in Live, where
+ * those would be noise, so its clip is one plain line with dots between.
+ */
+export function abletReads(trackName: string): boolean {
+  return /\+LYRICS\b/i.test(trackName);
+}
 
 /** AbleSet's line break inside one clip. */
 const BREAK = ' \\ ';
+const PLAIN_BREAK = ' · ';
 
 /** Text a clip name can carry: no line breaks of its own, no stray backslashes. */
 function clean(text: string): string {
@@ -87,9 +98,16 @@ function clock(seconds: number): string {
 }
 
 /** The lines one song's clip carries, in the order they read best. */
-export function infoLinesFor(song: AlsSong, project: AlsProject, fields: InfoFields, keyOverride?: string): string[] {
+export function infoLinesFor(
+  song: AlsSong,
+  project: AlsProject,
+  fields: InfoFields,
+  keyOverride?: string,
+  /** AbleSet's markup — bold title — or plain text for a clip read in Live. */
+  forAbleSet = true,
+): string[] {
   const lines: string[] = [];
-  if (fields.title) lines.push(`**${clean(song.title)}**`);
+  if (fields.title) lines.push(forAbleSet ? `**${clean(song.title)}**` : clean(song.title));
   const key = keyOverride?.trim() || song.key;
   if (fields.key && key) lines.push(`Key: ${clean(key)}`);
   const bpm = song.bpm ?? song.startBpm;
@@ -104,7 +122,7 @@ export function infoLinesFor(song: AlsSong, project: AlsProject, fields: InfoFie
   if (fields.sections && song.sections.length) {
     lines.push(`Sections: ${song.sections.map((s) => clean(s.text)).filter(Boolean).join(' · ')}`);
   }
-  if (fields.notes && song.notes?.trim()) lines.push(clean(song.notes));
+  if (fields.notes && song.notes?.trim()) lines.push(forAbleSet ? clean(song.notes) : clean(song.notes).split(BREAK).join(PLAIN_BREAK));
   if (fields.tags && song.tags.length) lines.push(song.tags.map((t) => (t.startsWith('#') ? t : `#${t}`)).join(' '));
   return lines;
 }
@@ -125,8 +143,9 @@ export function infoClipsFor(
   project: AlsProject,
   titles: string[],
   fields: InfoFields,
-  opts: { wholeSong?: boolean; keyFor?: Record<string, string> } = {},
+  opts: { wholeSong?: boolean; keyFor?: Record<string, string>; forAbleSet?: boolean } = {},
 ): InfoClipsResult {
+  const forAbleSet = opts.forAbleSet !== false;
   const wanted = new Set(titles);
   const clips: ChordClip[] = [];
   const songs: string[] = [];
@@ -136,13 +155,13 @@ export function infoClipsFor(
     // A count-in locator repeats its song's title; the first is the song.
     if (!wanted.has(song.title) || seen.has(song.title)) continue;
     seen.add(song.title);
-    const lines = infoLinesFor(song, project, fields, opts.keyFor?.[song.title]);
+    const lines = infoLinesFor(song, project, fields, opts.keyFor?.[song.title], forAbleSet);
     if (!lines.length) {
       empty.push(song.title);
       continue;
     }
     const bars = Math.max(1, song.endBar - song.startBar + 1);
-    clips.push({ bar: song.startBar, text: lines.join(BREAK), bars: opts.wholeSong === false ? 1 : bars });
+    clips.push({ bar: song.startBar, text: lines.join(forAbleSet ? BREAK : PLAIN_BREAK), bars: opts.wholeSong === false ? 1 : bars });
     songs.push(song.title);
   }
   return { clips, songs, empty };

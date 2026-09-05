@@ -2288,8 +2288,9 @@ group('writing a chord track');
   check('the second song lands after it', clips[2].bar === 9 && clips[3].bar === 11,
     clips.map((c) => c.bar).join());
   // C in C is 1; G in G is 1; C in G is 4.
-  check('each song is counted in its own key',
-    clips.map((c) => c.text).join(' ') === '1 4 1 4', clips.map((c) => c.text).join(' '));
+  // In brackets, as AbleSet reads a chord on a lyrics track.
+  check('each song is counted in its own key, in brackets',
+    clips.map((c) => c.text).join(' ') === '[1] [4] [1] [4]', clips.map((c) => c.text).join(' '));
 
   /*
    * The key a locator never named can be typed in instead. The set's own word
@@ -2301,7 +2302,7 @@ group('writing a chord track');
   check('and nothing is left wanting one', asked.withoutKey.length === 0);
   // Keyless has a lone D at its bar 1; in A that is the 4.
   check('the supplied key is the one counted in',
-    asked.clips[asked.clips.length - 1].text === '4',
+    asked.clips[asked.clips.length - 1].text === '[4]',
     asked.clips[asked.clips.length - 1].text);
   check('a blank one is skipped, not guessed',
     chordClipsFor(project, { Keyless: '  ' }).withoutKey.join() === 'Keyless');
@@ -2309,15 +2310,19 @@ group('writing a chord track');
     chordClipsFor(project, { Keyless: 'banana' }).converted.join() === 'One,Two',
     chordClipsFor(project, { Keyless: 'banana' }).converted.join());
   check("the set's own keys are not overruled by a supplied one",
-    chordClipsFor(project, { One: 'F' }).clips[0].text === '1',
+    chordClipsFor(project, { One: 'F' }).clips[0].text === '[1]',
     chordClipsFor(project, { One: 'F' }).clips[0].text);
 
   const out = addChordTrack(xml, clips, trackName, project);
   check('the track is written', out.clipsWritten === 4);
   check('named the way AbleSet names one', out.xml.includes('<EffectiveName Value="Nash Chords +LYRICS"'));
   check('the set keeps the track it had', out.xml.includes('<EffectiveName Value="Chords +LYRICS"'));
-  check('the new track comes before the returns',
-    out.xml.indexOf('Nash Chords +LYRICS') < out.xml.indexOf('<ReturnTrack'));
+  const firstTrackName = (xml) => {
+    const at = xml.indexOf('<Tracks>');
+    const tag = at + xml.slice(at).search(/<(Audio|Midi|Group|Return)Track /);
+    return xml.slice(tag).match(/<EffectiveName Value="([^"]*)"/)?.[1];
+  };
+  check('the new track is the first in the list', firstTrackName(out.xml) === 'Nash Chords +LYRICS', firstTrackName(out.xml));
   check('a chord clip carries no notes', /<KeyTracks \/>/.test(out.xml));
 
   // Live refuses a whole set over one duplicate, dotted tag names included.
@@ -2450,6 +2455,16 @@ group('nashville numbers');
   check('flats in Eb', ['Eb', 'Ab', 'Bb'].map((c) => num(c, 'Eb')).join(' ') === '1 4 5');
   check('Eb spells its 6 flat, not as D#', name('6', 'Eb') === 'C');
   check('a flat key keeps flats', name('b7', 'Eb') === 'Db', name('b7', 'Eb'));
+
+  // Roman numerals are numbers too, their case the chord's quality.
+  check('numerals read as degrees', ['I', 'IV', 'V'].map((n) => name(n, 'E')).join(' ') === 'E A B', ['I', 'IV', 'V'].map((n) => name(n, 'E')).join(' '));
+  check('a lowercase numeral is minor', name('ii', 'E') === 'F#m' && name('vi', 'C') === 'Am');
+  check('unless its suffix says otherwise', name('vii°', 'E') === 'D#°' && name('ii7', 'E') === 'F#m7' && name('iiø7', 'C') === 'Dø7', [name('vii°', 'E'), name('ii7', 'E'), name('iiø7', 'C')].join(' '));
+  check('an accidental before a numeral', name('bVII', 'E') === 'D' && name('bIII', 'A') === 'C');
+  check('a numeral with a slash bass', name('IV/5', 'E') === 'A/B' && name('I/3', 'C') === 'C/E');
+  check('numerals look like Nashville', looksNashville([{ text: 'I' }, { text: 'V' }, { text: 'ii' }, { text: 'IV' }]));
+  check('and a lane of them gets names in its key',
+    deriveChordLanes([{ id: 'nash', name: 'CHORDS Nash', kind: 'chords', items: ['I', 'V', 'ii', 'IV'].map((text, i) => ({ bar: i + 1, text })) }], 'E').find((l) => l.id === 'chords-in-key')?.items.map((i) => i.text).join(' ') === 'E B F#m A');
 
   // Notes outside the scale get an accidental rather than a wrong degree.
   check('a flat seventh', num('Bb', 'C') === 'b7');
@@ -2914,8 +2929,11 @@ group('slates track');
 
   check('both slates are written', clipsWritten === 2);
   check('a new track is made when none is named Slate', trackName === 'Slates' && !reusedTrack);
-  check('the slates track comes before the returns',
-    out.indexOf('<EffectiveName Value="Slates"') < out.indexOf('<ReturnTrack'));
+  check('the slates track is the first in the list', (() => {
+    const at = out.indexOf('<Tracks>');
+    const tag = at + out.slice(at).search(/<(Audio|Midi|Group|Return)Track /);
+    return out.slice(tag).match(/<EffectiveName Value="([^"]*)"/)?.[1] === 'Slates';
+  })());
   check('the model track survives untouched', /<EffectiveName Value="Stems"/.test(out));
 
   // The slate starts on its locator: 1.5s at 120bpm is 3 beats, so 8 to 11.
@@ -4258,7 +4276,7 @@ group('running order from AbleSet');
 
 group('song info as AbleSet clips');
 {
-  const { infoLinesFor, infoClipsFor, songLengthSec, DEFAULT_INFO_FIELDS } = await import('../src/lib/infoTrack.ts');
+  const { infoLinesFor, infoClipsFor, songLengthSec, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, abletReads } = await import('../src/lib/infoTrack.ts');
   const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [] };
   const song = (over = {}) => ({
     title: 'Yellow', raw: '', startBar: 9, endBar: 72, bpm: 88, startBpm: 88, key: 'Bb', durationText: null, tags: ['#slow'],
@@ -4285,6 +4303,12 @@ group('song info as AbleSet clips');
   check('a song with nothing to say under the ticks is named, not written', bare.clips.length === 0 && bare.empty.join() === 'Blank');
   check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
   check('lines are joined with AbleSet\'s break', /\*\*Yellow\*\* \\ Key: Bb \\ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
+
+  // Off AbleSet's tracks, a clip is a plain name for Live: no stars, no backslashes.
+  check('the default track is a plain one', DEFAULT_INFO_TRACK === 'SONG INFO' && !abletReads(DEFAULT_INFO_TRACK) && abletReads('Info +LYRICS'));
+  const plain = infoClipsFor(p2, ['Yellow'], all, { forAbleSet: false }).clips[0].text;
+  check('and its clip is one plain line', plain.startsWith('Yellow · Key: Bb · ') && !/[\\*]/.test(plain), plain);
+  check('with the notes\' line break made a dot too', /Watch the drummer · for the stop\./.test(plain));
 }
 
 /* ------------------------------ patch changes from MIDI clips ------------------------------ */

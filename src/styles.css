@@ -2173,6 +2173,41 @@ input[type='range'] {
   padding: 6px 0;
 }
 
+/*
+ * The song picker's one row: what to tick, how many are, a box to find one,
+ * and the order — wrapping when the window is narrow, never stacking by
+ * design. The buttons keep their size; the search box takes what is left.
+ */
+.picker-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.picker-bar .btn {
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.picker-bar .picker-count {
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.picker-bar .text-input {
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-width: none;
+}
+
+.picker-bar .sortbar {
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 /* the row of orders above a list of songs */
 
 .sortbar {

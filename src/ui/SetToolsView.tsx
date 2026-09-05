@@ -13,7 +13,7 @@ import {
 } from '../lib/slates';
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
-import { DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
+import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
 import { keyRank, type SortSpec } from '../lib/songSort';
 import { runningOrderTitles } from '../lib/ableset';
 import SortBar, { useSort } from './SortBar';
@@ -391,6 +391,7 @@ export default function SetToolsView() {
       const { clips, songs, empty } = infoClipsFor(project, [...selected], infoFields, {
         wholeSong: infoWholeSong,
         keyFor,
+        forAbleSet: abletReads(trackName),
       });
       if (!clips.length) {
         setError('Nothing to write — tick at least one kind of information, for songs that have it.');
@@ -541,7 +542,7 @@ export default function SetToolsView() {
                   The whole set, or the songs you tick. Every function below acts on this.
                 </span>
               </label>
-              <div className="btn-row" style={{ marginBottom: 6 }}>
+              <div className="picker-bar">
                 <button className="btn" disabled={!!progress} onClick={() => setChosen(new Set(titles))}>
                   Whole set
                 </button>
@@ -568,11 +569,9 @@ export default function SetToolsView() {
                     </button>
                   </>
                 )}
-                <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
+                <span className="picker-count">
                   {wholeSet ? `all ${titles.length} songs` : `${selected.size} of ${titles.length}`}
                 </span>
-              </div>
-              <div className="controls flush" style={{ alignItems: 'center', gap: 8 }}>
                 <input
                   className="text-input"
                   type="search"
@@ -751,8 +750,8 @@ export default function SetToolsView() {
                     <label>
                       What each clip says
                       <span className="hint">
-                        One AbleSet lyrics clip at the top of each song, on a track of its own, with these
-                        facts as lines. Whoever is looking at AbleSet sees them as the song comes up.
+                        One MIDI clip at the top of each song, on a track of its own, named with these facts,
+                        for reading on the timeline in Live.
                       </span>
                     </label>
                     <div className="controls flush" style={{ gap: 12 }}>
@@ -786,7 +785,11 @@ export default function SetToolsView() {
                       aria-label="Track name for the song info clips"
                       disabled={!!progress}
                     />
-                    <span className="control-note">must carry +LYRICS for AbleSet to show it</span>
+                    <span className="control-note">
+                      {abletReads(infoTrack.trim() || DEFAULT_INFO_TRACK)
+                        ? 'AbleSet shows this track as lyrics; the clip is written in its markup'
+                        : 'plain text, read in Live; add +LYRICS to the name for AbleSet to show it'}
+                    </span>
                   </div>
                   <div className="controls flush" style={{ alignItems: 'center' }}>
                     <span className="control-label">Clip</span>
@@ -820,10 +823,12 @@ export default function SetToolsView() {
                   </div>
                   {(() => {
                     const first = project.songs.find((sg) => selected.has(sg.title));
-                    const lines = first ? infoLinesFor(first, project, infoFields, keyFor[first.title]) : [];
+                    const lines = first
+                      ? infoLinesFor(first, project, infoFields, keyFor[first.title], abletReads(infoTrack.trim() || DEFAULT_INFO_TRACK))
+                      : [];
                     return first && lines.length ? (
                       <div className="notice" style={{ whiteSpace: 'pre-line' }}>
-                        {`For ${first.title}, the clip would read:\n${lines.join('\n')}`}
+                        {`For ${first.title}, the clip would be named:\n${lines.join(abletReads(infoTrack.trim() || DEFAULT_INFO_TRACK) ? '\n' : ' · ')}`}
                       </div>
                     ) : null;
                   })()}
