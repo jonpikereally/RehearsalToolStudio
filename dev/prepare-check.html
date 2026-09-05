@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Prepare timing</title>
+<style>body{font:13px/1.4 ui-monospace,monospace;padding:16px;max-width:900px;white-space:pre-wrap}</style>
+<div id="out">starting…</div>
+<script type="module">
+  // A dry run of the preparer against the folder the studio has open, timing every stage of every part. Writes nothing.
+  const out = document.getElementById('out');
+  const lines = [];
+  const log = (s) => { lines.push(s); out.textContent = lines.join('\n'); console.log(s); };
+  const q = new URLSearchParams(location.search);
+  const setFile = q.get('set') || 'TS TEST FOR RTS Freeze.als';
+  const wanted = (q.get('songs') || '22 Song - Play in F').split('|');
+  try {
+    const local = await import('../src/lib/localSource.ts');
+    const source = await import('../src/lib/source.ts');
+    const { inflateAls, parseAlsXml } = await import('../src/lib/alsParser.ts');
+    const { resolveStemPath } = await import('../src/lib/alsImport.ts');
+    const { prepareSet } = await import('../src/lib/prepare.ts');
+    const { getShiftedBuffer, primeShiftedRender, shiftLanes } = await import('../src/lib/pitchService.ts');
+    const folder = await local.storedFolder('songs');
+    if (!folder) throw new Error('no songs folder is stored');
+    source.configureSource({ folder: folder.handle, root: '', useLocal: true });
+    log(`folder: ${folder.name}`);
+    const t0 = performance.now();
+    const { bytes } = await source.readBytes(setFile);
+    const project = parseAlsXml(await inflateAls(bytes));
+    log(`set read and parsed in ${(performance.now() - t0).toFixed(0)} ms: ${project.songs.length} songs`);
+    const ctx = new AudioContext({ sampleRate: 48000 });
+    let last = null, lastAt = performance.now(), songStart = performance.now();
+    const stamp = () => performance.now();
+    const result = await prepareSet({
+      project, alsPath: setFile, root: '', setName: 'dry-run', only: wanted,
+      resolvePath: (rel) => resolveStemPath(setFile, rel),
+      readFile: async (p) => { const t = stamp(); const b = (await source.readBytes(p)).bytes; log(`   read whole ${p.split('/').pop()} ${(b.byteLength/1e6).toFixed(1)} MB in ${(stamp()-t).toFixed(0)} ms`); return b; },
+      readSlice: async (p, s, e) => { const t = stamp(); const got = await source.readBytes(p, undefined, undefined, { start: s, end: e }); log(`   read range ${p.split('/').pop()} [${s}-${e}] ${(got.bytes.byteLength/1e6).toFixed(1)} MB in ${(stamp()-t).toFixed(0)} ms`); return { bytes: got.bytes, size: got.size }; },
+      writeFile: async (p, blob) => { log(`   (not written) ${p.split('/').pop()} ${(blob.size/1e6).toFixed(1)} MB`); return p; },
+      decode: async (raw) => { const t = stamp(); const b = await ctx.decodeAudioData(raw.slice(0)); log(`   decoded ${(b.length/b.sampleRate).toFixed(1)} s in ${(stamp()-t).toFixed(0)} ms`); return b; },
+      sampleRate: ctx.sampleRate,
+      shift: ({ buffer, semitones, speed, source: src, prime, onProgress }) => (prime ? primeShiftedRender : getShiftedBuffer)({ ctx, path: src, rev: `dry:${buffer.length}@${buffer.sampleRate}`, semitones, tempo: speed, source: buffer, budgetBytes: 2e9, onProgress }),
+      parallelShifts: shiftLanes(),
+      onProgress: (p) => {
+        const key = `${p.songTitle} | ${p.partName} | ${p.stage}`;
+        if (key !== last) {
+          const now = stamp();
+          if (last) log(`${last}  took ${((now - lastAt)/1000).toFixed(1)} s`);
+          if (last && !last.startsWith(p.songTitle)) { log(`== ${last.split(' | ')[0]} total ${((now - songStart)/1000).toFixed(1)} s`); songStart = now; }
+          last = key; lastAt = now;
+        }
+      },
+    });
+    log(`${last}  took ${((stamp() - lastAt)/1000).toFixed(1)} s`);
+    log(`== total ${((stamp() - t0)/1000).toFixed(1)} s; parts ${result.partsWritten}, skipped ${result.skipped.length} ${JSON.stringify(result.skipped.slice(0, 3))}`);
+    log('DONE');
+  } catch (err) {
+    log(`ERROR ${err?.stack || err}`);
+  }
+</script>

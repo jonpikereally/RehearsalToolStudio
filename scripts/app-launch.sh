@@ -77,7 +77,10 @@ start_studio_server() {
      { [ -n "$current" ] && [ "$current" != "$stamped" ]; }; then
     # Builds leave the last build's files in place for any page still on
     # them; what nothing has referenced for a day is let go afterwards.
-    ( cd "$REPO" && "$NPM" run build && /bin/sh scripts/prune-build.sh ) >"$REPO/.studio-build.log" 2>&1 \
+    # npm's scripts find node by name, and an app's PATH has no node in it:
+    # "env: node: No such file" was every build failing from the Dock while
+    # the same command worked from a terminal. Node's own folder goes first.
+    ( cd "$REPO" && PATH="$(dirname "$NODE"):$PATH" "$NPM" run build && /bin/sh scripts/prune-build.sh ) >"$REPO/.studio-build.log" 2>&1 \
       || echo "build failed; serving the previous build" >>"$REPO/.studio-build.log"
   fi
 
