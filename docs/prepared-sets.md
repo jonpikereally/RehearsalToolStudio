@@ -3,9 +3,11 @@
 What Rehearsal Tool Studio writes into the band's folder when a song or a set
 is prepared, and what the Rehearsal Tool website should make of it.
 
-The same file lives in both repositories. The Studio is the writer, so its
-copy is the one to change first; the website's copy is there so the reader
-has the contract to hand.
+This is the contract's home. The Studio is the writer, and what it writes is
+whatever this file says on the day; a reader — the website, when it is built
+again — should take a copy of this file into its own repository and keep that
+copy current from here, since a reader working from an old contract is the
+one way the two can quietly disagree.
 
 ## The one idea
 
