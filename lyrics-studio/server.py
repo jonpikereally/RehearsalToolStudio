@@ -12,7 +12,7 @@
 # ///
 """Lyrics Studio — local webapp: transcribe song lyrics and export timed MIDI clips.
 
-Run with:  uv run server.py   (serves on http://127.0.0.1:8765)
+Run with:  uv run server.py   (serves on http://127.0.0.1:8765, or the next free port)
 Everything runs on-device; nothing is uploaded anywhere.
 """
 import copy
@@ -48,7 +48,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
-VERSION = "1.14.0"
+VERSION = "1.15.0"
 
 app = FastAPI(title="Lyrics Studio", version=VERSION)
 
@@ -125,7 +125,10 @@ async def surface_errors(request, call_next):
 
 @app.get("/api/version")
 def version():
-    return {"version": VERSION}
+    # Names itself, because the port is not proof: anything can hold 8765, and
+    # for a while a light-control app did. Whoever is looking for Lyrics
+    # Studio checks for this answer, not for a port that is merely busy.
+    return {"version": VERSION, "app": "lyrics-studio"}
 
 
 @app.get("/")
@@ -1944,10 +1947,62 @@ def serve_audio(path: str):
 load_state()
 
 
+"""
+Which port to serve on.
+
+8765 is home, and for a long time was simply assumed. Then another app on the
+same Mac took to listening there, and every launcher — seeing the port busy —
+decided Lyrics Studio was already up and opened a browser at a stranger's
+JSON. So the port is found, not assumed: the first of a short run that is
+either free or already ours. A stranger on a port is stepped past; a Lyrics
+Studio already on one means this copy has nothing to do and says so. The port
+chosen is written beside the log so a launcher can find it without guessing.
+"""
+PORTS = range(8765, 8776)
+
+
+def holder_of(port: int) -> str:
+    """'free', 'ours' or 'stranger' — who has this port."""
+    import socket
+    import urllib.request
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+            return "free"
+        except OSError:
+            pass
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/version", timeout=1) as res:
+            answer = json.loads(res.read().decode("utf-8", "replace"))
+        return "ours" if answer.get("app") == "lyrics-studio" else "stranger"
+    except Exception:
+        return "stranger"
+
+
+def choose_port() -> int | None:
+    for port in PORTS:
+        who = holder_of(port)
+        if who == "free":
+            return port
+        if who == "ours":
+            print(f"Lyrics Studio is already running on http://127.0.0.1:{port}")
+            return None
+        print(f"port {port} is taken by something else; trying the next")
+    print(f"no free port between {PORTS.start} and {PORTS.stop - 1}", file=sys.stderr)
+    sys.exit(1)
+
+
 if __name__ == "__main__":
     import threading
     import uvicorn
 
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else choose_port()
+    if port is None:
+        sys.exit(0)
+    try:
+        (DATA_DIR / "port").write_text(str(port))
+    except OSError:
+        pass
     threading.Thread(target=idle_watchdog, daemon=True).start()
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    print(f"Lyrics Studio on http://127.0.0.1:{port}")
     uvicorn.run(app, host="127.0.0.1", port=port)

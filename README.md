@@ -116,7 +116,7 @@ newer build on focus and offers a reload. Settings shows the build and when it
 was made. A failed build serves the previous one and says why in
 `.studio-build.log`.
 
-Lyrics Studio is its own local server (`lyrics-studio/`, Python, on 8765),
+Lyrics Studio is its own local server (`lyrics-studio/`, Python, on 8765 or the next free port when another app holds that one),
 opened in the default browser. Links out of the studio window go there too.
 
 ## Working on it

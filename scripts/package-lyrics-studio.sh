@@ -53,9 +53,18 @@ DATA="$HOME/Library/Application Support/Lyrics Studio"
 mkdir -p "$DATA"
 export LYRICS_STUDIO_DATA="$DATA"
 LOG="$DATA/server.log"
-listening() { /usr/bin/nc -z 127.0.0.1 "$1" 2>/dev/null; }
+# Found by what answers, not by port number: 8765 is home, but the server
+# steps to the next free port when another app is sitting there.
+lyrics_port() {
+  for p in 8765 8766 8767 8768 8769 8770 8771 8772 8773 8774 8775; do
+    case "$(/usr/bin/curl -s -m 1 "http://127.0.0.1:$p/api/version" 2>/dev/null)" in
+      *lyrics-studio*) echo "$p"; return 0 ;;
+    esac
+  done
+  return 1
+}
 
-if ! listening 8765; then
+if ! PORT="$(lyrics_port)"; then
   echo "$(date '+%F %T') starting" >>"$LOG"
   ( cd "$RES/lyrics-studio" && /usr/bin/nohup "$RES/uv" run server.py >>"$LOG" 2>&1 & )
 fi
@@ -63,11 +72,11 @@ fi
 # minutes rather than seconds; the page is opened as soon as it answers, and
 # after ten minutes regardless, so a failure ends up on screen and not in silence.
 n=0
-until listening 8765; do
-  n=$((n + 1)); [ $n -gt 1200 ] && break
+until PORT="$(lyrics_port)"; do
+  n=$((n + 1)); [ $n -gt 1200 ] && { PORT=8765; break; }
   sleep 0.5
 done
-exec /usr/bin/open "http://localhost:8765"
+exec /usr/bin/open "http://localhost:$PORT"
 LAUNCH
 chmod 755 "$APP/Contents/MacOS/launch"
 

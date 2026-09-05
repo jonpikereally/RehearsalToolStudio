@@ -14,7 +14,7 @@ import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
 import { parseKey } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
-import { LYRICS_STUDIO } from './LyricClipsPanel';
+import { findLyricsStudio } from '../lib/lyricsStudio';
 
 
 import SlatesPanel from './SlatesPanel';
@@ -43,7 +43,9 @@ export default function SetToolsView() {
   const [project, setProject] = useState<AlsProject | null>(null);
   const [voices, setVoices] = useState<HelperVoice[] | null>(null);
   const [voice, setVoice] = useState(() => localStorage.getItem(LS_VOICE) ?? '');
-  const [lyricsUp, setLyricsUp] = useState<boolean | null>(null);
+  /** Where Lyrics Studio answers; null once looked for and not found. */
+  const [lyricsUrl, setLyricsUrl] = useState<string | null | undefined>(undefined);
+  const lyricsUp = lyricsUrl === undefined ? null : lyricsUrl !== null;
   const [lone, setLone] = useState<{ name: string; bytes: ArrayBuffer } | null>(null);
   const [outDir, setOutDir] = useState<local.FolderHandle | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
@@ -62,12 +64,7 @@ export default function SetToolsView() {
     const found = await helperVoices();
     setVoices(found);
     if (found && !found.some((v) => v.name === voice)) setVoice(defaultVoice(found));
-    try {
-      const res = await fetch(`${LYRICS_STUDIO}/api/version`, { signal: AbortSignal.timeout(2000) });
-      setLyricsUp(res.ok);
-    } catch {
-      setLyricsUp(false);
-    }
+    setLyricsUrl(await findLyricsStudio());
   };
 
   useEffect(() => {
@@ -352,7 +349,7 @@ export default function SetToolsView() {
         als_size: String(stat.size),
         als_mtime: String(stat.modified),
       });
-      window.open(`${LYRICS_STUDIO}/?${query}`, '_blank');
+      if (lyricsUrl) window.open(`${lyricsUrl}/?${query}`, '_blank');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -564,7 +561,7 @@ export default function SetToolsView() {
                   </div>
                   {lyricsUp === false && (
                     <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                      Lyrics Studio isn't running — double-click{' '}
+                      Lyrics Studio isn't running — open the Lyrics Studio app, or double-click{' '}
                       <span className="code">Start Lyrics Studio.command</span> first.
                     </div>
                   )}

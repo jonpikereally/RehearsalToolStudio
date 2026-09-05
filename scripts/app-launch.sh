@@ -113,14 +113,27 @@ start_studio_server() {
 
 # Lyrics Studio is its own local server: bring it up and wait for an answer,
 # because a browser aimed at a port that isn't up yet shows an error page.
+#
+# Its port is found, not assumed. Home is 8765, but another app on this Mac
+# took to listening there, and a launcher that only asked "is 8765 busy?"
+# opened a browser on a stranger. So the server steps to the next free port
+# when it must, and this asks each port in turn who is actually there.
+lyrics_port() {
+  for p in 8765 8766 8767 8768 8769 8770 8771 8772 8773 8774 8775; do
+    case "$(/usr/bin/curl -s -m 1 "http://127.0.0.1:$p/api/version" 2>/dev/null)" in
+      *lyrics-studio*) echo "$p"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
 start_lyrics_studio() {
   UV="$(find_bin uv)"
-  if [ -n "$UV" ] && ! listening 8765; then
-    ( cd "$REPO/lyrics-studio" && /usr/bin/nohup "$UV" run server.py >/dev/null 2>&1 & )
-  fi
+  LYRICS_PORT="$(lyrics_port)" && return
+  [ -n "$UV" ] && ( cd "$REPO/lyrics-studio" && /usr/bin/nohup "$UV" run server.py >/dev/null 2>&1 & )
   n=0
-  until listening 8765; do
-    n=$((n + 1)); [ $n -gt 120 ] && break
+  until LYRICS_PORT="$(lyrics_port)"; do
+    n=$((n + 1)); [ $n -gt 120 ] && { LYRICS_PORT=8765; break; }
     sleep 0.5
   done
 }
@@ -130,7 +143,7 @@ case "$1" in
                 open_native_studio
                 open_shim "Rehearsal Tool Studio" ;;
   studio-servers) start_voice_helper; start_studio_server; exit 0 ;;
-  lyrics)       URL="http://localhost:8765"; start_lyrics_studio
+  lyrics)       start_lyrics_studio; URL="http://localhost:$LYRICS_PORT"
                 open_shim "Lyrics Studio" ;;
   *) echo "usage: app-launch.sh studio|studio-servers|lyrics" >&2; exit 2 ;;
 esac

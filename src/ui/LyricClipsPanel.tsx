@@ -3,6 +3,7 @@ import { useStore } from '../lib/store';
 import { statFile } from '../lib/source';
 import * as local from '../lib/localSource';
 import SettingsSection from './SettingsSection';
+import { findLyricsStudio } from '../lib/lyricsStudio';
 
 /**
  * Timed lyric clips for a set, via Lyrics Studio.
@@ -13,25 +14,18 @@ import SettingsSection from './SettingsSection';
  * URL naming the file by name, size and date, which is how Lyrics Studio finds
  * a browser-held file on the real disk.
  */
-export const LYRICS_STUDIO = 'http://127.0.0.1:8765';
-
 export default function LyricClipsPanel() {
   const { lastScan } = useStore();
-  const [running, setRunning] = useState<boolean | null>(null);
+  /** Where Lyrics Studio answers; null once looked for and not found. */
+  const [studioUrl, setStudioUrl] = useState<string | null | undefined>(undefined);
+  const running = studioUrl === undefined ? null : studioUrl !== null;
   const [error, setError] = useState<string | null>(null);
   const checked = useRef(false);
 
   const scanPath = lastScan?.alsSetPaths?.[0] ?? null;
   const scanName = scanPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
 
-  const check = async () => {
-    try {
-      const res = await fetch(`${LYRICS_STUDIO}/api/version`, { signal: AbortSignal.timeout(2000) });
-      setRunning(res.ok);
-    } catch {
-      setRunning(false);
-    }
-  };
+  const check = async () => setStudioUrl(await findLyricsStudio());
   useEffect(() => {
     if (!checked.current) {
       checked.current = true;
@@ -46,7 +40,7 @@ export default function LyricClipsPanel() {
       als_size: String(file.size),
       als_mtime: String(file.modified),
     });
-    window.open(`${LYRICS_STUDIO}/?${query}`, '_blank');
+    if (studioUrl) window.open(`${studioUrl}/?${query}`, '_blank');
   };
 
   const sendScanned = async () => {
@@ -83,7 +77,7 @@ export default function LyricClipsPanel() {
 
       {running === false && (
         <div className="notice">
-          Lyrics Studio isn't running. Double-click{' '}
+          Lyrics Studio isn't running. Open the Lyrics Studio app, or double-click{' '}
           <span className="code">Start Lyrics Studio.command</span> in its folder, then:
           <div className="btn-row" style={{ marginTop: 8 }}>
             <button className="btn" onClick={() => void check()}>
