@@ -115,9 +115,56 @@ export interface ShiftArgs {
  * A `semitones` of 0 returns the original buffer untouched.
  */
 export async function getShiftedBuffer(args: ShiftArgs): Promise<AudioBuffer> {
-  const { ctx, path, rev, semitones, source, budgetBytes, onProgress, signal } = args;
+  const { ctx, semitones, source, budgetBytes } = args;
   const tempo = args.tempo && args.tempo > 0 ? args.tempo : 1;
   if (semitones === 0 && tempo === 1) return source;
+
+  const render = await shiftedPcm(args);
+  if (!render.cached) {
+    void putRender(render.entry, budgetBytes).catch(() => {
+      /* a full cache shouldn't break playback */
+    });
+  }
+  const { pcm, channels, frames, sampleRate } = render.entry;
+  return fromInt16(pcm, channels, frames, ctx, sampleRate);
+}
+
+/**
+ * Render a shift into the cache and keep nothing.
+ *
+ * For work done ahead of need: preparing a set shifts a song's clips several
+ * at a time before printing its parts one by one, and what carries the result
+ * from the first pass to the second is the cache, not memory — a song's worth
+ * of shifted stems held as floats is what runs the encoder out of room.
+ * Returns null once the render is safely stored, and the buffer itself only
+ * when the cache would not take it, so the caller can hold it instead.
+ */
+export async function primeShiftedRender(args: ShiftArgs): Promise<AudioBuffer | null> {
+  const { ctx, semitones, budgetBytes } = args;
+  const tempo = args.tempo && args.tempo > 0 ? args.tempo : 1;
+  if (semitones === 0 && tempo === 1) return null;
+
+  const render = await shiftedPcm(args);
+  if (render.cached) return null;
+  try {
+    await putRender(render.entry, budgetBytes);
+    return null;
+  } catch {
+    const { pcm, channels, frames, sampleRate } = render.entry;
+    return fromInt16(pcm, channels, frames, ctx, sampleRate);
+  }
+}
+
+interface ShiftRender {
+  /** True when the cache already had it, so nothing needs writing. */
+  cached: boolean;
+  entry: { key: string; pcm: ArrayBuffer; channels: number; sampleRate: number; frames: number; bytes: number };
+}
+
+/** The shifted PCM: from the cache when it is there, from the worker when not. */
+async function shiftedPcm(args: ShiftArgs): Promise<ShiftRender> {
+  const { path, rev, semitones, source, onProgress, signal } = args;
+  const tempo = args.tempo && args.tempo > 0 ? args.tempo : 1;
 
   const sampleRate = source.sampleRate;
   // Tempo joins the key: the same file at the same pitch but a different speed
@@ -128,7 +175,10 @@ export async function getShiftedBuffer(args: ShiftArgs): Promise<AudioBuffer> {
   const cached = await getRender(key);
   if (cached && cached.frames === expectedFrames && cached.sampleRate === sampleRate) {
     onProgress?.(1);
-    return fromInt16(cached.pcm, cached.channels, cached.frames, ctx, sampleRate);
+    return {
+      cached: true,
+      entry: { key, pcm: cached.pcm, channels: cached.channels, sampleRate, frames: cached.frames, bytes: cached.bytes },
+    };
   }
 
   const left = source.getChannelData(0);
@@ -156,10 +206,9 @@ export async function getShiftedBuffer(args: ShiftArgs): Promise<AudioBuffer> {
    * length once tempo was added.
    */
   const outFrames = rendered.frames;
-  const buffer = fromInt16(rendered.pcm.buffer as ArrayBuffer, channels, outFrames, ctx, sampleRate);
-
-  void putRender(
-    {
+  return {
+    cached: false,
+    entry: {
       key,
       pcm: rendered.pcm.buffer as ArrayBuffer,
       channels,
@@ -167,12 +216,19 @@ export async function getShiftedBuffer(args: ShiftArgs): Promise<AudioBuffer> {
       frames: outFrames,
       bytes: rendered.pcm.byteLength,
     },
-    budgetBytes,
-  ).catch(() => {
-    /* a full cache shouldn't break playback */
-  });
+  };
+}
 
-  return buffer;
+/**
+ * How many shifts to run at once when a set is being prepared.
+ *
+ * A core each, leaving one for the page and the encoder, and never more than
+ * four: each worker holds its stem as floats going in and 16-bit coming out,
+ * which for a long stereo stem is a couple of hundred megabytes apiece.
+ */
+export function shiftLanes(): number {
+  const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 2 : 2;
+  return Math.max(1, Math.min(4, cores - 1));
 }
 
 /** Musical name for a transposition, e.g. "+2" or "-3". */

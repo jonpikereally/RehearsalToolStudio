@@ -2838,6 +2838,26 @@ group('reference tracks');
   check('an ordinary part is untouched',
     partFileName('Yellow', 'Bass 1', false) === 'Yellow [bass].mp3');
 
+  // The manifest tells the record itself apart from the record's parts: the
+  // website gives the parts faders and switches to the song on its own.
+  const { partInfoFor } = await import('../src/lib/prepare.ts');
+  const { validateManifest } = await import('../src/lib/preparedSet.ts');
+  const refSong = partInfoFor('Yellow', 'REF SONG', true);
+  check('the ref song is the record, a mix, and a reference',
+    refSong.record === true && refSong.role === 'mix' && refSong.reference === true && refSong.label === 'ref song',
+    JSON.stringify(refSong));
+  check('so is a ref master', partInfoFor('Yellow', 'Ref Master', true).record === true);
+  const refVox = partInfoFor('Yellow', 'REF VOX', true);
+  check("the record's vocal is a reference stem, not the record",
+    refVox.reference === true && refVox.record === undefined && refVox.role === undefined, JSON.stringify(refVox));
+  const full = partInfoFor('Yellow', 'Full Mix', false);
+  check("the band's own full mix is a mix but not the record",
+    full.role === 'mix' && full.record === undefined && full.reference === undefined, JSON.stringify(full));
+  check('an ordinary part says nothing extra', JSON.stringify(partInfoFor('Yellow', 'Bass 1', false)) === '{"label":"bass","name":"bass"}');
+  const manifest = (parts) => ({ preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0, songs: [{ folder: 'Yellow {120}', title: 'Yellow', firstBarOffsetSec: 0, parts }] });
+  check('the manifest reader takes the tags', validateManifest(manifest([refSong, refVox, full])).ok, validateManifest(manifest([refSong, refVox, full])).errors.join('; '));
+  check('and refuses a role it does not know', !validateManifest(manifest([{ label: 'x', name: 'x', role: 'song' }])).ok);
+
   // And the library reads those labels the way the player needs.
   const { defaultRole, isReferenceName } = await import('../src/lib/scan.ts');
   check('the ref master is a whole mix with the switch',
@@ -3900,6 +3920,11 @@ group('overall progress of a prepare');
   check('and never goes backwards', steps.every((v, i) => i === 0 || v >= steps[i - 1]), steps.map((v) => v.toFixed(3)).join(' '));
   check('the second song starts at half', Math.abs(at(2, 1, 'reading') - 0.5) < 1e-9);
   check('done is full', overallProgress({ songIndex: 2, songCount: 2, songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1 }) === 1);
+  const shifting = (ratio) =>
+    overallProgress({ songIndex: 1, songCount: 2, songTitle: '', partName: '', partIndex: 0, partCount: 2, stage: 'shifting', ratio, shiftShare: 0.5 });
+  check('a song with shifts spends its first half of the bar on them', Math.abs(shifting(0.5) - 0.125) < 1e-9 && shifting(1) === 0.25, String(shifting(0.5)));
+  check('and its parts take the second half', Math.abs(overallProgress({ songIndex: 1, songCount: 2, songTitle: '', partName: '', partIndex: 1, partCount: 2, stage: 'reading', ratio: 0, shiftShare: 0.5 }) - 0.25) < 1e-9);
+  check('a song with nothing to shift gives its parts the whole song', at(1, 1, 'reading') === 0);
   check('a run of nothing does not divide by zero',
     Number.isFinite(overallProgress({ songIndex: 0, songCount: 0, songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'reading', ratio: 0 })));
 }

@@ -5,7 +5,7 @@ import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
 import type { SamplerNote, SamplerSample } from '../types';
-import { clipsFromMarks, laneList, songIdFor, stemLabel } from './alsImport.ts';
+import { clipsFromMarks, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
@@ -32,9 +32,18 @@ export interface PrepareProgress {
   /** 1-based, within the song, for the overall figure. 0 of 0 once done. */
   partIndex: number;
   partCount: number;
-  stage: 'reading' | 'rendering' | 'encoding' | 'writing' | 'done';
-  /** 0..1 within the current part, where it can be known. */
+  /**
+   * `shifting` comes before a song's parts: every clip Live plays transposed
+   * or at another speed, rendered ahead, several at a time.
+   */
+  stage: 'shifting' | 'reading' | 'rendering' | 'encoding' | 'writing' | 'done';
+  /** 0..1 within the current part — or across the song's shifts. */
   ratio: number;
+  /**
+   * The share of this song's time its shifting takes: 0 for a song with
+   * nothing to shift, so its parts have the whole song's width of the bar.
+   */
+  shiftShare?: number;
 }
 
 /**
@@ -47,10 +56,32 @@ export interface PrepareProgress {
  */
 export function overallProgress(p: PrepareProgress): number {
   if (p.stage === 'done') return 1;
-  const inPart =
-    p.stage === 'reading' ? 0 : p.stage === 'rendering' ? 0.15 : p.stage === 'encoding' ? 0.15 + 0.8 * Math.min(1, Math.max(0, p.ratio)) : 0.98;
-  const inSong = (Math.max(1, p.partIndex) - 1 + inPart) / Math.max(1, p.partCount);
+  const ratio = Math.min(1, Math.max(0, p.ratio));
+  const share = Math.min(1, Math.max(0, p.shiftShare ?? 0));
+  let inSong: number;
+  if (p.stage === 'shifting') {
+    inSong = share * ratio;
+  } else {
+    const inPart =
+      p.stage === 'reading' ? 0 : p.stage === 'rendering' ? 0.15 : p.stage === 'encoding' ? 0.15 + 0.8 * ratio : 0.98;
+    inSong = share + (1 - share) * ((Math.max(1, p.partIndex) - 1 + inPart) / Math.max(1, p.partCount));
+  }
   return Math.min(1, Math.max(0, (Math.max(1, p.songIndex) - 1 + inSong) / Math.max(1, p.songCount)));
+}
+
+/** A clip's shift, as the caller renders it. */
+export interface ShiftRequest {
+  buffer: AudioBuffer;
+  semitones: number;
+  speed: number;
+  /** The file, and part of whatever the render is cached under. */
+  source: string;
+  /**
+   * Render into the cache and keep nothing, returning null — or the buffer
+   * itself when the cache would not take it. Without it, the shifted buffer.
+   */
+  prime?: boolean;
+  onProgress?: (ratio: number) => void;
 }
 
 export interface PrepareOptions {
@@ -109,7 +140,13 @@ export interface PrepareOptions {
    * the same length, and a key without the file served the first render
    * — the drums — for all six. Without one, such clips print as their files.
    */
-  shift?: (buffer: AudioBuffer, semitones: number, speed: number, source: string) => Promise<AudioBuffer>;
+  shift?: (req: ShiftRequest) => Promise<AudioBuffer | null>;
+  /**
+   * How many of a song's shifts to render at once. Shifting is the slow part
+   * of a prepare by a wide margin — a JavaScript time-stretch, a stem at a
+   * time — and the stems of one song are independent, so a core each.
+   */
+  parallelShifts?: number;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
 }
@@ -180,6 +217,13 @@ export interface PrepareResult {
   samplesShared: number;
   /** Lead-in the encoder adds, written into each song so bars stay true. */
   paddingSec: number;
+  /**
+   * Songs written with the record itself among their parts, and which part
+   * it is. Worth saying: the band's player plays it on its own, not under a
+   * fader, so a set where some songs carry it and some don't behaves
+   * differently from song to song.
+   */
+  records: { song: string; part: string }[];
 }
 
 /** Characters a file name can't carry, whatever the filesystem. */
@@ -230,12 +274,27 @@ export function partFileName(songTitle: string, partName: string, reference = fa
  * with the reference marker taken off — and the flag is what to say beside it.
  * Derived here, once, from the same call that names the file, so the two can
  * never drift apart.
+ *
+ * The record itself is told apart from the record's parts. A set keeps the
+ * finished song — "REF SONG", "Ref Master" — beside the record's own drums
+ * and vocal, and the two want opposite handling: the parts blend in under
+ * faders, the song is switched to on its own. Both are references; only the
+ * song is the `record`, and it is a `mix` rather than a stem. The band's own
+ * full bounce is a mix too, but not the record.
  */
 export function partInfoFor(songTitle: string, partName: string, reference: boolean): PreparedPart {
   const file = partFileName(songTitle, partName, reference);
   const label = file.slice(file.lastIndexOf('[') + 1, file.lastIndexOf(']'));
   const name = reference ? label.replace(/\bref(erence)?\b/i, ' ').replace(/\s+/g, ' ').trim() : label;
-  return { label, name: name || label, ...(reference ? { reference: true } : {}) };
+  const role = roleForTrack(partName);
+  const record = reference && role === 'mix';
+  return {
+    label,
+    name: name || label,
+    ...(role === 'mix' ? { role } : {}),
+    ...(reference ? { reference: true } : {}),
+    ...(record ? { record: true } : {}),
+  };
 }
 
 /* ------------------------------ sampler parts ------------------------------ */
@@ -385,6 +444,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const wanted = opts.only?.length ? new Set(opts.only) : null;
   const chosen = wanted ? project.songs.filter((s) => wanted.has(s.title)) : project.songs;
   const skipped: PrepareResult['skipped'] = [];
+  const records: PrepareResult['records'] = [];
   const written: PreparedSongInfo[] = [];
   let songsWritten = 0;
   let partsWritten = 0;
@@ -490,6 +550,91 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     let samplerHere = 0;
 
     const parts = partsFor(song, opts.plan?.[song.title]);
+
+    /*
+     * Every clip of this song that Live plays transposed or at another speed,
+     * shifted ahead of its parts and several at a time. Shifting is where a
+     * prepare spends nearly all of its time when a set is in other keys: a
+     * JavaScript time-stretch that takes tens of seconds per stem, against
+     * seconds to decode and encode the same stem. Done one stem at a time as
+     * each part came up, it also sat behind a bar that did not move.
+     *
+     * The results go into the render cache, not memory, and the parts below
+     * find them there — a song's shifted stems held as floats all at once is
+     * what runs the encoder out of room. Only a render the cache refused is
+     * kept, so nothing is shifted twice.
+     */
+    const held = new Map<string, AudioBuffer>();
+    const shiftKey = (clip: { path: string; semitones?: number; speed?: number }) =>
+      `${(resolvePath(clip.path) ?? clip.path).toLowerCase()}|${clip.semitones ?? 0}|${(clip.speed ?? 1).toFixed(4)}`;
+    const needsShift = (clip: { semitones?: number; speed?: number }) =>
+      (clip.semitones ?? 0) !== 0 || Math.abs((clip.speed ?? 1) - 1) > 1e-6;
+    const shifts = new Map<string, AlsSong['stems'][number]['clips'][number]>();
+    for (const part of parts) {
+      if (!part.combined && part.stems.length === 1 && isSetStem(part.stems[0])) continue;
+      for (const stem of part.stems) {
+        for (const clip of stem.clips) {
+          if (!clip.disabled && needsShift(clip) && !shifts.has(shiftKey(clip))) shifts.set(shiftKey(clip), clip);
+        }
+      }
+    }
+    // Half the song's width of the bar for its shifts, when it has any: a
+    // rough share, but one that moves while they run rather than sitting still.
+    const shiftShare = opts.shift && shifts.size ? 0.5 : 0;
+
+    if (opts.shift && shifts.size) {
+      const queue = [...shifts.entries()];
+      const total = queue.length;
+      const done = new Set<string>();
+      const partial = new Map<string, number>();
+      const reportShift = () =>
+        onProgress?.({
+          songIndex: index + 1,
+          songCount: chosen.length,
+          songTitle: song.title,
+          partName: `${total} pitch shift${total === 1 ? '' : 's'}`,
+          partIndex: 0,
+          partCount: parts.length,
+          stage: 'shifting',
+          ratio: (done.size + [...partial.values()].reduce((a, b) => a + b, 0)) / total,
+          shiftShare,
+        });
+      reportShift();
+      const lanes = Math.max(1, Math.floor(opts.parallelShifts ?? 1));
+      const worker = async () => {
+        for (;;) {
+          const next = queue.shift();
+          if (!next) return;
+          if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
+          const [key, clip] = next;
+          let buffer: AudioBuffer | null = null;
+          try {
+            buffer = await loadFile(clip.path, clip.absPath);
+          } catch {
+            /* the part will say what's missing */
+          }
+          if (buffer) {
+            const kept = await opts.shift!({
+              buffer,
+              semitones: clip.semitones ?? 0,
+              speed: clip.speed ?? 1,
+              source: resolvePath(clip.path) ?? clip.path,
+              prime: true,
+              onProgress: (ratio) => {
+                partial.set(key, Math.min(1, Math.max(0, ratio)));
+                reportShift();
+              },
+            });
+            if (kept) held.set(key, kept);
+          }
+          partial.delete(key);
+          done.add(key);
+          reportShift();
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(lanes, total) }, worker));
+    }
+
     for (const [partAt, part] of parts.entries()) {
       if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
@@ -503,6 +648,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           partCount: parts.length,
           stage,
           ratio,
+          shiftShare,
         });
 
       try {
@@ -570,10 +716,20 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
               skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
               continue;
             }
-            // As Live plays it: the clip's own transposition and warp speed.
+            // As Live plays it: the clip's own transposition and warp speed —
+            // rendered above and read back from the cache, or held from above
+            // when the cache would not take it.
             const speed = clip.speed ?? 1;
-            if (opts.shift && ((clip.semitones ?? 0) !== 0 || Math.abs(speed - 1) > 1e-6)) {
-              buffer = await opts.shift(buffer, clip.semitones ?? 0, speed, resolvePath(clip.path) ?? clip.path);
+            if (opts.shift && needsShift(clip)) {
+              buffer =
+                held.get(shiftKey(clip)) ??
+                (await opts.shift({
+                  buffer,
+                  semitones: clip.semitones ?? 0,
+                  speed,
+                  source: resolvePath(clip.path) ?? clip.path,
+                })) ??
+                buffer;
             }
             placements.push(placementOf(clip, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
@@ -614,7 +770,9 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
         report('writing', 1);
         await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
-        wroteParts.push(partInfoFor(song.title, part.name, part.reference));
+        const info = partInfoFor(song.title, part.name, part.reference);
+        wroteParts.push(info);
+        if (info.record) records.push({ song: song.title, part: info.label });
         partsWritten++;
         wroteAny = true;
       } catch (err) {
@@ -697,7 +855,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, partsWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec };
+  return { folder, songsWritten, partsWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */

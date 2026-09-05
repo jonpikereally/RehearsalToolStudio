@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
-import { getShiftedBuffer } from '../lib/pitchService';
+import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { readBytes } from '../lib/source';
@@ -169,8 +169,8 @@ export default function PrepareSetDialog({
         sampleRate: ctx.sampleRate,
         // Cached under the file it came from: a key without it once served
         // one stem's render for every stem of the song.
-        shift: (buffer, semitones, speed, source) =>
-          getShiftedBuffer({
+        shift: ({ buffer, semitones, speed, source, prime, onProgress }) =>
+          (prime ? primeShiftedRender : getShiftedBuffer)({
             ctx,
             path: source,
             rev: `prepare:${buffer.length}@${buffer.sampleRate}`,
@@ -178,7 +178,10 @@ export default function PrepareSetDialog({
             tempo: speed,
             source: buffer,
             budgetBytes: settings.cacheBudgetGB * 1e9,
+            onProgress,
+            signal: running.current?.signal,
           }),
+        parallelShifts: shiftLanes(),
         onProgress: setProgress,
         signal: running.current.signal,
       });
@@ -324,7 +327,11 @@ export default function PrepareSetDialog({
           <div className="notice">
             {progress.stage === 'done'
               ? 'Finishing…'
-              : `${progress.songTitle} · ${progress.partName} — ${progress.stage} (song ${progress.songIndex} of ${progress.songCount}, part ${progress.partIndex} of ${progress.partCount})`}
+              : `${progress.songTitle} · ${progress.partName} — ${progress.stage}${
+                  progress.stage === 'shifting' || progress.stage === 'encoding' ? ` ${Math.round(progress.ratio * 100)}%` : ''
+                } (song ${progress.songIndex} of ${progress.songCount}${
+                  progress.stage === 'shifting' ? '' : `, part ${progress.partIndex} of ${progress.partCount}`
+                })`}
           </div>
         </>
       )}
@@ -349,6 +356,15 @@ export default function PrepareSetDialog({
               {result.samplerParts} of them {result.samplerParts === 1 ? 'is a pattern' : 'are patterns'} striking{' '}
               {result.samplesShared} sample{result.samplesShared === 1 ? '' : 's'} in{' '}
               <span className="code">Resources/</span> — one kick for every song that fires it.
+            </>
+          )}
+          {result.records.length > 0 && (
+            <>
+              <br />
+              The record itself is among the parts of{' '}
+              {result.records.length === 1 ? 'one song' : `${result.records.length} songs`} —{' '}
+              {result.records.map((r) => `${r.song} [${r.part}]`).join(', ')} — and is tagged so the band's
+              player switches to it rather than mixing it in.
             </>
           )}
           {result.skipped.length > 0 && (

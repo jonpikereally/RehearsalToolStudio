@@ -77,7 +77,12 @@ export interface PreparedPart {
   kind?: 'sampler';
   /** A sampler part's id in the library, its revision, and its place among the parts. */
   id?: string;
-  role?: 'stem';
+  /**
+   * What the part is to a mixer. A `stem` is a fader to blend in with the
+   * others; a `mix` is a whole song, to be switched to on its own — the
+   * record itself, or the band's own full bounce. Absent means stem.
+   */
+  role?: 'stem' | 'mix';
   rev?: string;
   order?: number;
   samples?: SamplerSample[];
@@ -92,6 +97,13 @@ export interface PreparedPart {
    * rather than folded into it. Absent means an ordinary part.
    */
   reference?: boolean;
+  /**
+   * The record itself — the "REF SONG" or "Ref Master" a set keeps to play
+   * against, never a fader in the mix. Said outright, because a player that
+   * read it as one more reference stem would put the whole record under a
+   * fader beside the band's drums. Always a `mix` and always `reference`.
+   */
+  record?: boolean;
 }
 
 export interface PreparedManifest {
@@ -185,6 +197,10 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
             bad(`"parts"[${j}].name must be text`);
           } else if (part.reference !== undefined && typeof part.reference !== 'boolean') {
             bad(`"parts"[${j}].reference must be true or false`);
+          } else if (part.record !== undefined && typeof part.record !== 'boolean') {
+            bad(`"parts"[${j}].record must be true or false`);
+          } else if (part.role !== undefined && part.role !== 'stem' && part.role !== 'mix') {
+            bad(`"parts"[${j}].role can only be "stem" or "mix"`);
           } else if (part.kind !== undefined && part.kind !== 'sampler') {
             bad(`"parts"[${j}].kind can only be "sampler"`);
           } else if (part.kind === 'sampler') {

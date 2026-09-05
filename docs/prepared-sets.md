@@ -105,6 +105,13 @@ length of the song, and is meant to be played alongside the others.
   `[ref drums]` is "drums" — and say "reference" beside it rather than
   inside the name, where it would compete with the instrument for the same
   few characters.
+- **The record itself is tagged as such.** A set often keeps the finished
+  song — a track called `REF SONG` or `Ref Master` — beside the record's
+  parts, and it wants the opposite handling: not a fader in the mix but a
+  whole song to switch to on its own, for checking the band against. Its
+  `parts` entry carries `role: "mix"` and `record: true`, as well as
+  `reference: true`; a reference *part* carries neither. The band's own full
+  bounce (`Full Mix`) is a `mix` too, but not the record.
 - **A combined part** is several tracks summed into one, under a name typed
   in the Studio, `[band]` by default. It is pulled down as a whole if the sum
   would clip, and left alone otherwise.
@@ -183,6 +190,7 @@ way a hand-made folder would.
       "markers": [{ "bar": 1, "name": "Intro" }, { "bar": 5, "name": "Verse 1" }],
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
       "parts": [
+        { "label": "ref song", "name": "song", "role": "mix", "reference": true, "record": true },
         { "label": "ref drums", "name": "drums", "reference": true },
         { "label": "bass", "name": "bass" },
         { "label": "click", "name": "click", "kind": "sampler",
@@ -225,7 +233,7 @@ way a hand-made folder would.
 | `songs[].markers` | no | `{bar, name}` list of sections |
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
-| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
+| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?}, lengthBars?, endPatch?}` |
 
 Rules the reader follows, and a writer can rely on:
@@ -288,7 +296,12 @@ the same way.
    without the reference marker, with "reference" said beside it — and fall
    back to the bracketed label when it does not. A set prepared before `parts`
    existed carries none, and `[ref …]` in the label is then the only clue;
-   read it the same way.
+   read it the same way. A part with `record: true` is the record itself:
+   give it no fader, and play it on its own in place of the band's parts when
+   asked — the way SWITCH does. Treat any other `role: "mix"` as a whole
+   version to switch to, not to blend. A set prepared before `record` existed
+   says nothing, and a `[ref song]`, `[ref master]` or `[reference]` label with
+   no instrument word left in it is then the record.
 7. Play the parts of a song together; they are the same length and start at
    the same instant.
 
