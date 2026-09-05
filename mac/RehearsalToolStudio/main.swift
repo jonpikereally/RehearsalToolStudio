@@ -181,6 +181,42 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     /*
+     * A black window is WebKit's web content process gone — killed for memory,
+     * or crashed — with nothing put in its place. The page is reloaded at
+     * once, which is what a person does; a second death within a minute gets
+     * a page saying so instead of a loop. Either way the launch log records
+     * it, so a window that went black at 18:50 can be asked about later.
+     */
+    var contentDiedAt: Date?
+
+    /** A line in the launch log, dated, beside the launcher's own. */
+    func note(_ line: String) {
+        let path = (logPath as NSString).expandingTildeInPath
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let text = "\(stamp) app: \(line)\n"
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(text.data(using: .utf8) ?? Data())
+            handle.closeFile()
+        } else {
+            try? text.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        let again = contentDiedAt.map { now.timeIntervalSince($0) < 60 } ?? false
+        contentDiedAt = now
+        note("web content process terminated" + (again ? " again; not reloading" : "; reloading"))
+        if again {
+            web.loadHTMLString(page("The studio's page stopped twice in a minute",
+                "WebKit shut its web content process down, usually for memory. Reload from the menu (⌘R) to try again; if it keeps happening, quit any song runs and rescan."), baseURL: nil)
+            return
+        }
+        web.reload()
+    }
+
+    /*
      * Kept awake while the page says so. A prepare runs for many minutes and
      * touches nothing, which is idleness to macOS: the display sleeps, the
      * app is napped, the Mac sleeps, and a run that wrote a part every seven

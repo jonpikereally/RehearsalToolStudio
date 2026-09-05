@@ -2277,7 +2277,7 @@ group('writing a chord track');
   const project = parseAlsXml(xml);
   const { clips, trackName, converted, withoutKey } = chordClipsFor(project);
 
-  check('a set of names is converted to numbers', trackName === 'Nash Chords +LYRICS', trackName);
+  check('a set of names is converted to numbers', trackName === 'ADD THIS Nash Chords +LYRICS', trackName);
   check('every song with a key is converted', converted.join() === 'One,Two', converted.join());
   check('a song with no key is named, not guessed at', withoutKey.join() === 'Keyless', withoutKey.join());
   check('only the songs that could be converted contribute clips', clips.length === 4, clips.length);
@@ -2291,6 +2291,9 @@ group('writing a chord track');
   // In brackets, as AbleSet reads a chord on a lyrics track.
   check('each song is counted in its own key, in brackets',
     clips.map((c) => c.text).join(' ') === '[1] [4] [1] [4]', clips.map((c) => c.text).join(' '));
+  check('each clip runs to the next chord, a bar at most, so none overlap',
+    clips.every((c, i) => c.bars === Math.max(0.25, Math.min(1, (clips[i + 1]?.bar ?? c.bar + 1) - c.bar))), JSON.stringify(clips.map((c) => [c.bar, c.bars])));
+  check('and the track says what to do with it', trackName === 'ADD THIS Nash Chords +LYRICS', trackName);
 
   /*
    * The key a locator never named can be typed in instead. The set's own word
@@ -2315,14 +2318,14 @@ group('writing a chord track');
 
   const out = addChordTrack(xml, clips, trackName, project);
   check('the track is written', out.clipsWritten === 4);
-  check('named the way AbleSet names one', out.xml.includes('<EffectiveName Value="Nash Chords +LYRICS"'));
+  check('named the way AbleSet names one, with what to do with it in front', out.xml.includes('<EffectiveName Value="ADD THIS Nash Chords +LYRICS"'));
   check('the set keeps the track it had', out.xml.includes('<EffectiveName Value="Chords +LYRICS"'));
   const firstTrackName = (xml) => {
     const at = xml.indexOf('<Tracks>');
     const tag = at + xml.slice(at).search(/<(Audio|Midi|Group|Return)Track /);
     return xml.slice(tag).match(/<EffectiveName Value="([^"]*)"/)?.[1];
   };
-  check('the new track is the first in the list', firstTrackName(out.xml) === 'Nash Chords +LYRICS', firstTrackName(out.xml));
+  check('the new track is the first in the list, and says what to do with it', firstTrackName(out.xml) === 'ADD THIS Nash Chords +LYRICS', firstTrackName(out.xml));
   check('a chord clip carries no notes', /<KeyTracks \/>/.test(out.xml));
 
   // Live refuses a whole set over one duplicate, dotted tag names included.
@@ -2928,11 +2931,11 @@ group('slates track');
   );
 
   check('both slates are written', clipsWritten === 2);
-  check('a new track is made when none is named Slate', trackName === 'Slates' && !reusedTrack);
+  check('a new track is made when none is named Slate', trackName === 'ADD THIS Slates' && !reusedTrack);
   check('the slates track is the first in the list', (() => {
     const at = out.indexOf('<Tracks>');
     const tag = at + out.slice(at).search(/<(Audio|Midi|Group|Return)Track /);
-    return out.slice(tag).match(/<EffectiveName Value="([^"]*)"/)?.[1] === 'Slates';
+    return out.slice(tag).match(/<EffectiveName Value="([^"]*)"/)?.[1] === 'ADD THIS Slates';
   })());
   check('the model track survives untouched', /<EffectiveName Value="Stems"/.test(out));
 
@@ -2941,7 +2944,7 @@ group('slates track');
   check('a song at beat zero slates from zero', /<CurrentStart Value="0" \/>/.test(out));
   check('slate clips are unwarped', (out.match(/<IsWarped Value="false"/g) ?? []).length === 2);
   check('slate paths are project relative', out.includes('<RelativePath Value="Slates/Opener.wav"'));
-  check('the muted model plays as a slate track', /<EffectiveName Value="Slates"[\s\S]{0,600}?<Manual Value="true"/.test(out));
+  check('the muted model plays as a slate track', /<EffectiveName Value="ADD THIS Slates"[\s\S]{0,600}?<Manual Value="true"/.test(out));
 
   // The pointee namespace: everything fresh, nothing repeated, counter bumped.
   const ids = [...out.matchAll(/<(?:[\w.]*Target[\w.]*|Pointee) Id="(\d+)"/g)].map((m) => Number(m[1]));
@@ -4305,7 +4308,7 @@ group('song info as AbleSet clips');
   check('lines are joined with AbleSet\'s break', /\*\*Yellow\*\* \\ Key: Bb \\ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 
   // Off AbleSet's tracks, a clip is a plain name for Live: no stars, no backslashes.
-  check('the default track is a plain one', DEFAULT_INFO_TRACK === 'SONG INFO' && !abletReads(DEFAULT_INFO_TRACK) && abletReads('Info +LYRICS'));
+  check('the default track is a plain one, and says what to do with it', DEFAULT_INFO_TRACK === 'ADD THIS SONG INFO' && !abletReads(DEFAULT_INFO_TRACK) && abletReads('Info +LYRICS'));
   const plain = infoClipsFor(p2, ['Yellow'], all, { forAbleSet: false }).clips[0].text;
   check('and its clip is one plain line', plain.startsWith('Yellow · Key: Bb · ') && !/[\\*]/.test(plain), plain);
   check('with the notes\' line break made a dot too', /Watch the drummer · for the stop\./.test(plain));

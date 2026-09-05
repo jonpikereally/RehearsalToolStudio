@@ -50,7 +50,7 @@ export const INFO_FIELD_LABEL: Record<keyof InfoFields, string> = {
   tags: 'Tags',
 };
 
-export const DEFAULT_INFO_TRACK = 'SONG INFO';
+export const DEFAULT_INFO_TRACK = 'ADD THIS SONG INFO';
 
 /**
  * How a clip's lines are joined depends on who reads it. A track flagged

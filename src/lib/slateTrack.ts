@@ -35,7 +35,7 @@ export interface SlateTrackResult {
   reusedTrack: boolean;
 }
 
-import { cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
+import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
 
 const SAMPLE_RATE = 48000;
 
@@ -149,7 +149,7 @@ export function addSlatesTrack(xml: string, slates: SlateClip[], nowSec: number)
     trackName = (existing.text.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? 'Slate';
     out = xml.slice(0, existing.start) + withClips(existing.text) + xml.slice(existing.end);
   } else {
-    trackName = 'Slates';
+    trackName = addThis('Slates');
     let track = trackT.replace(/^(\s*)<AudioTrack Id="\d+"/, `$1<AudioTrack Id="${ids.next()}"`);
     track = cleanTrack(track, 'Slates');
     track = sub(track, /(<Speaker>[\s\S]{0,200}?<Manual Value=")(?:true|false)/, '$1true', 'speaker');

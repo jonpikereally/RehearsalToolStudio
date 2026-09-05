@@ -3,13 +3,19 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { StoreProvider } from './lib/store';
 import { requestPersistence } from './lib/idb';
+import ErrorBoundary from './ui/ErrorBoundary';
+import { watchErrors } from './lib/reportError';
 import './styles.css';
+
+watchErrors();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StoreProvider>
-      <App />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <App />
+      </StoreProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
 

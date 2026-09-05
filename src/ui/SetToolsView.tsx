@@ -15,6 +15,7 @@ import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
 import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
 import { keyRank, type SortSpec } from '../lib/songSort';
+import { addThis } from '../lib/alsEdit';
 import { runningOrderTitles } from '../lib/ableset';
 import SortBar, { useSort } from './SortBar';
 import { parseKey } from '../lib/nashville';
@@ -387,7 +388,7 @@ export default function SetToolsView() {
     setError(null);
     setDone(null);
     try {
-      const trackName = infoTrack.trim() || DEFAULT_INFO_TRACK;
+      const trackName = addThis(infoTrack.trim() || DEFAULT_INFO_TRACK);
       const { clips, songs, empty } = infoClipsFor(project, [...selected], infoFields, {
         wholeSong: infoWholeSong,
         keyFor,

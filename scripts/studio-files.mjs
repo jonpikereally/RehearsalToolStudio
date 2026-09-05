@@ -47,7 +47,8 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -58,6 +59,9 @@ import { pipeline } from 'node:stream/promises';
  * — a click, a bank of spoken cues — and is only ever read.
  */
 export const SLOTS = new Set(['songs', 'publish', 'resources']);
+
+/** Where the launcher writes, and where the page's own errors go too. */
+const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
 /** The set copies the studio and Lyrics Studio make, and may make again. */
 export const OWN_SET_COPY = /( \((slates|chords|info|rehearsaltool)\)| Lyrics)\.als$/i;
@@ -335,6 +339,18 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         }
       }
       return { found: false, projectFile };
+    },
+
+    /**
+     * A line from the page into the launch log: an error it caught, said
+     * beside the launcher's own lines where somebody can read it. Bounded,
+     * so a page in a loop cannot fill a disk.
+     */
+    async note({ text }) {
+      if (typeof text !== 'string' || !text.trim()) throw new Refusal(400, 'text is required');
+      const line = `${new Date().toISOString()} page: ${text.slice(0, 4000).replace(/\r?\n/g, '\n    ')}\n`;
+      await appendFile(LAUNCH_LOG, line).catch(() => {});
+      return { ok: true };
     },
 
     async stat({ dir, path }) {

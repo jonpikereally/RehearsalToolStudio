@@ -82,10 +82,23 @@ export function trackInsertPoint(xml: string): number {
   return lineEnd < 0 ? tracksOpen + '<Tracks>'.length : lineEnd + 1;
 }
 
-/** Strip a cloned track of the handles and envelopes belonging to its original. */
+/**
+ * Every track the studio adds to a copy of a set is named to say so. The
+ * copy is never the set; what is in it is meant to be dragged into the
+ * real one, and a track called "ADD THIS Chords +LYRICS" says exactly what
+ * to do with it, however long the copy sits beside the original.
+ */
+export const ADD_THIS = 'ADD THIS';
+
+export function addThis(name: string): string {
+  return new RegExp(`^${ADD_THIS}\\b`, 'i').test(name.trim()) ? name.trim() : `${ADD_THIS} ${name.trim()}`;
+}
+
+/** Strip a cloned track of the handles and envelopes belonging to its original, and name it. */
 export function cleanTrack(track: string, name: string): string {
-  let out = sub(track, /<EffectiveName Value="[^"]*"/, `<EffectiveName Value="${esc(name)}"`, 'track name');
-  out = sub(out, /<UserName Value="[^"]*"/, `<UserName Value="${esc(name)}"`, 'track user name');
+  const named = addThis(name);
+  let out = sub(track, /<EffectiveName Value="[^"]*"/, `<EffectiveName Value="${esc(named)}"`, 'track name');
+  out = sub(out, /<UserName Value="[^"]*"/, `<UserName Value="${esc(named)}"`, 'track user name');
   out = sub(out, /<TrackGroupId Value="-?\d+"/, '<TrackGroupId Value="-1"', 'track group');
   out = out.replace(/<LomId Value="\d+"/g, '<LomId Value="0"');
   return out.replace(

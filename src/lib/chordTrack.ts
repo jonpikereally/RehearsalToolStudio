@@ -1,5 +1,5 @@
 import type { AlsProject } from './alsParser';
-import { cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
+import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
 import { deriveChordLanes, isNashvilleLane } from './nashville.ts';
 import type { ChartLane } from '../types';
 
@@ -91,9 +91,20 @@ export function chordClipsFor(
   }
 
   clips.sort((a, b) => a.bar - b.bar);
+  /*
+   * Each clip runs to the next chord, or a bar, whichever comes first. A
+   * chart that changes every half bar was getting bar-long clips that
+   * overlapped, and Live trimmed every one of them on load, saying so in
+   * its log line by line.
+   */
+  for (let i = 0; i < clips.length; i++) {
+    const next = clips[i + 1];
+    const gap = next ? next.bar - clips[i].bar : 1;
+    clips[i].bars = Math.max(0.25, Math.min(1, gap));
+  }
   return {
     clips,
-    trackName: toNumbers ? 'Nash Chords +LYRICS' : 'Chords +LYRICS',
+    trackName: addThis(toNumbers ? 'Nash Chords +LYRICS' : 'Chords +LYRICS'),
     converted,
     withoutKey,
   };
@@ -123,7 +134,7 @@ export function addChordTrack(
 
   const written = clips.map((clip, i) => {
     const start = (clip.bar - 1) * beatsPerBar;
-    const length = Math.max(1, clip.bars ?? 1) * beatsPerBar;
+    const length = Math.max(0.25, clip.bars ?? 1) * beatsPerBar;
     const end = start + length;
     let c = clipT.replace(
       /^(\s*)<MidiClip Id="\d+" Time="[-\d.]+">/,
@@ -166,5 +177,5 @@ export function addChordTrack(
     /<NextPointeeId Value="\d+"/,
     `<NextPointeeId Value="${ids.value()}"`,
   );
-  return { xml: out, trackName, clipsWritten: written.length, songsConverted: [], songsWithoutKey: [] };
+  return { xml: out, trackName: addThis(trackName), clipsWritten: written.length, songsConverted: [], songsWithoutKey: [] };
 }
