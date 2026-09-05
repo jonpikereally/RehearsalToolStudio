@@ -12,6 +12,10 @@ import {
 } from '../lib/slates';
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
+import { DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
+import { keyRank, type SortSpec } from '../lib/songSort';
+import { runningOrderTitles } from '../lib/ableset';
+import SortBar, { useSort } from './SortBar';
 import { parseKey } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
 import { findLyricsStudio } from '../lib/lyricsStudio';
@@ -36,6 +40,9 @@ import { writeClipsToSet } from '../lib/alsWrite';
  */
 
 const LS_VOICE = 'ls.settools.voice';
+const LS_INFO = 'ls.settools.info';
+const LS_INFO_TRACK = 'ls.settools.info.track';
+const LS_INFO_SPAN = 'ls.settools.info.span';
 
 export default function SetToolsView() {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
@@ -51,8 +58,35 @@ export default function SetToolsView() {
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet } = useStore();
   const [tool, setTool] = useState<
-    'check' | 'slates' | 'lyrics' | 'chords' | 'patches' | 'setlist' | 'update'
+    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
+  /*
+   * Song info clips: which facts, remembered on this device, and whether the
+   * clip runs the song or only its first bar.
+   */
+  const [infoFields, setInfoFields] = useState<InfoFields>(() => {
+    try {
+      const raw = localStorage.getItem(LS_INFO);
+      return raw ? { ...DEFAULT_INFO_FIELDS, ...(JSON.parse(raw) as Partial<InfoFields>) } : DEFAULT_INFO_FIELDS;
+    } catch {
+      return DEFAULT_INFO_FIELDS;
+    }
+  });
+  const [infoTrack, setInfoTrack] = useState(() => localStorage.getItem(LS_INFO_TRACK) || DEFAULT_INFO_TRACK);
+  const [infoWholeSong, setInfoWholeSong] = useState(() => localStorage.getItem(LS_INFO_SPAN) !== 'bar');
+  const setInfoField = (key: keyof InfoFields, on: boolean) =>
+    setInfoFields((was) => {
+      const next = { ...was, [key]: on };
+      try {
+        localStorage.setItem(LS_INFO, JSON.stringify(next));
+      } catch {
+        /* not remembered, then */
+      }
+      return next;
+    });
+  /* The song picker: sorted, and narrowed by a few typed letters. */
+  const [pickSort, setPickSort] = useSort('ls.sort.settools');
+  const [pickFilter, setPickFilter] = useState('');
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<string | null>(null);
@@ -183,6 +217,44 @@ export default function SetToolsView() {
     else next.add(title);
     setChosen(next);
   };
+
+  /*
+   * The picker's rows: in the chosen order, narrowed by the filter. Set
+   * order is the set's own; name, key and tempo read from the locators.
+   */
+  const shownTitles = (() => {
+    const needle = pickFilter.trim().toLowerCase();
+    // Set order is the running order — AbleSet's, as the library has it —
+    // with the arrangement's order for a set the library has no setlist for.
+    const running = setPath && !lone ? runningOrderTitles(library, setPath) : null;
+    const place = new Map((running ?? []).map((t, i) => [t, i]));
+    const info = new Map(project?.songs.map((sg, i) => [sg.title, { i: place.get(sg.title) ?? (running ? running.length + i : i), sg }]) ?? []);
+    const rows = titles.filter((t) => !needle || t.toLowerCase().includes(needle));
+    const sign = pickSort.dir === 'asc' ? 1 : -1;
+    const value = (t: string): number | string | null => {
+      const it = info.get(t);
+      if (!it) return null;
+      switch ((pickSort as SortSpec).key) {
+        case 'set':
+          return it.i;
+        case 'name':
+          return t.toLowerCase();
+        case 'key':
+          return keyRank(it.sg.key ?? undefined);
+        case 'tempo':
+          return it.sg.bpm ?? it.sg.startBpm ?? null;
+      }
+    };
+    return [...rows].sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      if (va === null && vb === null) return a.localeCompare(b);
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      const cmp = typeof va === 'string' && typeof vb === 'string' ? va.localeCompare(vb) : (va as number) - (vb as number);
+      return cmp !== 0 ? sign * cmp : a.localeCompare(b);
+    });
+  })();
   const wholeSet = selected.size === titles.length;
 
   /** Every song's first locator, deduped the way the slates are. */
@@ -307,6 +379,42 @@ export default function SetToolsView() {
   };
 
   /**
+   * Song info, as one AbleSet lyrics clip per song in a copy of the set.
+   */
+  const addInfo = async () => {
+    if (!project || (!setPath && !lone)) return;
+    setError(null);
+    setDone(null);
+    try {
+      const trackName = infoTrack.trim() || DEFAULT_INFO_TRACK;
+      const { clips, songs, empty } = infoClipsFor(project, [...selected], infoFields, {
+        wholeSong: infoWholeSong,
+        keyFor,
+      });
+      if (!clips.length) {
+        setError('Nothing to write — tick at least one kind of information, for songs that have it.');
+        return;
+      }
+      setProgress('Writing song info…');
+      const { dir, prefix, base } = await destination();
+      const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
+      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (info).als`;
+      await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
+      setDone(
+        `${result.clipsWritten} song info clip${result.clipsWritten === 1 ? '' : 's'} on a “${trackName}” track, ` +
+          `${songs.length} song${songs.length === 1 ? '' : 's'}, in ${copyPath.split('/').pop()} — open that copy in Live. ` +
+          'The original is untouched.' +
+          (empty.length ? ` ${empty.length} song${empty.length === 1 ? ' had' : 's had'} nothing to say: ${empty.slice(0, 4).join(', ')}.` : ''),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  /**
    * The library's patch clips, written into the set as *rig locators — the
    * same commit the player offers per song, here for the set at once. Only
    * for a set from the folder: a lone .als was never scanned, so the library
@@ -421,7 +529,7 @@ export default function SetToolsView() {
               {titles.length > 6 ? '…' : ''}
             </div>
 
-            <div className="field">
+            <div className="field stacked">
               <label>
                 What to work on
                 <span className="hint">
@@ -435,9 +543,41 @@ export default function SetToolsView() {
                 <button className="btn" disabled={!!progress} onClick={() => setChosen(new Set())}>
                   Clear
                 </button>
+                {pickFilter.trim() && shownTitles.length > 0 && (
+                  <>
+                    <button
+                      className="btn"
+                      disabled={!!progress}
+                      onClick={() => setChosen(new Set([...selected, ...shownTitles]))}
+                      title="Tick every song the filter shows"
+                    >
+                      Tick shown
+                    </button>
+                    <button
+                      className="btn"
+                      disabled={!!progress}
+                      onClick={() => setChosen(new Set([...selected].filter((t) => !shownTitles.includes(t))))}
+                      title="Untick every song the filter shows"
+                    >
+                      Untick shown
+                    </button>
+                  </>
+                )}
                 <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
                   {wholeSet ? `all ${titles.length} songs` : `${selected.size} of ${titles.length}`}
                 </span>
+              </div>
+              <div className="controls flush" style={{ alignItems: 'center', gap: 8 }}>
+                <input
+                  className="text-input"
+                  type="search"
+                  value={pickFilter}
+                  onChange={(e) => setPickFilter(e.target.value)}
+                  placeholder="Find a song…"
+                  aria-label="Find a song"
+                  disabled={!!progress}
+                />
+                <SortBar sort={pickSort} onChange={setPickSort} />
               </div>
               <div
                 style={{
@@ -448,20 +588,33 @@ export default function SetToolsView() {
                   padding: '6px 10px',
                 }}
               >
-                {titles.map((title) => (
-                  <label
-                    key={title}
-                    style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', cursor: 'pointer' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(title)}
-                      disabled={!!progress}
-                      onChange={() => toggle(title)}
-                    />
-                    <span style={{ fontSize: 14 }}>{title}</span>
-                  </label>
-                ))}
+                {shownTitles.map((title) => {
+                  const sg = project.songs.find((x) => x.title === title);
+                  return (
+                    <label
+                      key={title}
+                      style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(title)}
+                        disabled={!!progress}
+                        onChange={() => toggle(title)}
+                      />
+                      <span style={{ fontSize: 14 }}>{title}</span>
+                      {sg && (
+                        <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                          {[sg.key, sg.bpm ?? sg.startBpm ? `${Math.round((sg.bpm ?? sg.startBpm) * 10) / 10} BPM` : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+                {shownTitles.length === 0 && (
+                  <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>No song matches.</div>
+                )}
               </div>
             </div>
           </>
@@ -479,6 +632,7 @@ export default function SetToolsView() {
               ['slates', 'Slates'],
               ['lyrics', 'Lyrics'],
               ['chords', 'Chords'],
+              ['info', 'Song info'],
               ['patches', 'Patch changes'],
               ['setlist', 'Setlist'],
               ['update', 'Update the band'],
@@ -582,6 +736,100 @@ export default function SetToolsView() {
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
                     Writes the chord language the set is missing — names from numbers or numbers from
                     names, each song in its own key — as a +LYRICS track in a copy of the set.
+                  </div>
+                </>
+              )}
+
+              {tool === 'info' && (
+                <>
+                  <div className="field stacked">
+                    <label>
+                      What each clip says
+                      <span className="hint">
+                        One AbleSet lyrics clip at the top of each song, on a track of its own, with these
+                        facts as lines. Whoever is looking at AbleSet sees them as the song comes up.
+                      </span>
+                    </label>
+                    <div className="controls flush" style={{ gap: 12 }}>
+                      {(Object.keys(INFO_FIELD_LABEL) as (keyof InfoFields)[]).map((key) => (
+                        <label key={key} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={infoFields[key]}
+                            disabled={!!progress}
+                            onChange={(e) => setInfoField(key, e.target.checked)}
+                          />
+                          <span style={{ fontSize: 14 }}>{INFO_FIELD_LABEL[key]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="controls flush" style={{ alignItems: 'center' }}>
+                    <span className="control-label">Track</span>
+                    <input
+                      className="text-input"
+                      value={infoTrack}
+                      onChange={(e) => {
+                        setInfoTrack(e.target.value);
+                        try {
+                          localStorage.setItem(LS_INFO_TRACK, e.target.value);
+                        } catch {
+                          /* not remembered, then */
+                        }
+                      }}
+                      placeholder={DEFAULT_INFO_TRACK}
+                      aria-label="Track name for the song info clips"
+                      disabled={!!progress}
+                    />
+                    <span className="control-note">must carry +LYRICS for AbleSet to show it</span>
+                  </div>
+                  <div className="controls flush" style={{ alignItems: 'center' }}>
+                    <span className="control-label">Clip</span>
+                    <div className="segmented" role="radiogroup" aria-label="How long each clip runs">
+                      {([
+                        [true, 'Whole song'],
+                        [false, 'First bar only'],
+                      ] as const).map(([whole, label]) => (
+                        <button
+                          key={label}
+                          role="radio"
+                          aria-checked={infoWholeSong === whole}
+                          className={infoWholeSong === whole ? 'seg on' : 'seg'}
+                          disabled={!!progress}
+                          onClick={() => {
+                            setInfoWholeSong(whole);
+                            try {
+                              localStorage.setItem(LS_INFO_SPAN, whole ? 'song' : 'bar');
+                            } catch {
+                              /* not remembered, then */
+                            }
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="control-note">
+                      {infoWholeSong ? 'on screen for the whole song' : 'shown as the song starts, then gone'}
+                    </span>
+                  </div>
+                  {(() => {
+                    const first = project.songs.find((sg) => selected.has(sg.title));
+                    const lines = first ? infoLinesFor(first, project, infoFields, keyFor[first.title]) : [];
+                    return first && lines.length ? (
+                      <div className="notice" style={{ whiteSpace: 'pre-line' }}>
+                        {`For ${first.title}, the clip would read:\n${lines.join('\n')}`}
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="btn-row">
+                    <button className="btn primary" disabled={!!progress || selected.size === 0} onClick={() => void addInfo()}>
+                      {wholeSet ? 'Write song info, whole set' : `Write song info, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Writes a copy of the set named “… (info).als” with the new track; the original is
+                    never touched. Run it again after a change and the copy is rewritten.
                   </div>
                 </>
               )}

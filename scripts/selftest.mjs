@@ -3224,6 +3224,7 @@ group('the file API');
   check('an existing set is never overwritten', (await putAls('Band/Yellow/Yellow.als')).status === 403);
   check('and is still exactly what it was', (await readFile(join(songs, 'Band/Yellow/Yellow.als'), 'utf8')).length === 15);
   check('a copy of it may be written', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
+  check('so may a song-info copy, twice', (await putAls('Band/Yellow/Yellow (info).als')).status === 200 && (await putAls('Band/Yellow/Yellow (info).als')).status === 200);
   check('and written again', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
   check('a set that is not there yet may be written', (await putAls('Band/Yellow/Brand New.als')).status === 200);
   check('but not a second time', (await putAls('Band/Yellow/Brand New.als')).status === 403);
@@ -4251,6 +4252,39 @@ group('running order from AbleSet');
   check('the last order AbleSet sent itself is the one taken', live?.at === '2026-09-05T21:18:24Z' && live.setlistName === 'Tour 2', JSON.stringify(live));
   check('sorted by its order field, names carried', live.entries.map((e) => e.lastKnownName).join(',') === 'Fix You,Yellow');
   check('a log with no such line has none', liveSetlistFromLog('{"a":1}\nnope') === null);
+}
+
+/* ------------------------------ song info clips ------------------------------ */
+
+group('song info as AbleSet clips');
+{
+  const { infoLinesFor, infoClipsFor, songLengthSec, DEFAULT_INFO_FIELDS } = await import('../src/lib/infoTrack.ts');
+  const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [] };
+  const song = (over = {}) => ({
+    title: 'Yellow', raw: '', startBar: 9, endBar: 72, bpm: 88, startBpm: 88, key: 'Bb', durationText: null, tags: ['#slow'],
+    flags: [], endsAtStop: true, slateBars: [], sections: [{ bar: 1, text: 'INTRO' }, { bar: 5, text: 'VERSE 1' }], chords: [], lyrics: [], lanes: [],
+    tempoChanges: [], rigMarks: [], timeSigNum: 4, timeSigDen: 4, stems: [], notes: 'Watch the drummer\nfor the stop.', ...over,
+  });
+  const all = Object.fromEntries(Object.keys(DEFAULT_INFO_FIELDS).map((k) => [k, true]));
+  const lines = infoLinesFor(song(), project, all);
+  check('the title is bold, as AbleSet reads it', lines[0] === '**Yellow**', lines[0]);
+  check('the key is said', lines.includes('Key: Bb'));
+  check('tempo, time and length share a line', lines.some((l) => l === '88 BPM · 4/4 · 64 bars · 2:55'), lines.join(' | '));
+  check('sections are listed in order', lines.includes('Sections: INTRO · VERSE 1'));
+  check('notes lose their line breaks for AbleSet\'s own', lines.includes('Watch the drummer \\ for the stop.'), lines.join(' | '));
+  check('tags ride along', lines.includes('#slow'));
+  check('unticked facts are left out', infoLinesFor(song(), project, { ...DEFAULT_INFO_FIELDS, sections: false, tags: false, notes: false }).length === 3);
+  check('a key typed by hand wins over the locator\'s', infoLinesFor(song(), project, all, 'A').includes('Key: A'));
+  check('a song with a tempo change is timed through it', Math.abs(songLengthSec(song({ tempoChanges: [{ bar: 33, bpm: 176 }] }), project) - (32 * 4 * 60 / 88 + 32 * 4 * 60 / 176)) < 1e-6);
+
+  const p2 = { ...project, songs: [song(), song({ title: 'Yellow' }), song({ title: 'Clocks', startBar: 80, endBar: 100, key: 'D', notes: '', tags: [], sections: [] }), song({ title: 'Blank', startBar: 110, endBar: 120, key: null, notes: '', tags: [], sections: [] })] };
+  const { clips, songs, empty } = infoClipsFor(p2, ['Yellow', 'Clocks'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false });
+  check('one clip per song, at its first bar, the song long', clips.length === 2 && clips[0].bar === 9 && clips[0].bars === 64 && clips[1].bar === 80, JSON.stringify(clips.map((c) => [c.bar, c.bars])));
+  check('a repeated title is one song', songs.join() === 'Yellow,Clocks' && empty.length === 0);
+  const bare = infoClipsFor(p2, ['Blank'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false, key: true });
+  check('a song with nothing to say under the ticks is named, not written', bare.clips.length === 0 && bare.empty.join() === 'Blank');
+  check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
+  check('lines are joined with AbleSet\'s break', /\*\*Yellow\*\* \\ Key: Bb \\ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

@@ -1727,6 +1727,25 @@ button {
   max-width: none;
 }
 
+/*
+ * A field whose content is a list, a search box and a row of orders has no
+ * room beside its label: stacked, the label reads as a heading over it.
+ */
+.field.stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.field.stacked label {
+  flex: none;
+}
+
+.field.stacked .text-input,
+.field.stacked input[type='search'] {
+  max-width: none;
+  flex: 1 1 200px;
+}
+
 .field .hint {
   display: block;
   font-size: 12px;

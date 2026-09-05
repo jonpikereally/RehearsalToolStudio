@@ -21,6 +21,8 @@ export interface ChordClip {
   /** Bars from the start of the set, 1-based, as Live's ruler counts. */
   bar: number;
   text: string;
+  /** How many bars the clip runs; one, as a chord clip is drawn, without. */
+  bars?: number;
 }
 
 export interface ChordTrackResult {
@@ -118,7 +120,8 @@ export function addChordTrack(
 
   const written = clips.map((clip, i) => {
     const start = (clip.bar - 1) * beatsPerBar;
-    const end = start + beatsPerBar; // a bar long, as a chord clip is drawn
+    const length = Math.max(1, clip.bars ?? 1) * beatsPerBar;
+    const end = start + length;
     let c = clipT.replace(
       /^(\s*)<MidiClip Id="\d+" Time="[-\d.]+">/,
       `$1<MidiClip Id="${i}" Time="${start}">`,
@@ -130,12 +133,12 @@ export function addChordTrack(
       /<Loop>[\s\S]*?<\/Loop>/,
       `<Loop>
 											<LoopStart Value="0" />
-											<LoopEnd Value="${beatsPerBar}" />
+											<LoopEnd Value="${length}" />
 											<StartRelative Value="0" />
 											<LoopOn Value="false" />
-											<OutMarker Value="${beatsPerBar}" />
+											<OutMarker Value="${length}" />
 											<HiddenLoopStart Value="0" />
-											<HiddenLoopEnd Value="${beatsPerBar}" />
+											<HiddenLoopEnd Value="${length}" />
 										</Loop>`,
       'clip loop',
     );
