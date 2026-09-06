@@ -119,7 +119,8 @@ const PROMPTS: Record<FolderSlot, string> = {
 /** Prompt for a folder. Named slots are remembered; `null` is a one-off, forgotten with the page. */
 export async function pickFolder(
   slot: FolderSlot | null = 'songs',
-  opts: { startIn?: string } = {},
+  /** Where the dialog opens: a path, or a place inside a remembered folder. */
+  opts: { startIn?: string | { slot: FolderSlot; sub?: string } } = {},
 ): Promise<LocalFolder> {
   const picked = await call<{ cancelled?: true; dir: string; name: string }>('pick', {
     kind: 'folder',
@@ -233,6 +234,11 @@ export async function abletLive(folder: FolderHandle, root: string, path: string
 }
 
 /** Whether a file is actually there, without reading it. */
+/** Show a file or folder in the Finder, selected. */
+export async function reveal(folder: FolderHandle, root: string, path: string): Promise<void> {
+  await call('reveal', { dir: open(folder).dir, path: below(root, path) });
+}
+
 export async function exists(folder: FolderHandle, root: string, path: string): Promise<boolean> {
   return (await call<{ exists: boolean }>('exists', { dir: open(folder).dir, path: below(root, path) })).exists;
 }

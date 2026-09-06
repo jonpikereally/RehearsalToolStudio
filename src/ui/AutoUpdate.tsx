@@ -6,6 +6,7 @@ import { overallProgress, type PrepareProgress } from '../lib/prepare';
 import { runPrepare, standingFor, titlesOf, type RunOutcome } from '../lib/prepareRun';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 import { runningOrderTitles } from '../lib/ableset';
+import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 
 /**
@@ -69,7 +70,8 @@ export default function AutoUpdate() {
         if (current()) setPhase({ kind: 'running', at, stage: 'Reading the set…', progress: null });
         const { bytes } = await readBytes(currentSet);
         const project = await parseAls(bytes);
-        const folderName = safeSetName(setNameFor(currentSet)) || defaultSetName(currentSet);
+        // The folder this set already has in the band's folder, whatever it is called now.
+        const folderName = await preparedNameFor(band, currentSet);
         if (current()) setPhase({ kind: 'running', at, stage: 'Looking at what changed…', progress: null });
         const found = await standingFor(project, currentSet, band, folderName);
         if (!found.manifest) {

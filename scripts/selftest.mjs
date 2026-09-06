@@ -3211,6 +3211,15 @@ group('the file API');
     (await call('open', { path: join(yellow, 'Yellow [drums].wav') })).status === 400);
   check('as is a path that is not there', (await call('open', { path: join(songs, 'nowhere') })).status === 404);
   check('and a slot that is not one', (await call('open', { path: songs, slot: 'attic' })).status === 400);
+
+  // A dialog opened inside a remembered folder, named by slot rather than path.
+  answer = songs;
+  await ask('pick', { kind: 'folder', startIn: { slot: 'songs', sub: 'Band' } });
+  check('the dialog can start inside a remembered folder', asked.startIn === join(songs, 'Band'), asked.startIn);
+  await ask('pick', { kind: 'folder', startIn: { slot: 'songs', sub: 'Nowhere' } });
+  check('and falls back when that place is not there', asked.startIn === songs, asked.startIn);
+  check('showing a path that is not there in the Finder is refused',
+    (await call('reveal', { dir: songs, path: 'Band/Missing' })).status === 404);
   check('a missing file does not exist', (await ask('exists', { dir: songs, path: 'Band/Nope.als' })).exists === false);
   check('and cannot be stat-ed', (await call('stat', { dir: songs, path: 'Band/Nope.als' })).status === 404);
 

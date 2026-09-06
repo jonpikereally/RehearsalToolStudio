@@ -2,6 +2,7 @@ import * as local from './localSource';
 import { isManifestName, setFolderOf, type PreparedManifest } from './preparedSet';
 import { isPreparedSet } from './prints';
 import { setFor, type PreparedSetAt } from './updatePrepared';
+import { defaultSetName, rememberSetName, rememberedSetName } from './setName';
 
 /**
  * Finding the prepared set in the band's folder that a given `.als` produced.
@@ -63,4 +64,29 @@ export async function locatePrepared(
   }
 
   return { setFolder: found.folder, manifest: found.manifest, presentFolders: [...present] };
+}
+
+/**
+ * The folder name to prepare under now.
+ *
+ * The name remembered for this .als when there is one. Otherwise the folder
+ * in the band's folder this set already produced — found the way the update
+ * tool finds it, by what the manifest says it came from or by the folder's
+ * name — because a set renamed on disk, or a memory lost with the browser's
+ * storage, must not start a fresh folder with no audio in it. Today's name
+ * only when nothing was ever prepared. Found once, it is remembered, so the
+ * one-song dialog lands in the same folder.
+ */
+export async function preparedNameFor(folder: local.FolderHandle, alsPath: string): Promise<string> {
+  const remembered = rememberedSetName(alsPath);
+  if (remembered) return remembered;
+  const found = await locatePrepared(folder, alsPath);
+  if (!('error' in found)) {
+    const name = found.setFolder.split('/').pop();
+    if (name) {
+      rememberSetName(alsPath, name);
+      return name;
+    }
+  }
+  return defaultSetName(alsPath);
 }

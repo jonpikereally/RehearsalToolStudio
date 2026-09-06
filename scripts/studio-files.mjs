@@ -240,7 +240,17 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       // when that is still a folder.
       const isDir = async (p) => typeof p === 'string' && !!(await stat(p).catch(() => null))?.isDirectory();
       const last = slot && slots[slot];
-      const startIn = (await isDir(suggested)) ? suggested : (await isDir(last)) ? last : undefined;
+      // A place inside a remembered folder — `{ slot: 'publish', sub: 'Sets' }` —
+      // which the page can name without knowing where that folder is.
+      let fallback = last;
+      if (suggested && typeof suggested === 'object') {
+        const { slot: inSlot, sub } = suggested;
+        const home = SLOTS.has(inSlot) ? slots[inSlot] : undefined;
+        suggested = home ? resolve(home, typeof sub === 'string' ? sub : '.') : undefined;
+        // The place inside it gone, the folder itself will do.
+        fallback = home ?? last;
+      }
+      const startIn = (await isDir(suggested)) ? suggested : (await isDir(fallback)) ? fallback : undefined;
       const chosen = await pick({
         kind,
         prompt: prompt || (kind === 'file' ? 'Choose a file' : 'Choose a folder'),
@@ -296,6 +306,14 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         await save();
       }
       return { dir, name: basename(dir), ...(file ? { file } : {}) };
+    },
+
+    /** Show a file or folder of a granted folder in the Finder. */
+    async reveal({ dir, path }) {
+      const full = inside(dir, path);
+      if (!(await stat(full).catch(() => null))) throw new Refusal(404, `${path} is not there`);
+      await new Promise((done, fail) => execFile('open', ['-R', full], (err) => (err ? fail(err) : done())));
+      return { ok: true };
     },
 
     async stored({ slot }) {

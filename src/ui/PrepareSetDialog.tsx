@@ -9,7 +9,8 @@ import { readBytes } from '../lib/source';
 import * as local from '../lib/localSource';
 import type { PublishResult } from '../lib/publish';
 import { SETS_FOLDER } from '../lib/prints';
-import { defaultSetName, rememberSetName, safeSetName, setNameFor } from '../lib/setName';
+import { defaultSetName, rememberSetName, rememberedSetName, safeSetName, setNameFor } from '../lib/setName';
+import { preparedNameFor } from '../lib/locatePrepared';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -124,6 +125,20 @@ export default function PrepareSetDialog({
       // The band's folder as already granted; never a dialog from an effect.
       const band = await publishFolder();
       if (!band || !live) return;
+      /*
+       * Nothing typed and nothing remembered: the set may still have a
+       * folder in the band's folder — prepared under a name it has since
+       * lost, or the .als renamed since. That folder's name, then, rather
+       * than today's, so the songs already there count as prepared.
+       */
+      if (!rememberedSetName(setPath) && setName === defaultSetName(setPath)) {
+        const located = await preparedNameFor(band, setPath);
+        if (!live) return;
+        if (located !== setName) {
+          setSetName(located);
+          return; // and back here with the name that was found
+        }
+      }
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       const found = await standingFor(project, setPath, band, folderName);
       if (!live) return;
