@@ -37,6 +37,13 @@ export interface AlsSong {
   /** Read from the locator name where present. */
   bpm: number | null;
   key: string | null;
+  /**
+   * Key changes marked inside the song, in song-relative bars: a clip named
+   * `Key: A` or `Key change: F#m` on any MIDI track — the song info clips
+   * the studio writes carry one at the top, and a modulation is marked by
+   * another later on. Sorted; the first may restate the song's own key.
+   */
+  keyChanges: { bar: number; key: string }[];
   durationText: string | null;
   tags: string[];
   /** AbleSet flags the locator carried — LOOP, PAUSE, SKIP, END. */
@@ -1036,6 +1043,34 @@ function unbracket(clip: Clip): Clip {
  * `lyrics` and `chords` stay alongside as the merged view of the same data, so
  * anything wanting just "the words" or "the chords" needn't know about lanes.
  */
+/**
+ * A key written in a clip's name: `Key: A`, `KEY CHANGE Bb`, `key = F#m`,
+ * `Key change → Eb major`. The letter, its accidental, and m for a minor.
+ * The word must be there — a chord clip `[A]` is a chord, not a key — and
+ * must stand on its own, so a lyric about a monkey says nothing.
+ */
+const KEY_MARK = /\bkey(?:\s*change)?\s*[:=\-–—>→]*\s*([A-G])([#b♯♭]?)(?:\s*(m|min|minor|maj|major))?\b/i;
+
+export function keyMarkIn(text: string): string | null {
+  const m = KEY_MARK.exec(text);
+  if (!m) return null;
+  const accidental = m[2] === '♯' ? '#' : m[2] === '♭' ? 'b' : m[2];
+  const minor = /^m(in(or)?)?$/i.test(m[3] ?? '');
+  return `${m[1].toUpperCase()}${accidental}${minor ? 'm' : ''}`;
+}
+
+/** Every key mark on the timeline, from the clips of every MIDI track. */
+function keyMarkClips(tracks: Track[]): { beat: number; key: string }[] {
+  const out: { beat: number; key: string }[] = [];
+  for (const track of tracks) {
+    for (const clip of clipsOf(track.chunk, 'MidiClip')) {
+      const key = keyMarkIn(clip.name);
+      if (key) out.push({ beat: clip.beat, key });
+    }
+  }
+  return out.sort((a, b) => a.beat - b.beat);
+}
+
 function songLanes(
   defs: LaneDef[],
   within: (c: Clip) => boolean,
@@ -1230,6 +1265,7 @@ export function parseAlsXml(xml: string): AlsProject {
     'MidiClip',
   );
   const laneDefs = laneDefinitions(tracks);
+  const keyMarks = keyMarkClips(tracks);
 
   /* ------------------------------- locators ------------------------------- */
 
@@ -1585,6 +1621,15 @@ export function parseAlsXml(xml: string): AlsProject {
       );
     }
 
+    // The key marks inside this song, the last at any bar winning.
+    const marksHere = new Map<number, string>();
+    for (const k of keyMarks) {
+      if (k.beat >= loc.beat - 1e-6 && k.beat < endBeat) marksHere.set(relBar(k.beat), k.key);
+    }
+    const keyChanges = [...marksHere.entries()].map(([bar, key]) => ({ bar, key })).sort((a, b) => a.bar - b.bar);
+    // A mark at the top of the song names its key when the locator did not.
+    const openingKey = keyChanges.find((k) => k.bar <= 1 + 1e-6)?.key ?? null;
+
     return {
       title: meta.title,
       raw: loc.name,
@@ -1592,7 +1637,8 @@ export function parseAlsXml(xml: string): AlsProject {
       startBar: toBar(loc.beat),
       endBar: Number.isFinite(endBeat) ? toBar(endBeat) : toBar(loc.beat),
       bpm: meta.bpm ?? region?.bpm ?? null,
-      key: meta.key ?? region?.key ?? null,
+      key: meta.key ?? region?.key ?? openingKey,
+      keyChanges,
       durationText: meta.durationText ?? region?.durationText ?? null,
       tags: meta.tags,
       flags: meta.flags,

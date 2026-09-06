@@ -43,6 +43,21 @@ export function pitchOf(note: string): number | null {
  */
 const FLAT_KEYS = new Set(['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb', 'Dm', 'Gm', 'Cm', 'Fm', 'Bbm', 'Ebm']);
 
+export interface KeyChange {
+  bar: number;
+  key: string;
+}
+
+/** The key in force at a bar: the last change at or before it, else the song's own. */
+export function keyAt(bar: number, base: string | null | undefined, changes: KeyChange[] = []): string | null {
+  let key = base ?? null;
+  for (const change of [...changes].sort((a, b) => a.bar - b.bar)) {
+    if (change.bar <= bar + 1e-6) key = change.key;
+    else break;
+  }
+  return key;
+}
+
 export interface Key {
   tonic: number;
   /** True when the chart should be spelled with flats. */
@@ -261,9 +276,15 @@ export function isNashvilleLane(name: string): boolean {
  * both readings are there. Needs the key: without one there is nothing to
  * count from, and a guess would be worse than the gap.
  */
-export function deriveChordLanes(lanes: ChartLane[], key: string | null | undefined): ChartLane[] {
-  const parsed = parseKey(key);
+export function deriveChordLanes(
+  lanes: ChartLane[],
+  key: string | null | undefined,
+  /** Modulations inside the song; each chord is counted in the key at its bar. */
+  changes: KeyChange[] = [],
+): ChartLane[] {
+  const parsed = parseKey(keyAt(1, key, changes));
   if (!parsed) return lanes;
+  const keyFor = (bar: number): Key => parseKey(keyAt(bar, key, changes)) ?? parsed;
 
   const chordLanes = lanes.filter((l) => l.kind === 'chords' && l.items.length);
   if (!chordLanes.length) return lanes;
@@ -281,7 +302,7 @@ export function deriveChordLanes(lanes: ChartLane[], key: string | null | undefi
     items: source.items.map((item) => ({
       bar: item.bar,
       text:
-        (toNumbers ? toNashville(item.text, parsed) : fromNashville(item.text, parsed)) ?? item.text,
+        (toNumbers ? toNashville(item.text, keyFor(item.bar)) : fromNashville(item.text, keyFor(item.bar))) ?? item.text,
     })),
   };
   // Ids must stay unique; a set already using ours keeps it.

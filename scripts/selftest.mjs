@@ -2309,6 +2309,49 @@ group('writing a chord track');
   const { chordNotationsIn } = await import('../src/lib/chordTrack.ts');
   const seen = chordNotationsIn(project);
   check('the set says which notations it has', seen.withChords === 3 && seen.have.names === 3 && seen.have.numbers === 0 && seen.have.roman === 0, JSON.stringify(seen));
+
+  // A key change marked on the song info track: chords after it count in the new key.
+  const { keyMarkIn } = await import('../src/lib/alsParser.ts');
+  check('a key is read off a clip name however it is put',
+    keyMarkIn('Key: Bb') === 'Bb' && keyMarkIn('KEY CHANGE → F#m') === 'F#m' && keyMarkIn('Key change: Eb major') === 'Eb'
+      && keyMarkIn('**One** / Key: C / 120 BPM') === 'C' && keyMarkIn('key = A minor') === 'Am',
+    [keyMarkIn('Key: Bb'), keyMarkIn('KEY CHANGE → F#m'), keyMarkIn('Key change: Eb major'), keyMarkIn('key = A minor')].join());
+  check('but not off a lyric, or a chord', keyMarkIn('the key to my heart') === null && keyMarkIn('[A]') === null && keyMarkIn('monkey A') === null);
+  const modulating = `<Ableton Creator="Live 12">
+  <LiveSet>
+    <NextPointeeId Value="5000" />
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Riser" /></Locator>
+    <Locator Id="4"><Time Value="32" /><Name Value="AUTOSTOP" /></Locator>
+    <Tracks>
+      <MidiTrack Id="10"><TrackGroupId Value="-1" />
+        <Name><EffectiveName Value="Chords +LYRICS" /><UserName Value="Chords +LYRICS" /></Name>
+        <AutomationEnvelopes><Envelopes /></AutomationEnvelopes>
+        <DeviceChain><MainSequencer><ClipTimeable><ArrangerAutomation><Events>
+          ${clip(0, 'C')}${clip(8, 'F')}${clip(16, 'A')}${clip(24, 'D')}
+        </Events></ArrangerAutomation></ClipTimeable></MainSequencer></DeviceChain>
+      </MidiTrack>
+      <MidiTrack Id="11"><TrackGroupId Value="-1" />
+        <Name><EffectiveName Value="ADD THIS SONG INFO" /><UserName Value="ADD THIS SONG INFO" /></Name>
+        <AutomationEnvelopes><Envelopes /></AutomationEnvelopes>
+        <DeviceChain><MainSequencer><ClipTimeable><ArrangerAutomation><Events>
+          ${clip(0, '**Riser** / Key: C / 120 BPM')}${clip(16, 'Key change: A')}
+        </Events></ArrangerAutomation></ClipTimeable></MainSequencer></DeviceChain>
+      </MidiTrack>
+      <ReturnTrack Id="59"><LomId Value="0" /></ReturnTrack>
+    </Tracks>
+  </LiveSet>
+</Ableton>`;
+  const mod = parseAlsXml(modulating);
+  check('the parser reads the key marks into the song, and its key from the first',
+    mod.songs[0].key === 'C' && JSON.stringify(mod.songs[0].keyChanges) === JSON.stringify([{ bar: 1, key: 'C' }, { bar: 5, key: 'A' }]),
+    JSON.stringify([mod.songs[0].key, mod.songs[0].keyChanges]));
+  const modded = chordClipsFor(mod, {}, undefined, 'numbers');
+  check('chords after the change are counted in the new key',
+    modded.clips.map((c) => c.text).join(' ') === '[1] [4] [1] [4]', modded.clips.map((c) => c.text).join(' '));
+  const modRoman = chordClipsFor(mod, {}, undefined, 'roman');
+  check('in numerals too', modRoman.clips.map((c) => c.text).join(' ') === '[I] [IV] [I] [IV]', modRoman.clips.map((c) => c.text).join(' '));
   check('each clip runs to the next chord, a bar at most, so none overlap',
     clips.every((c, i) => c.bars === Math.max(0.25, Math.min(1, (clips[i + 1]?.bar ?? c.bar + 1) - c.bar))), JSON.stringify(clips.map((c) => [c.bar, c.bars])));
   check('and the track says what to do with it', trackName === 'ADD THIS Nash Chords +LYRICS', trackName);

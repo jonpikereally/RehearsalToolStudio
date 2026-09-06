@@ -1,6 +1,6 @@
 import type { AlsProject } from './alsParser';
 import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
-import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, laneNotation, parseKey, type ChordNotation } from './nashville.ts';
+import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, keyAt, laneNotation, parseKey, type ChordNotation } from './nashville.ts';
 import type { ChartLane } from '../types';
 
 /**
@@ -73,8 +73,10 @@ export function chordClipsFor(
     if (wanted && !wanted.has(song.title)) continue;
     const lanes = (song.lanes ?? []).filter((l) => l.kind === 'chords' && l.items.length);
     if (!lanes.length) continue;
-    // What the set says, else what was typed in for it.
-    const key = song.key ?? supplied[song.title]?.trim();
+    // What the set says, else what was typed in for it — and the key marks
+    // inside the song, so a chord after a modulation is counted in the new key.
+    const changes = song.keyChanges ?? [];
+    const key = keyAt(1, song.key ?? (supplied[song.title]?.trim() || null), changes);
     if (!key) {
       withoutKey.push(song.title);
       continue;
@@ -91,17 +93,18 @@ export function chordClipsFor(
         withoutKey.push(song.title);
         continue;
       }
+      const keyFor = (bar: number) => parseKey(keyAt(bar, key, changes)) ?? parsed;
       // Names are the surest source, since numbers and numerals both come from them.
       const source = lanes.find((l) => laneNotation(l) === 'names') ?? lanes[0];
       added = {
         name: NOTATION_LANE[target],
         items: source.items.map((item) => ({
           bar: item.bar,
-          text: convertChord(item.text.replace(/^\[|\]$/g, ''), target, parsed) ?? item.text,
+          text: convertChord(item.text.replace(/^\[|\]$/g, ''), target, keyFor(item.bar)) ?? item.text,
         })),
       };
     } else {
-      const grown = deriveChordLanes(lanes as ChartLane[], key);
+      const grown = deriveChordLanes(lanes as ChartLane[], key, changes);
       added = grown.find((l) => !lanes.some((had) => had.id === l.id));
       if (!added) continue; // the set already wrote both languages for this song
 

@@ -492,7 +492,7 @@ export function laneList(song: AlsSong): ChartLane[] | undefined {
     .filter((lane) => lane.items.length)
     .map((lane) => ({ ...lane, items: lane.items.map(toTimedText) }));
   // Whichever language the chart was written in, both readings go through.
-  const all = deriveChordLanes(lanes, song.key);
+  const all = deriveChordLanes(lanes, song.key, song.keyChanges ?? []);
   return all.length ? all : undefined;
 }
 
