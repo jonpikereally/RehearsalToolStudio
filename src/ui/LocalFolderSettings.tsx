@@ -13,7 +13,7 @@ export default function LocalFolderSettings() {
   const {
     settings, saveSettings, rescan, scanning, scanProgress,
     localStatus, localFolderName, pickLocalFolder, forgetLocalFolder,
-    resourcesFolderName, pickResourcesFolder,
+    resourcesFolderName, pickResourcesFolder, sets, currentSet, chooseSet,
   } = useStore();
 
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,39 @@ export default function LocalFolderSettings() {
             onChange={(e) => saveSettings({ useLocal: e.target.checked })}
             style={{ width: 24, height: 24 }}
           />
+        </div>
+      )}
+
+      {/*
+        Which set in the folder the studio is about. The chooser asks on
+        launch; this is the same choice from here, for a folder that holds
+        several sets, without going back through it.
+      */}
+      {on && sets.length > 0 && (
+        <div className="field">
+          <label htmlFor="open-set">
+            Set open in the studio
+            <span className="hint">
+              {sets.length === 1
+                ? 'The one Ableton set in this folder.'
+                : `Which of the ${sets.length} Ableton sets in this folder the studio is working on.`}
+            </span>
+          </label>
+          <select
+            id="open-set"
+            className="jump-select"
+            value={currentSet ?? ''}
+            onChange={(e) => chooseSet(e.target.value || null)}
+            style={{ maxWidth: 360 }}
+          >
+            {!currentSet && <option value="">Choose a set…</option>}
+            {sets.map((set) => (
+              <option key={set.path} value={set.path}>
+                {set.name}
+                {set.songs ? ` · ${set.songs} song${set.songs === 1 ? '' : 's'}` : ''}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

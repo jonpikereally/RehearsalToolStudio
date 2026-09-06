@@ -1,8 +1,8 @@
-import { emptyLibrary, type Library } from '../types.ts';
+import { emptyLibrary, type Library, type Setlist, type Song } from '../types.ts';
 import * as local from './localSource.ts';
 import { isProjectScaffolding, mergeScan } from './scan.ts';
 import type { FileEntry } from './files.ts';
-import { applyManifest, isManifestName } from './preparedSet.ts';
+import { applyManifest, isManifestName, setFolderOf, type PreparedManifest } from './preparedSet.ts';
 import { isPreparedSet, isPrint } from './prints.ts';
 
 /**
@@ -58,6 +58,47 @@ export function publishable(files: FileEntry[]): FileEntry[] {
   return files.filter((f) => !isPrint(f.path) && !isProjectScaffolding(f.path));
 }
 
+/** A prepared set's running order in the band's library, by its set folder. */
+export const preparedSetlistId = (setFolder: string): string => `set:${setFolder.toLowerCase()}`;
+export const isPreparedSetlist = (id: string): boolean => id.startsWith('set:');
+
+/**
+ * One running order per prepared set, for the band's app.
+ *
+ * The manifest lists a set's songs in the order they are played — AbleSet's
+ * where the project keeps one — and a library of songs alone loses that:
+ * alphabetical is what a folder of songs becomes with no order beside it.
+ * So each prepared set is also a setlist in the band's library, its songs
+ * in the manifest's order by the ids the scan just gave them. Rebuilt from
+ * the folder every time, like the songs; a running order made by hand on
+ * the website is not the studio's and is left alone.
+ */
+export function setlistsFromManifests(
+  songs: Song[],
+  manifests: { path: string; manifest: PreparedManifest }[],
+  existing: Setlist[],
+): Setlist[] {
+  const idByPath = new Map(songs.map((s) => [s.folderPath.toLowerCase(), s.id]));
+  const made: Setlist[] = [];
+  for (const { path, manifest } of manifests) {
+    if (manifest?.preparedBy !== 'rehearsaltool' || !Array.isArray(manifest.songs)) continue;
+    const setFolder = setFolderOf(path);
+    const songIds = manifest.songs
+      .map((info) => idByPath.get(`${setFolder}/${info.folder}`.toLowerCase()))
+      .filter((id): id is string => !!id);
+    if (!songIds.length) continue;
+    const at = Date.parse(manifest.preparedAt ?? '');
+    made.push({
+      id: preparedSetlistId(setFolder),
+      name: setFolder.split('/').pop() || setFolder,
+      songIds,
+      notes: 'The running order as prepared — AbleSet’s where the project keeps one.',
+      updatedAt: Number.isFinite(at) ? at : Date.now(),
+    });
+  }
+  return [...existing.filter((sl) => !isPreparedSetlist(sl.id)), ...made];
+}
+
 export async function publishLibrary(folder: local.FolderHandle): Promise<PublishResult> {
   const existing =
     (await local.readJson<Library>(folder, '', `/${BAND_LIBRARY}`).catch(() => null))?.data ??
@@ -72,12 +113,17 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
   const result = mergeScan(existing, publishable(files), '');
   const songs = result.library.songs;
 
-  // Facts the folder names had no room for: sections, chords, lyrics.
+  // Facts the folder names had no room for: sections, chords, lyrics — and
+  // the order the songs are played in.
   const manifests = files.filter((f) => isPreparedSet(f.path) && isManifestName(f.name));
+  const read: { path: string; manifest: PreparedManifest }[] = [];
   for (const file of manifests) {
     const doc = await local.readJson<unknown>(folder, '', file.path).catch(() => null);
-    if (doc) applyManifest(songs, file.path, doc.data);
+    if (!doc) continue;
+    applyManifest(songs, file.path, doc.data);
+    read.push({ path: file.path, manifest: doc.data as PreparedManifest });
   }
+  const setlists = setlistsFromManifests(songs, read, result.library.setlists ?? []);
 
   /*
    * As the band's player reads it. A sampler part carries no path there —
@@ -92,7 +138,7 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
       return rest as typeof v;
     }),
   }));
-  const library = { ...result.library, songs: forBand, updatedAt: Date.now() };
+  const library = { ...result.library, songs: forBand, setlists, updatedAt: Date.now() };
   await local.writeJson(folder, '', `/${BAND_LIBRARY}`, library);
   /*
    * Under the old name as well, for now. The band's production site still

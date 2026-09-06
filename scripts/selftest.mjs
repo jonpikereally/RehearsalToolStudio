@@ -3873,6 +3873,30 @@ group('updating a prepared set without re-rendering');
       '/x/Renamed.als', { 'song a': '1.a', 'song b': '1.b' })?.folder === 'Sets/Origin');
 }
 
+group('the running order the band is given');
+{
+  const { setlistsFromManifests, preparedSetlistId } = await import('../src/lib/publish.ts');
+  const songs = [
+    { id: 'sets/fri/22 (2026-09-06)/22', title: '22', folderPath: 'Sets/Fri/22 (2026-09-06)' },
+    { id: 'sets/fri/mine (2026-09-06)/mine', title: 'Mine', folderPath: 'Sets/Fri/Mine (2026-09-06)' },
+    { id: 'sets/fri/august {90, 4-4}/august', title: 'august', folderPath: 'Sets/Fri/august {90, 4-4}' },
+  ];
+  const manifest = {
+    preparedBy: 'rehearsaltool', preparedAt: '2026-09-06T14:02:23.072Z', paddingSec: 0,
+    songs: [{ folder: 'Mine (2026-09-06)' }, { folder: 'august {90, 4-4}' }, { folder: 'Gone (2026-09-01)' }, { folder: '22 (2026-09-06)' }],
+  };
+  const hand = { id: 'hand', name: 'Acoustic night', songIds: [songs[0].id], updatedAt: 1 };
+  const out = setlistsFromManifests(songs, [{ path: 'Sets/Fri/set.json', manifest }], [hand, { id: preparedSetlistId('Sets/Fri'), name: 'old', songIds: [], updatedAt: 0 }]);
+  check('a prepared set becomes a setlist in the manifest’s order, not the alphabet’s',
+    out.length === 2 && out[1].songIds.join('|') === [songs[1].id, songs[2].id, songs[0].id].join('|'), JSON.stringify(out));
+  check('named for its folder and dated from the prepare',
+    out[1].name === 'Fri' && out[1].id === 'set:sets/fri' && out[1].updatedAt === Date.parse('2026-09-06T14:02:23.072Z'));
+  check('a song the manifest names but the folder lacks is left out', !out[1].songIds.some((id) => /gone/.test(id)));
+  check('a setlist made by hand stays; the set’s earlier one is replaced', out[0] === hand);
+  check('a manifest not the studio’s makes no setlist',
+    setlistsFromManifests(songs, [{ path: 'Sets/X/set.json', manifest: { preparedBy: 'someone', songs: [] } }], []).length === 0);
+}
+
 /* ----------------------------- reference stems ---------------------------- */
 
 group('reference stems');

@@ -343,6 +343,16 @@ The website reads this file through its service. A rescan in the website
 would produce the same songs from the same folder, and applies the manifests
 the same way.
 
+
+It also carries **`setlists`: one per prepared set, in running order.** The
+manifest's `songs[]` order — AbleSet's where the project keeps one — is
+what the band plays in, and a library of songs alone would lose it; so each
+set under `Sets/` is a setlist too, `{id, name, songIds, notes, updatedAt}`:
+`id` is `set:` and the set folder's path lowercased, `name` the set folder's
+name, `songIds` the library ids of its songs in the order to play them,
+`updatedAt` the prepare's time. Rebuilt on every publish; a setlist whose id
+does not start with `set:` is somebody's own and is left as it was.
+
 ## What the website is expected to do
 
 1. Find every folder called `Sets`, at whatever depth, and scan each folder
@@ -384,6 +394,9 @@ the same way.
    folders it wrote over, there to be put back, not to be played.
 10. Read `song.json` inside a song folder for that song alone, when the set's
    manifest is not to hand or the stems' facts are wanted.
+11. **Show a set's songs in its running order, never alphabetically**: the
+   library's `set:` setlist for it, or `set.json`'s `songs[]`, which agree.
+   The alphabet is for a search box.
 
 ## Rigs: patch changes from the band
 

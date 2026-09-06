@@ -47,3 +47,10 @@ band's Dropbox folder. Please update the website's reading of
    `.lrc` and `.cho` sit beside them, `set.json` still lists songs in
    running order and is still matched to folders by `folder`, and
    `firstBarOffsetSec` still applies to every bar calculation.
+7. **Show a set's songs in its running order, never alphabetically.** The
+   band's library file (`.rehearsal-tool.json`) now carries `setlists`: one
+   per prepared set, `id` = `set:` + the set folder path lowercased, `name`
+   = the set folder's name, `songIds` in the order to play. It agrees with
+   `set.json`'s `songs[]` order, which is AbleSet's order when the project
+   keeps a setlist. Use either; sort alphabetically only in a search box.
+   Setlists whose id does not start with `set:` are the website's own.
