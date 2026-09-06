@@ -64,7 +64,7 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
 /** The set copies the studio and Lyrics Studio make, and may make again. */
-export const OWN_SET_COPY = /( \((slates|chords|info|rehearsaltool)\)| Lyrics)\.als$/i;
+export const OWN_SET_COPY = /( \((slates|chords|info|rig|rehearsaltool)\)| Lyrics)\.als$/i;
 
 /**
  * The running order AbleSet is playing right now, from its own log.

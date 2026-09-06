@@ -528,6 +528,8 @@ export function clipsFromRig(patches: AlsRigPatch[], songId: string): PatchClip[
   return patches.map((r, i) => ({
     id: `als:${songId}:midi:${i}`,
     bar: r.bar,
+    ...(r.member ? { member: r.member } : {}),
+    ...(r.name ? { name: r.name } : {}),
     patch: {
       channel: r.channel,
       ...(r.program !== undefined ? { program: r.program } : {}),

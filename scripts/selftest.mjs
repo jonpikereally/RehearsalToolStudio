@@ -4371,5 +4371,96 @@ group('patch changes the set sends from MIDI clips');
   check('and are known for what they are, so the locator writer leaves them out', clips.every(isFromMidiClip) && !isFromMidiClip({ id: 'als:x:0' }));
 }
 
+/* ------------------------------ the rig loop ------------------------------ */
+
+group('patch changes to and from the band');
+{
+  const { rigTrackMember, rigTrackName, addRigTracks } = await import('../src/lib/rigTrack.ts');
+  const { parseMemberRig, rigTrackSpecFor, studioChanges } = await import('../src/lib/rigFiles.ts');
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+
+  check('a rig track names its member', JSON.stringify(rigTrackMember('RIG Alex (Quad Cortex)')) === '{"member":"Alex","rig":"Quad Cortex"}');
+  check('with or without the rig, and with ADD THIS in front', rigTrackMember('ADD THIS RIG Sam')?.member === 'Sam' && rigTrackMember('MIDI - Quad Cortex') === null);
+  check('and is named the same way back', rigTrackName('Alex', 'Quad Cortex') === 'RIG Alex (Quad Cortex)' && rigTrackName('Sam') === 'RIG Sam');
+
+  const file = parseMemberRig({
+    member: 'Alex', rig: 'Quad Cortex', updatedAt: '2026-09-05T23:40:00Z',
+    songs: {
+      'Yellow {120, G, 4-4}': [
+        { bar: 1, name: 'Scene A', patch: { channel: 1, program: 3, bank: 2, controls: [{ cc: 43, value: 0 }] } },
+        { bar: 9, patch: { channel: 1, controls: [{ cc: 43, value: 2 }] } },
+        { bar: 'x', patch: { channel: 1 } },
+        { bar: 3, patch: { channel: 99 } },
+      ],
+      'Gone {100}': [{ bar: 1, patch: { channel: 1, program: 1 } }],
+    },
+  });
+  check('a member file is read, bad entries left out', file?.member === 'Alex' && file.rig === 'Quad Cortex' && file.songs['Yellow {120, G, 4-4}'].length === 2, JSON.stringify(file));
+  check('and something else is not one', parseMemberRig({ songs: {} }) === null && parseMemberRig('no') === null);
+
+  const song = (title, startBar, key) => ({
+    title, raw: title, startBar, endBar: startBar + 30, bpm: 120, key, durationText: null, tags: [], flags: [], endsAtStop: true, startBpm: 120,
+    slateBars: [], sections: [], chords: [], lyrics: [], lanes: [], tempoChanges: [], rigMarks: [], rigTracks: [], rigPatches: [], timeSigNum: 4, timeSigDen: 4, stems: [], notes: '', caveats: [],
+  });
+  const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [song('Yellow', 1, 'G'), song('Clocks', 33, null)] };
+  const { spec, unknownFolders } = rigTrackSpecFor(file, project);
+  check('its changes land on the set\'s ruler, by song folder', spec.changes.map((c) => c.bar).join(',') === '1,9' && spec.member === 'Alex', JSON.stringify(spec.changes.map((c) => [c.bar, c.name])));
+  check('a song the set no longer has is named', unknownFolders.join() === 'Gone {100}');
+  check('a nameless change gets a name that says whose', spec.changes[1].name === 'Alex: bar 9');
+  check('the studio\'s own changes are the ones not from the set', studioChanges([{ id: 'als:x:midi:0', bar: 1, patch: { channel: 1 } }, { id: 'p1', bar: 5, patch: { channel: 2, program: 7 } }], 33, (c) => c.id.includes(':midi:')).map((c) => c.bar).join() === '37');
+
+  // Written into a set as clips, on a track modelled on the set's own rig track.
+  const targets = Array.from({ length: 131 }, (_, i) => `<ControllerTargets.${i} Id="${9000 + i}"><LomId Value="0" /></ControllerTargets.${i}>`).join('');
+  const xml = `<Ableton Creator="Live 12">
+    <LiveSet>
+    <NextPointeeId Value="20000" />
+    <Tracks>
+      <MidiTrack Id="30"><LomId Value="0" /><Name><EffectiveName Value="RIG Alex (Quad Cortex)" /><UserName Value="RIG Alex (Quad Cortex)" /></Name><TrackGroupId Value="-1" />
+        <AutomationEnvelopes><Envelopes /></AutomationEnvelopes>
+        <DeviceChain>
+          <MidiOutputRouting><Target Value="MidiOut/External.Dev:Box/0" /><UpperDisplayString Value="Box" /><LowerDisplayString Value="Ch. 1" /></MidiOutputRouting>
+          <MainSequencer><ClipTimeable><ArrangerAutomation><Events>
+            <MidiClip Id="0" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="4" />
+              <Loop><LoopStart Value="0" /><LoopEnd Value="4" /><StartRelative Value="0" /><LoopOn Value="false" /><OutMarker Value="4" /><HiddenLoopStart Value="0" /><HiddenLoopEnd Value="4" /></Loop>
+              <Name Value="A" /><Disabled Value="true" />
+              <Envelopes><Envelopes><ClipEnvelope Id="1"><EnvelopeTarget><PointeeId Value="9045" /></EnvelopeTarget><Automation><Events><FloatEvent Id="0" Time="0" Value="0" /></Events></Automation></ClipEnvelope></Envelopes></Envelopes>
+              <Notes><KeyTracks><KeyTrack Id="1"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes><MidiKey Value="60" /></KeyTrack></KeyTracks></Notes>
+              <BankSelectCoarse Value="0" /><BankSelectFine Value="2" /><ProgramChange Value="3" />
+            </MidiClip>
+          </Events></ArrangerAutomation></ClipTimeable></MainSequencer>
+          <MidiControllers>${targets}</MidiControllers>
+        </DeviceChain>
+      </MidiTrack>
+      <ReturnTrack Id="59"><LomId Value="0" /></ReturnTrack>
+    </Tracks>
+    </LiveSet>
+  </Ableton>`;
+  const out = addRigTracks(xml, [spec, { member: 'Studio', changes: [{ bar: 5, name: 'Helix snapshot', patch: { channel: 2, controls: [{ cc: 69, value: 1 }, { cc: 200, value: 1 }] } }] }], project);
+  check('one track per member, named to say what to do with it',
+    out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | ') === 'ADD THIS RIG Alex (Quad Cortex):2 | ADD THIS RIG Studio:1', out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | '));
+  const first = out.xml.indexOf('<Tracks>');
+  const firstName = out.xml.slice(first + out.xml.slice(first).search(/<MidiTrack /)).match(/<EffectiveName Value="([^"]*)"/)?.[1];
+  check('the first member\'s track comes first, above the set\'s own', firstName === 'ADD THIS RIG Alex (Quad Cortex)', firstName);
+  const alex = out.xml.slice(out.xml.indexOf('ADD THIS RIG Alex'), out.xml.indexOf('ADD THIS RIG Studio'));
+  check('the program and bank go into the clip box as bytes', /<BankSelectCoarse Value="0" \/><BankSelectFine Value="2" \/><ProgramChange Value="3" \/>/.test(alex.replace(/\s+/g, ' ').replace(/> </g, '><')) || (alex.includes('<ProgramChange Value="3"') && alex.includes('<BankSelectFine Value="2"')));
+  check('a change with no program says none', alex.includes('<ProgramChange Value="-1"'));
+  const newTarget = alex.match(/<ControllerTargets\.45 Id="(\d+)"/)?.[1];
+  check('a CC is an envelope pointed at the new track\'s own target for it', !!newTarget && newTarget !== '9045' && alex.includes(`<PointeeId Value="${newTarget}" />`), String(newTarget));
+  check('the model\'s notes and its old envelope are gone', !alex.includes('MidiNoteEvent') && !alex.includes('<PointeeId Value="9045"'));
+  check('a CC the model cannot address is dropped and counted', out.tracks[1].dropped === 1 && out.tracks[1].clips === 1);
+  check('and every clip is switched on', !alex.includes('<Disabled Value="true"'));
+  check('the pointee counter moved on', Number(out.xml.match(/<NextPointeeId Value="(\d+)"/)[1]) > 20000);
+
+  // Read back by the parser: the member comes off the track's name.
+  const back = parseAlsXml(`<Ableton Creator="Live 12"><Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator><Locator Id="3"><Time Value="128" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+    ${out.xml.slice(out.xml.indexOf('<MidiTrack Id='), out.xml.indexOf('<ReturnTrack'))}
+  </Ableton>`);
+  const yellow = back.songs[0];
+  check('and the parser reads them back with the member on', yellow.rigPatches.some((r) => r.member === 'Alex' && r.rig === 'Quad Cortex' && r.program === 3 && r.controls?.[0]?.cc === 43), JSON.stringify(yellow.rigPatches));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

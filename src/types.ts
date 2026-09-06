@@ -207,6 +207,10 @@ export interface PatchClip {
   lengthBars?: number;
   /** What to send at the end. Absent means whatever was in force before it. */
   endPatch?: Patch;
+  /** Whose change it is, from a rig track named `RIG <member> (<rig>)`. */
+  member?: string;
+  /** The clip's own name in the set, for saying what the change is. */
+  name?: string;
 }
 
 /** A tempo change, at a 1-based bar. */

@@ -33,7 +33,9 @@ with its own repo. This one is only Rehearsal Tool Studio.
   the band's folder, with a library naming them, so their app has tempos, keys,
   sections and a running order — not just audio.
 - **Set tools.** A preflight check of everything the parser can see going wrong
-  live, spoken slates onto a Slates track, chord-language conversion, timed
+  live, spoken slates onto a Slates track, chord-language conversion, patch
+  changes written as MIDI clips (the band's own, from the rig files the
+  website writes, and the studio's), timed
   lyric clips via Lyrics Studio, patch changes written into the `.als`, and a
   printable setlist whose durations come from the arrangement. Everything
   writes to a copy, never the original.

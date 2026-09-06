@@ -13,6 +13,7 @@ import type { Bus, Device } from '../types';
  */
 
 import { isRigLocator } from './alsPatch.ts';
+import { rigTrackMember } from './rigTrack.ts';
 
 export interface TempoChange {
   /** Beats from the start of the set. */
@@ -144,6 +145,9 @@ export interface AlsRigPatch {
   track: string;
   /** 1–16, from the track's MIDI output routing. */
   channel: number;
+  /** Whose change it is, when the track is named `RIG <member> (<rig>)`. */
+  member?: string;
+  rig?: string;
   program?: number;
   /** MSB × 128 + LSB, as the two bank-select messages carry it. */
   bank?: number;
@@ -1635,6 +1639,7 @@ export function parseAlsXml(xml: string): AlsProject {
             bar: Math.round(relBar(r.beat) * 4) / 4,
             name: r.name,
             track: t.name,
+            ...(rigTrackMember(t.name) ?? {}),
             channel: r.channel,
             ...(r.program !== undefined ? { program: r.program } : {}),
             ...(r.bank !== undefined ? { bank: r.bank } : {}),

@@ -5,7 +5,7 @@ import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
 import type { SamplerNote, SamplerSample } from '../types';
-import { clipsFromMarks, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
+import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
@@ -894,9 +894,13 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         chords: song.chords.length ? song.chords : undefined,
         lanes: laneList(song),
         parts: wroteParts.length ? wroteParts : undefined,
-        patchClips: song.rigMarks?.length
-          ? clipsFromMarks(song.rigMarks, songIdFor(opts.alsPath, song.title))
-          : undefined,
+        patchClips:
+          song.rigMarks?.length || song.rigPatches?.length
+            ? [
+                ...clipsFromMarks(song.rigMarks ?? [], songIdFor(opts.alsPath, song.title)),
+                ...clipsFromRig(song.rigPatches ?? [], songIdFor(opts.alsPath, song.title)),
+              ].sort((a, b) => a.bar - b.bar)
+            : undefined,
         audioKey: opts.audioKeys?.[song.title],
       });
     }

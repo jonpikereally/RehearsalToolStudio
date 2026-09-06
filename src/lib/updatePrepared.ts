@@ -1,5 +1,5 @@
 import type { AlsProject, AlsSong } from './alsParser';
-import { clipsFromMarks, laneList, songIdFor } from './alsImport.ts';
+import { clipsFromMarks, clipsFromRig, laneList, songIdFor } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { folderOrder, lyricsFileFor, mergeSongs, songFolderName } from './prepare.ts';
 import { MANIFEST_NAME, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
@@ -143,9 +143,13 @@ export function songInfoFor(
       : undefined,
     chords: song.chords.length ? song.chords : undefined,
     lanes: laneList(song),
-    patchClips: song.rigMarks?.length
-      ? clipsFromMarks(song.rigMarks, songIdFor(alsPath, song.title))
-      : undefined,
+    patchClips:
+      song.rigMarks?.length || song.rigPatches?.length
+        ? [
+            ...clipsFromMarks(song.rigMarks ?? [], songIdFor(alsPath, song.title)),
+            ...clipsFromRig(song.rigPatches ?? [], songIdFor(alsPath, song.title)),
+          ].sort((a, b) => a.bar - b.bar)
+        : undefined,
   };
 }
 

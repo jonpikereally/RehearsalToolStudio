@@ -235,7 +235,7 @@ way a hand-made folder would.
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
 | `songs[].audioKey` | no | the Studio's own note of what the song's audio was made from, so its next prepare can skip a song whose audio has not changed. Opaque text; ignore it |
 | `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
-| `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?}, lengthBars?, endPatch?}` |
+| `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?, source?}, lengthBars?, endPatch?, member?, name?}`. `bar` is 1-based and may be fractional; `program` and `bank` are the bytes sent (bank = MSB × 128 + LSB), `controls` a list of `{cc, value}`. `member` is whose rig it is, from a track named `RIG <member> (<rig>)` in the set; `name` the clip's name. Send a change a quarter-second before its bar: bank, then program, then the CCs, on `channel` |
 
 Rules the reader follows, and a writer can rely on:
 
@@ -305,6 +305,44 @@ the same way.
    no instrument word left in it is then the record.
 7. Play the parts of a song together; they are the same length and start at
    the same instant.
+
+## Rigs: patch changes from the band
+
+A member drives their own rig from their own laptop, over USB MIDI, from the
+website. The set's own changes reach them through `patchClips` above. A
+member can set their own, and the website writes them into the band's
+folder, one file per member per prepared set:
+
+    <band>/Sets/<set>/rigs/<member>.json
+
+```json
+{
+  "member": "Alex",
+  "rig": "Neural DSP Quad Cortex",
+  "updatedAt": "2026-09-05T23:40:00Z",
+  "songs": {
+    "22 {104, F, 4-4}": [
+      { "bar": 1,  "name": "Scene A", "patch": { "channel": 1, "program": 3, "bank": 2, "controls": [{ "cc": 43, "value": 0 }] } },
+      { "bar": 33, "name": "Scene C", "patch": { "channel": 1, "controls": [{ "cc": 43, "value": 2 }] } }
+    ]
+  }
+}
+```
+
+- Keyed by song folder, as everything here is. `bar` counts from the song's
+  own first bar. The patch is the same shape as in `patchClips`.
+- The website should send a member their own file's changes for their rig,
+  and the set's `patchClips` only where their file says nothing for a song —
+  otherwise the leader's Cortex scene fires on the guitarist's Helix. A
+  `member` on a set change says whose it is; one with none is the set's.
+- The Studio reads these files and writes them into a copy of the set as
+  MIDI clips, one `ADD THIS RIG <member> (<rig>)` track each. The leader
+  drags those tracks into the real set. The next prepare reads them back as
+  the set's own, with `member` set from the track's name, and the loop is
+  closed. A change that has come back this way needs no file any more; the
+  website may keep the file for editing, and the Studio takes the file as
+  the newer word whenever both exist.
+- Channels are the member's own: their laptop talks to their rig alone.
 
 Everything above is what the code in `src/lib/prepare.ts`, `src/lib/prints.ts`
 and `src/lib/preparedSet.ts` does. When they disagree with this file, the

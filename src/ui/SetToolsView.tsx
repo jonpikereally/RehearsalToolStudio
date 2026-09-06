@@ -28,7 +28,9 @@ import LyricClipsPanel from './LyricClipsPanel';
 import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
 import { useStore } from '../lib/store';
-import { writeClipsToSet } from '../lib/alsWrite';
+import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
+import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
+import { locatePrepared } from '../lib/locatePrepared';
 
 /**
  * Set tools: everything the studio does *to* an Ableton set.
@@ -58,7 +60,7 @@ export default function SetToolsView() {
   const [lone, setLone] = useState<{ name: string; bytes: ArrayBuffer } | null>(null);
   const [outDir, setOutDir] = useState<local.FolderHandle | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const { library, currentSet } = useStore();
+  const { library, currentSet, publishFolder, pickPublishFolder } = useStore();
   const [tool, setTool] = useState<
     'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
@@ -423,29 +425,74 @@ export default function SetToolsView() {
    * for a set from the folder: a lone .als was never scanned, so the library
    * has no songs of it to take patches from.
    */
+  /**
+   * Patch changes into a copy of the set, as MIDI clips.
+   *
+   * Two sources, one track each: what the band wrote for their own rigs on
+   * the website, one file per member under the prepared set's rigs/
+   * folder; and what was programmed in the player here, as the leader's
+   * own. Changes the set already sends from its clips are left out, since
+   * they are in the set. Each track is modelled on a rig track the set has,
+   * so the routing and the controller numbering are the set's own.
+   */
   const writePatches = async () => {
     if (!project || !setPath || !folder) return;
     setError(null);
     setDone(null);
-    setProgress('Writing patch changes…');
+    setProgress('Gathering patch changes…');
     try {
-      const result = await writeClipsToSet({
-        alsPath: setPath,
-        project,
-        // Only what was programmed here: a change the set already sends
-        // from a MIDI clip would be written back as a locator, and fire twice.
-        songs: library.songs
-          .filter((song) => selected.has(song.title))
-          .map((song) => ({ ...song, patchClips: song.patchClips?.filter((c) => !isFromMidiClip(c)) })),
-        readBytes: async (path) => (await local.readBytes(folder.handle, '', path)).bytes,
-        writeFile: (path, data) => local.writeFile(folder.handle, '', path, data),
-      });
+      const specs: RigTrackSpec[] = [];
+      const notes: string[] = [];
+
+      const band = (await publishFolder()) ?? (await pickPublishFolder());
+      if (band) {
+        const found = await locatePrepared(band, setPath);
+        if (!('error' in found)) {
+          const under = `${found.setFolder}/${RIG_FILES_FOLDER}/`.replace(/^\/+/, '').toLowerCase();
+          const files = (await local.listFiles(band, '')).filter(
+            (f) => f.path.replace(/^\/+/, '').toLowerCase().startsWith(under) && f.name.toLowerCase().endsWith('.json'),
+          );
+          for (const file of files) {
+            const doc = await local.readJson<unknown>(band, '', file.path).catch(() => null);
+            const rig = doc ? parseMemberRig(doc.data) : null;
+            if (!rig) {
+              notes.push(`${file.name} is not a rig file`);
+              continue;
+            }
+            const { spec, unknownFolders } = rigTrackSpecFor(rig, project, selected);
+            if (unknownFolders.length) notes.push(`${rig.member} names songs the set hasn't got: ${unknownFolders.slice(0, 3).join(', ')}`);
+            if (spec.changes.length) specs.push(spec);
+          }
+        }
+      }
+
+      const mine: RigTrackSpec['changes'] = [];
+      for (const song of library.songs) {
+        if (!selected.has(song.title) || !song.patchClips?.length) continue;
+        const als = project.songs.find((x) => x.title === song.title);
+        if (als) mine.push(...studioChanges(song.patchClips, als.startBar, isFromMidiClip));
+      }
+      if (mine.length) specs.push({ member: 'Studio', changes: mine });
+
+      if (!specs.length) {
+        setError(
+          'No patch changes to write: none programmed in the player for these songs, and no rig files from the band' +
+            (band ? '.' : ' — choose the band’s folder to look for theirs.'),
+        );
+        return;
+      }
+      setProgress('Writing patch changes…');
+      const result = addRigTracks(await inflateAls(await setBytes()), specs, project);
+      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const { dir, prefix, base } = await destination();
+      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (rig).als`;
+      await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
+      const dropped = result.tracks.reduce((n, t) => n + t.dropped, 0);
       setDone(
-        `${result.written} patch change${result.written === 1 ? '' : 's'} written into ` +
-          `${result.path.split('/').pop()} — open that copy in Live.` +
-          (result.missed.length
-            ? ` Not in the library, so nothing to take: ${result.missed.slice(0, 3).join(', ')}${result.missed.length > 3 ? '…' : ''}.`
-            : ''),
+        `${result.tracks.map((t) => `${t.clips} clip${t.clips === 1 ? '' : 's'} on “${t.name}”`).join(', ')} in ${copyPath.split('/').pop()} — ` +
+          'drag the tracks into the set in Live. The original is untouched.' +
+          (dropped ? ` ${dropped} CC${dropped === 1 ? '' : 's'} had no envelope target on the model track and were left out.` : '') +
+          (notes.length ? ` ${notes.join('. ')}.` : ''),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -863,9 +910,10 @@ export default function SetToolsView() {
                     </button>
                   </div>
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    The patch clips programmed in the player, written into a copy of the set as *rig
-                    locators — visible in Ableton, read back on the next scan. Program them per song
-                    in the player's patch lane.
+                    Patch changes as MIDI clips, in a copy of the set: one “ADD THIS RIG …” track per band
+                    member from the rig files the website writes under the prepared set’s rigs/ folder, and
+                    one for what was programmed in the player here. Drag the tracks into the set in Live;
+                    the next prepare reads them back as the set’s own.
                     {lone ? ' A lone .als was never scanned, so the library has no patches for it.' : ''}
                   </div>
                 </>
