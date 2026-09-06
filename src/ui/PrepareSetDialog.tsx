@@ -63,10 +63,12 @@ export default function PrepareSetDialog({
    * when there is no band's folder to look in yet.
    */
   const [standing, setStanding] = useState<Map<string, AudioStanding> | null>(null);
+  /** Songs whose words, sections or notes differ from their prepared entry. */
+  const [words, setWords] = useState<Set<string>>(new Set());
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [lastPrepared, setLastPrepared] = useState<string | null>(null);
   /** Words and sections refreshed for the songs left alone, once the run is done. */
-  const [refreshed, setRefreshed] = useState<{ count: number; error?: string } | null>(null);
+  const [refreshed, setRefreshed] = useState<{ count: number; songs: string[]; error?: string } | null>(null);
   /** What the last run moved aside, and into which folder it ran, so it can be undone. */
   const aside = useRef<{ folder: string; songs: Aside[] } | null>(null);
   const [undone, setUndone] = useState<string | null>(null);
@@ -148,6 +150,7 @@ export default function PrepareSetDialog({
       if (!live) return;
       setKeys(found.keys);
       setStanding(found.standing);
+      setWords(found.words);
       setLastPrepared(found.lastPrepared);
       const next = found.standing;
       const manifest = found.manifest;
@@ -206,6 +209,7 @@ export default function PrepareSetDialog({
         folderName,
         selected: [...selected],
         standing,
+        words,
         keys,
         songOrder,
         cacheBudgetGB: settings.cacheBudgetGB,
@@ -365,9 +369,11 @@ export default function PrepareSetDialog({
                 const fresh = titles.filter((t) => standing.get(t)?.state === 'new').length;
                 const when = new Date(lastPrepared);
                 const since = Number.isNaN(when.getTime()) ? 'the last prepare' : `the prepare of ${when.toLocaleString()}`;
+                const worded = titles.filter((t) => standing.get(t)?.state === 'unchanged' && words.has(t)).length;
                 return same
-                  ? `${same} song${same === 1 ? '' : 's'} unchanged since ${since} — left unticked, their words and sections refreshed instead. ` +
-                      `${changed} changed, ${fresh} new. Tick a song to write it again regardless.`
+                  ? `${same} song${same === 1 ? '' : 's'} unchanged since ${since} — left unticked, their words and sections refreshed instead` +
+                      (worded ? ` (words, sections or notes changed in ${worded} of them)` : '') +
+                      `. ${changed} changed, ${fresh} new. Tick a song to write it again regardless.`
                   : `Everything has changed since ${since}: ${changed} changed, ${fresh} new.`;
               })()}
             </div>
@@ -402,7 +408,11 @@ export default function PrepareSetDialog({
                   <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto', textAlign: 'right' }}>
                     {(() => {
                       const s = standing.get(title)!;
-                      return s.state === 'new' ? 'new' : s.state === 'unchanged' ? 'unchanged' : `changed — ${s.why}`;
+                      return s.state === 'new'
+                        ? 'new'
+                        : s.state === 'unchanged'
+                          ? words.has(title) ? 'audio unchanged — words or sections changed' : 'unchanged'
+                          : `changed — ${s.why}`;
                     })()}
                   </span>
                 )}
@@ -470,7 +480,11 @@ export default function PrepareSetDialog({
               <br />
               {refreshed.error
                 ? `The unchanged songs' words and sections could not be refreshed: ${refreshed.error}`
-                : `Words and sections refreshed for ${refreshed.count} unchanged song${refreshed.count === 1 ? '' : 's'}.`}
+                : refreshed.count
+                  ? `Words and sections refreshed for ${refreshed.count} unchanged song${refreshed.count === 1 ? '' : 's'}` +
+                    (refreshed.count <= 4 ? ` (${refreshed.songs.join(', ')})` : '') +
+                    '.'
+                  : 'The unchanged songs had nothing new to say; their files were left as they were.'}
             </>
           )}
           {result.skipped.length > 0 && (

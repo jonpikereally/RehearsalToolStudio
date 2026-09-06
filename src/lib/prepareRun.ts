@@ -5,14 +5,14 @@ import { holdAwake } from './keepAwake';
 import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
-import { prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
+import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
 import { markPrepareRunning } from './prepareState';
-import { MANIFEST_NAME, sameSong, type PreparedManifest } from './preparedSet';
+import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest } from './preparedSet';
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
 import { readBytes, statFile } from './source';
-import { updatePrepared } from './updatePrepared';
+import { updatePrepared, wordsChanged } from './updatePrepared';
 
 /**
  * A prepare, from the set as it stands to the band's folder — the run itself,
@@ -76,6 +76,8 @@ export async function audioKeysFor(project: AlsProject, setPath: string): Promis
 export interface Standing {
   /** Where each song stands against the manifest, by title. */
   standing: Map<string, AudioStanding>;
+  /** Songs whose words, sections, chords, notes or key differ from their entry, by title. */
+  words: Set<string>;
   /** Each song's audio key as it is now, by title, for the manifest. */
   keys: Record<string, string>;
   lastPrepared: string | null;
@@ -115,13 +117,15 @@ export async function standingFor(
   }
   const keys = known ?? (await audioKeysFor(project, setPath));
   const standing = new Map<string, AudioStanding>();
+  const words = new Set<string>();
   for (const song of project.songs) {
     if (standing.has(song.title)) continue;
     const name = songFolderBase(song);
     const entry = manifest?.songs.find((e) => sameSong(e.folder, name));
     standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
+    if (entry && wordsChanged(entry, song, project, setPath)) words.add(song.title);
   }
-  return { standing, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
+  return { standing, words, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
 }
 
 export interface RunOptions {
@@ -134,6 +138,14 @@ export interface RunOptions {
   /** Titles to write out again. Empty writes no audio: the rest is still refreshed. */
   selected: string[];
   standing: Map<string, AudioStanding> | null;
+  /**
+   * Songs whose words, sections, chords, notes or key differ from their
+   * prepared entry. Given, only those among the unchanged songs are
+   * refreshed — a section renamed in one song is one song's file, not
+   * nineteen — unless the running order has moved, when every entry's
+   * place in the manifest is rewritten anyway.
+   */
+  words?: Set<string>;
   keys: Record<string, string>;
   /** The running order by title; the arrangement's without. */
   songOrder?: string[];
@@ -151,8 +163,8 @@ export interface RunOptions {
 export interface RunOutcome {
   /** What the prepare wrote; null when no song was chosen to write. */
   result: PrepareResult | null;
-  /** Words and sections refreshed for the unchanged songs left alone. */
-  refreshed: { count: number; error?: string } | null;
+  /** Words and sections refreshed for the unchanged songs left alone, and which. */
+  refreshed: { count: number; songs: string[]; error?: string } | null;
   published: PublishResult;
 }
 
@@ -261,12 +273,22 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
      * in the set lands everywhere, whether or not any audio moved. The cheap
      * path, over the manifest the run just wrote — or the one that was there.
      */
-    const untouched = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
+    const unchanged = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
     let refreshed: RunOutcome['refreshed'] = null;
-    if (untouched.length) {
+    if (unchanged.length) {
       try {
         const { bytes: raw } = await local.readBytes(band, '', `${setFolder}/${MANIFEST_NAME}`);
         const manifest = JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
+        // Only the songs whose words moved — every song when the order did,
+        // since each entry's place in the manifest is then a change.
+        const orderNow = folderOrder(project, songOrder).map((n) => n.toLowerCase());
+        const orderThen = manifest.songs.map((e) => folderBaseOf(e.folder).toLowerCase()).filter((n) => orderNow.includes(n));
+        const orderMoved = orderThen.join('|') !== orderNow.filter((n) => orderThen.includes(n)).join('|');
+        const untouched = o.words && !orderMoved ? unchanged.filter((t) => o.words!.has(t)) : unchanged;
+        if (!untouched.length) {
+          refreshed = { count: 0, songs: [] };
+          throw Object.assign(new Error('nothing to refresh'), { name: 'NothingToRefresh' });
+        }
         const under = `${setFolder.toLowerCase()}/`;
         const presentFolders = [
           ...new Set(
@@ -288,10 +310,12 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           writeFile,
           signal,
         });
-        refreshed = { count: refresh.updated.length };
+        refreshed = { count: refresh.updated.length, songs: refresh.updated };
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') throw err;
-        refreshed = { count: 0, error: err instanceof Error ? err.message : String(err) };
+        if ((err as { name?: string })?.name !== 'NothingToRefresh') {
+          refreshed = { count: 0, songs: [], error: err instanceof Error ? err.message : String(err) };
+        }
       }
     }
     const published = await publishLibrary(band);

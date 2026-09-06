@@ -198,6 +198,29 @@ export function songInfoFor(
 }
 
 /**
+ * Whether what the set says *about* a song — its key, notes, tempo map,
+ * sections, chords, lyric lanes and patch changes — differs from what its
+ * prepared entry carries. The audio key answers for the files; this answers
+ * for the words beside them, which a save can change without a byte of
+ * audio moving. Patch changes are compared by bar and patch, not by id,
+ * since their ids carry the set's path.
+ */
+export function wordsChanged(entry: PreparedSongInfo, song: AlsSong, project: AlsProject, alsPath: string): boolean {
+  const now = songInfoFor(song, project, alsPath, { folder: entry.folder, firstBarOffsetSec: 0 });
+  const wordsOf = (x: PreparedSongInfo) =>
+    JSON.stringify({
+      key: x.originalKey ?? null,
+      notes: x.notes ?? '',
+      tempoMap: x.tempoMap ?? [],
+      markers: x.markers ?? [],
+      chords: x.chords ?? [],
+      lanes: x.lanes ?? [],
+      patches: (x.patchClips ?? []).map((c) => ({ bar: c.bar, patch: c.patch })),
+    });
+  return wordsOf(entry) !== wordsOf(now);
+}
+
+/**
  * Whether a song can be updated in place, and what to say when it can't.
  *
  * Two ways to fail, and they are worth telling apart: a song the prepared set

@@ -1,6 +1,6 @@
 import type { AlsProject } from './alsParser';
 import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
-import { deriveChordLanes, isNashvilleLane } from './nashville.ts';
+import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, laneNotation, parseKey, type ChordNotation } from './nashville.ts';
 import type { ChartLane } from '../types';
 
 /**
@@ -47,15 +47,25 @@ export function chordClipsFor(
   supplied: Record<string, string> = {},
   /** Titles to convert; the whole set when absent. */
   only?: string[],
+  /**
+   * The notation to write. Without one, whichever of names and numbers the
+   * set is missing — the older behaviour. With one, every song that has
+   * chords in any other notation is converted to it, and a song that has
+   * it already is left alone.
+   */
+  target?: ChordNotation,
 ): {
   clips: ChordClip[];
   trackName: string;
   converted: string[];
   withoutKey: string[];
+  /** Songs that already had the chosen notation, and so got nothing. */
+  alreadyHad: string[];
 } {
   const clips: ChordClip[] = [];
   const converted: string[] = [];
   const withoutKey: string[] = [];
+  const alreadyHad: string[] = [];
   let toNumbers: boolean | null = null;
 
   const wanted = only?.length ? new Set(only) : null;
@@ -70,14 +80,36 @@ export function chordClipsFor(
       continue;
     }
 
-    const grown = deriveChordLanes(lanes as ChartLane[], key);
-    const added = grown.find((l) => !lanes.some((had) => had.id === l.id));
-    if (!added) continue; // the set already wrote both languages for this song
+    let added: { name: string; items: { bar: number; text: string }[] } | undefined;
+    if (target) {
+      if (lanes.some((l) => laneNotation(l) === target)) {
+        alreadyHad.push(song.title);
+        continue;
+      }
+      const parsed = parseKey(key);
+      if (!parsed) {
+        withoutKey.push(song.title);
+        continue;
+      }
+      // Names are the surest source, since numbers and numerals both come from them.
+      const source = lanes.find((l) => laneNotation(l) === 'names') ?? lanes[0];
+      added = {
+        name: NOTATION_LANE[target],
+        items: source.items.map((item) => ({
+          bar: item.bar,
+          text: convertChord(item.text.replace(/^\[|\]$/g, ''), target, parsed) ?? item.text,
+        })),
+      };
+    } else {
+      const grown = deriveChordLanes(lanes as ChartLane[], key);
+      added = grown.find((l) => !lanes.some((had) => had.id === l.id));
+      if (!added) continue; // the set already wrote both languages for this song
 
-    // One track for the set, so every song must be going the same way.
-    const wantsNumbers = isNashvilleLane(added.name);
-    if (toNumbers === null) toNumbers = wantsNumbers;
-    else if (toNumbers !== wantsNumbers) continue;
+      // One track for the set, so every song must be going the same way.
+      const wantsNumbers = isNashvilleLane(added.name);
+      if (toNumbers === null) toNumbers = wantsNumbers;
+      else if (toNumbers !== wantsNumbers) continue;
+    }
 
     converted.push(song.title);
     for (const item of added.items) {
@@ -104,10 +136,36 @@ export function chordClipsFor(
   }
   return {
     clips,
-    trackName: addThis(toNumbers ? 'Nash Chords +LYRICS' : 'Chords +LYRICS'),
+    trackName: addThis(`${target ? NOTATION_LANE[target] : toNumbers ? 'Nash Chords' : 'Chords'} +LYRICS`),
     converted,
     withoutKey,
+    alreadyHad,
   };
+}
+
+/**
+ * Which notations the chosen songs already have chords in, and how many
+ * songs have chords at all — so the choice of what to write can say which
+ * are already there.
+ */
+export function chordNotationsIn(
+  project: AlsProject,
+  only?: string[],
+): { withChords: number; have: Record<ChordNotation, number> } {
+  const wanted = only?.length ? new Set(only) : null;
+  const have: Record<ChordNotation, number> = { names: 0, numbers: 0, roman: 0 };
+  let withChords = 0;
+  const seen = new Set<string>();
+  for (const song of project.songs) {
+    if ((wanted && !wanted.has(song.title)) || seen.has(song.title)) continue;
+    seen.add(song.title);
+    const lanes = (song.lanes ?? []).filter((l) => l.kind === 'chords' && l.items.length);
+    if (!lanes.length) continue;
+    withChords++;
+    const kinds = new Set(lanes.map((l) => laneNotation(l)));
+    for (const k of kinds) have[k]++;
+  }
+  return { withChords, have };
 }
 
 /** Put those clips into the set as a new MIDI track. */

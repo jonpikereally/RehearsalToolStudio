@@ -22,6 +22,8 @@ export interface PreparedStanding {
   changed: number;
   fresh: number;
   unchanged: number;
+  /** Songs whose audio is as it was but whose words, sections or notes are not. */
+  words: number;
   total: number;
 }
 
@@ -68,6 +70,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
             changed: count('changed'),
             fresh: count('new'),
             unchanged: count('unchanged'),
+            words: titles.filter((t) => standing.standing.get(t)?.state === 'unchanged' && standing.words.has(t)).length,
             total: titles.length,
           },
         });

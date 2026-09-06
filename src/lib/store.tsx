@@ -34,6 +34,24 @@ const LS_SETS = 'ls.knownSets';
 const PUSH_DEBOUNCE_MS = 1500;
 /** How often the open set is looked at for a save by Live: a stat, nothing more. */
 const SET_WATCH_MS = 3000;
+/** The last save of each set the studio saw, by path, so one made while it was closed is noticed. */
+const LS_WATCH_REV = 'ls.watch.rev';
+function rememberedRev(path: string): string | null {
+  try {
+    return (JSON.parse(localStorage.getItem(LS_WATCH_REV) ?? '{}') as Record<string, string>)[path.toLowerCase()] ?? null;
+  } catch {
+    return null;
+  }
+}
+function rememberRev(path: string, rev: string): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_WATCH_REV) ?? '{}') as Record<string, string>;
+    all[path.toLowerCase()] = rev;
+    localStorage.setItem(LS_WATCH_REV, JSON.stringify(all));
+  } catch {
+    /* a session that can't remember still watches */
+  }
+}
 
 export interface Settings {
   /**
@@ -835,8 +853,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       say(await local.liveRunning().catch(() => false), paused);
       if (!on || paused) return;
       let rev: string;
+      let st: { modified: number; size: number };
       try {
-        const st = await source.statFile(currentSet);
+        st = await source.statFile(currentSet);
         rev = `${st.modified}-${st.size}`;
       } catch {
         return; // mid-write, or gone; the next look says
@@ -844,6 +863,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!on) return;
       if (seen === null) {
         seen = rev;
+        /*
+         * The first look: against the save the studio last saw of this set,
+         * which it remembers across launches. A different one is a save made
+         * while the studio was closed, and is announced like any other — the
+         * launch's own scan has already read the set as it now is.
+         */
+        const before = rememberedRev(currentSet);
+        rememberRev(currentSet, rev);
+        if (before && before !== rev) setSetSaved({ path: currentSet, at: st.modified });
         return;
       }
       if (rev === seen) {
@@ -857,8 +885,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       seen = rev;
       pending = null;
+      rememberRev(currentSet, rev);
       await rescanRef.current();
-      if (on) setSetSaved({ path: currentSet, at: Date.now() });
+      if (on) setSetSaved({ path: currentSet, at: st.modified });
     };
     void look();
     const timer = window.setInterval(() => void look(), SET_WATCH_MS);

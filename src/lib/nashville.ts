@@ -89,7 +89,7 @@ export function fromNashville(number: string, key: Key): string | null {
   const degree = parseDegree(head);
   if (!degree) return null;
 
-  const names = key.flats ? FLAT : SHARP;
+  const names = spellingFor(degree.accidental, key);
   const quality = degree.minorByCase && !/^(m(?!aj)|min|dim|°|ø|o)/.test(degree.suffix) ? 'm' : '';
   const bassPart = bass ? bassName(bass, key) : '';
   return `${names[(key.tonic + degree.semis + 12) % 12]}${quality}${degree.suffix}${bassPart}`;
@@ -101,6 +101,86 @@ export function looksNashville(items: { text: string }[]): boolean {
   if (!chords.length) return false;
   const numbered = chords.filter((i) => degreeSemitones(splitSlash(i.text.trim())[0]) !== null);
   return numbered.length > chords.length / 2;
+}
+
+/*
+ * The three ways a chart writes a chord. Names say what to play; numbers
+ * and numerals say what the chord does, and survive a change of key. The
+ * numerals carry the quality in their case — ii for a minor second, V for
+ * a major fifth — where the numbers spell it out, 2m and 5.
+ */
+export type ChordNotation = 'names' | 'numbers' | 'roman';
+
+export const NOTATION_LABEL: Record<ChordNotation, string> = {
+  names: 'Classical chord names',
+  numbers: 'Nashville numbers',
+  roman: 'Roman numerals',
+};
+
+/** The lane and track names a set uses for each notation. */
+export const NOTATION_LANE: Record<ChordNotation, string> = {
+  names: 'Chords',
+  numbers: 'Nash Chords',
+  roman: 'Roman Chords',
+};
+
+const ROMAN_UPPER = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+
+/** How a chord's suffix says it is minor or diminished, which a numeral says by its case instead. */
+const MINOR_SUFFIX = /^(m(?!aj)|min(?!or)?|dim|°|ø|o(?![a-z]))/;
+
+/**
+ * `Dm7` in C → `ii7`; `Bb` in C → `bVII`; `Bdim` → `vii°`. The numeral's
+ * case carries the quality, so a leading m is taken off; dim and ° stay,
+ * as the convention writes them.
+ */
+export function toRoman(chord: string, key: Key): string | null {
+  const text = chord.trim();
+  if (!text) return null;
+  const [head, bass] = splitSlash(text);
+  const root = pitchOf(head);
+  if (root === null) return null;
+  const suffix = head.replace(NOTE, '');
+  const label = LABEL[(root - key.tonic + 12) % 12];
+  const accidental = label.startsWith('b') ? 'b' : '';
+  const numeral = ROMAN_UPPER[Number(label.replace(/^b/, '')) - 1];
+  const minor = MINOR_SUFFIX.test(suffix);
+  const rest = minor ? suffix.replace(/^(m(?!aj)|min(?!or)?)/, '') : suffix;
+  const bassPart = bass ? bassNumber(bass, key) : '';
+  return `${accidental}${minor ? numeral.toLowerCase() : numeral}${rest}${bassPart}`;
+}
+
+/** Which notation a lane's text is in, from what most of its chords look like. */
+export function notationOf(items: { text: string }[]): ChordNotation {
+  const chords = items.map((i) => splitSlash(i.text.trim().replace(/^\[|\]$/g, ''))[0]).filter(Boolean);
+  if (!chords.length) return 'names';
+  const roman = chords.filter((c) => /^[b#♭♯]?(vii|vi|iv|v|iii|ii|i)(?![a-hj-uw-z])/i.test(c)).length;
+  const digits = chords.filter((c) => /^[b#♭♯]?[1-7]/.test(c)).length;
+  if (roman > chords.length / 2) return 'roman';
+  if (digits > chords.length / 2) return 'numbers';
+  return 'names';
+}
+
+/** A lane's notation: by its name where the name says, else by its text. */
+export function laneNotation(lane: { name: string; items: { text: string }[] }): ChordNotation {
+  if (/\broman\b/i.test(lane.name)) return 'roman';
+  if (isNashvilleLane(lane.name)) {
+    const seen = notationOf(lane.items);
+    return seen === 'roman' ? 'roman' : 'numbers';
+  }
+  return notationOf(lane.items);
+}
+
+/** One chord from any notation into another, in the given key. Names are the bridge. */
+export function convertChord(chord: string, to: ChordNotation, key: Key): string | null {
+  const text = chord.trim();
+  if (!text) return null;
+  const from = notationOf([{ text }]);
+  if (from === to) return text;
+  const name = from === 'names' ? text : fromNashville(text, key);
+  if (name === null) return null;
+  if (to === 'names') return name;
+  return to === 'numbers' ? toNashville(name, key) : toRoman(name, key);
 }
 
 /* --------------------------------- helpers -------------------------------- */
@@ -117,12 +197,17 @@ const ROMAN: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6,
  * a Roman numeral (`bIII`, `V`, `ii`): its distance from the tonic, what
  * follows it, and whether its case said minor.
  */
-function parseDegree(text: string): { semis: number; suffix: string; minorByCase: boolean } | null {
+function parseDegree(text: string): { semis: number; suffix: string; minorByCase: boolean; accidental: number } | null {
   const head = text.trim();
   const accidental = (a: string) => (a === '#' || a === '♯' ? 1 : a === 'b' || a === '♭' ? -1 : 0);
   const digits = /^([b#♭♯]?)([1-7])/.exec(head);
   if (digits) {
-    return { semis: DEGREE[Number(digits[2]) - 1] + accidental(digits[1]), suffix: head.slice(digits[0].length), minorByCase: false };
+    return {
+      semis: DEGREE[Number(digits[2]) - 1] + accidental(digits[1]),
+      suffix: head.slice(digits[0].length),
+      minorByCase: false,
+      accidental: accidental(digits[1]),
+    };
   }
   // The numeral must end where a letter would not follow it: "vi" is not the start of "vim".
   const roman = /^([b#♭♯]?)(vii|vi|iv|v|iii|ii|i)(?![a-hj-uw-z])/i.exec(head);
@@ -132,7 +217,16 @@ function parseDegree(text: string): { semis: number; suffix: string; minorByCase
     semis: DEGREE[ROMAN[numeral.toLowerCase()] - 1] + accidental(roman[1]),
     suffix: head.slice(roman[0].length),
     minorByCase: numeral === numeral.toLowerCase(),
+    accidental: accidental(roman[1]),
   };
+}
+
+/**
+ * How to spell a degree's note: a flattened degree with flats, a sharpened
+ * one with sharps — bVII in C is Bb, not A# — and a plain one as the key.
+ */
+function spellingFor(accidental: number, key: Key): string[] {
+  return accidental < 0 ? FLAT : accidental > 0 ? SHARP : key.flats ? FLAT : SHARP;
 }
 
 function degreeSemitones(text: string): number | null {
@@ -145,10 +239,10 @@ function bassNumber(bass: string, key: Key): string {
 }
 
 function bassName(bass: string, key: Key): string {
-  const semis = degreeSemitones(bass);
-  if (semis === null) return `/${bass}`;
-  const names = key.flats ? FLAT : SHARP;
-  return `/${names[(key.tonic + semis + 12) % 12]}`;
+  const degree = parseDegree(bass);
+  if (!degree) return `/${bass}`;
+  const names = spellingFor(degree.accidental, key);
+  return `/${names[(key.tonic + degree.semis + 12) % 12]}`;
 }
 
 /** The lane names a set uses for each language. */

@@ -2298,6 +2298,17 @@ group('writing a chord track');
   // In brackets, as AbleSet reads a chord on a lyrics track.
   check('each song is counted in its own key, in brackets',
     clips.map((c) => c.text).join(' ') === '[1] [4] [1] [4]', clips.map((c) => c.text).join(' '));
+
+  // A chosen notation: any of the three, from whatever the set has.
+  const roman = chordClipsFor(project, {}, undefined, 'roman');
+  check('Roman numerals can be asked for from names', roman.trackName === 'ADD THIS Roman Chords +LYRICS'
+    && roman.clips.map((c) => c.text).join(' ') === '[I] [IV] [I] [IV]', roman.clips.map((c) => c.text).join(' '));
+  const names = chordClipsFor(project, {}, undefined, 'names');
+  check('a song that already has the chosen kind is left alone and named',
+    names.clips.length === 0 && names.alreadyHad.join() === 'One,Two', JSON.stringify(names));
+  const { chordNotationsIn } = await import('../src/lib/chordTrack.ts');
+  const seen = chordNotationsIn(project);
+  check('the set says which notations it has', seen.withChords === 3 && seen.have.names === 3 && seen.have.numbers === 0 && seen.have.roman === 0, JSON.stringify(seen));
   check('each clip runs to the next chord, a bar at most, so none overlap',
     clips.every((c, i) => c.bars === Math.max(0.25, Math.min(1, (clips[i + 1]?.bar ?? c.bar + 1) - c.bar))), JSON.stringify(clips.map((c) => [c.bar, c.bars])));
   check('and the track says what to do with it', trackName === 'ADD THIS Nash Chords +LYRICS', trackName);
@@ -2451,6 +2462,22 @@ group('nashville numbers');
 
   const inKey = (k) => parseKey(k);
   const num = (chord, key) => toNashville(chord, inKey(key));
+  const { toRoman, convertChord, notationOf } = await import('../src/lib/nashville.ts');
+  const rom = (chord, key) => toRoman(chord, inKey(key));
+  check('numerals: major upper, minor lower, the m taken into the case',
+    rom('C', 'C') === 'I' && rom('Dm7', 'C') === 'ii7' && rom('G', 'C') === 'V' && rom('Am', 'C') === 'vi', [rom('C', 'C'), rom('Dm7', 'C'), rom('G', 'C'), rom('Am', 'C')].join());
+  check('a borrowed chord keeps its flat, a diminished its sign',
+    rom('Bb', 'C') === 'bVII' && rom('Bdim', 'C') === 'viidim' && rom('B°', 'C') === 'vii°', [rom('Bb', 'C'), rom('Bdim', 'C'), rom('B°', 'C')].join());
+  check('a slash bass is numbered', rom('C/E', 'C') === 'I/3', rom('C/E', 'C'));
+  check('and maj7 is not mistaken for minor', rom('Cmaj7', 'C') === 'Imaj7', rom('Cmaj7', 'C'));
+  check('any notation converts to any other through names',
+    convertChord('ii7', 'numbers', inKey('C')) === '2m7' && convertChord('2m7', 'roman', inKey('C')) === 'ii7'
+      && convertChord('bVII', 'names', inKey('C')) === 'Bb' && convertChord('5', 'roman', inKey('G')) === 'V'
+      && convertChord('Dm', 'names', inKey('C')) === 'Dm',
+    [convertChord('ii7', 'numbers', inKey('C')), convertChord('2m7', 'roman', inKey('C')), convertChord('bVII', 'names', inKey('C')), convertChord('5', 'roman', inKey('G'))].join());
+  check('a lane is told apart by what most of it looks like',
+    notationOf([{ text: 'I' }, { text: 'IV' }, { text: 'V' }]) === 'roman' && notationOf([{ text: '1' }, { text: '4' }, { text: 'C' }]) === 'numbers'
+      && notationOf([{ text: 'C' }, { text: 'F' }]) === 'names' && notationOf([{ text: '[vi]' }, { text: '[IV]' }]) === 'roman');
   const name = (n, key) => fromNashville(n, inKey(key));
 
   // The plain diatonic run, both ways.
@@ -3779,7 +3806,7 @@ group('opening several songs together');
 
 group('updating a prepared set without re-rendering');
 {
-  const { setFor, updatableSong, songInfoFor } = await import('../src/lib/updatePrepared.ts');
+  const { setFor, updatableSong, songInfoFor, wordsChanged } = await import('../src/lib/updatePrepared.ts');
 
   const project = { tempo: 120, timeSigNum: 4, timeSigDen: 4, songs: [] };
   const song = (title, extra = {}) => ({
@@ -3821,6 +3848,17 @@ group('updating a prepared set without re-rendering');
     info.tempo === 120 && info.timeSignature === '4/4' && info.bars === 33 && info.renderedAt === '2026-01-01T00:00:00.000Z', JSON.stringify(info));
   check('a refresh writes into the folder the files are in, dated as it was',
     updatableSong(fixYou, project, manifest, []).folder === folder);
+
+  // The words beside the audio: a save can change them without a byte moving.
+  const worded = song('Fix You', { sections: [{ bar: 1, text: 'Intro' }, { bar: 9, text: 'Verse' }], chords: [{ bar: 1, text: 'G' }] });
+  const entry = songInfoFor(worded, project, '/Sets/Friday.als', { folder, firstBarOffsetSec: 0.0261 });
+  check('a song as it was prepared has no words changed', !wordsChanged(entry, worded, project, '/Sets/Friday.als'));
+  check('a renamed section is a change of words',
+    wordsChanged(entry, song('Fix You', { ...worded, sections: [{ bar: 1, text: 'Intro' }, { bar: 9, text: 'Verse 1' }] }), project, '/Sets/Friday.als'));
+  check('so is a note, or the key', wordsChanged(entry, song('Fix You', { ...worded, notes: 'watch the stop' }), project, '/Sets/Friday.als')
+    && wordsChanged(entry, song('Fix You', { ...worded, key: 'A' }), project, '/Sets/Friday.als'));
+  check('but a set renamed on disk is not, though the patch ids carry its path',
+    !wordsChanged(entry, worded, project, '/Sets/Saturday.als'));
   const { mergeSongs: merge } = await import('../src/lib/prepare.ts');
   const merged = merge(
     [{ folder: '22 {104, F, 4-4}', title: '22', firstBarOffsetSec: 0 }, { folder: 'Mine (2026-09-01)', title: 'Mine', firstBarOffsetSec: 0 }],

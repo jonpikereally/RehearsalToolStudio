@@ -107,6 +107,7 @@ export default function AutoUpdate() {
           folderName,
           selected,
           standing: found.standing,
+          words: found.words,
           keys: found.keys,
           // The order as the scan just found it, AbleSet's log included.
           songOrder: runningOrderTitles(libraryRef.current, currentSet) ?? undefined,
@@ -204,7 +205,10 @@ export default function AutoUpdate() {
               {phase.outcome.refreshed
                 ? phase.outcome.refreshed.error
                   ? `; the rest could not be refreshed: ${phase.outcome.refreshed.error}`
-                  : `; words and sections refreshed for ${phase.outcome.refreshed.count} song${phase.outcome.refreshed.count === 1 ? '' : 's'}`
+                  : phase.outcome.refreshed.count
+                    ? `; words and sections refreshed for ${phase.outcome.refreshed.count} song${phase.outcome.refreshed.count === 1 ? '' : 's'}` +
+                      (phase.outcome.refreshed.count <= 4 ? ` (${phase.outcome.refreshed.songs.join(', ')})` : '')
+                    : '; nothing else had changed'
                 : ''}
               . The band sees {phase.outcome.published.songs} song{phase.outcome.published.songs === 1 ? '' : 's'}.
               {phase.outcome.result && phase.outcome.result.skipped.length > 0 && (

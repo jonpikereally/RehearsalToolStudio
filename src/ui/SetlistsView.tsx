@@ -74,11 +74,15 @@ export default function SetlistsView() {
                     ? when.toLocaleDateString([], { day: 'numeric', month: 'short' })
                     : null;
                   const behind = f.changed + f.fresh;
+                  const words = f.words ? `words or sections changed in ${f.words} song${f.words === 1 ? '' : 's'}` : '';
                   return (
                     `prepared${stamp ? ` ${stamp}` : ''} into “${f.folder}” — ` +
                     (behind
-                      ? `${f.changed ? `${f.changed} changed` : ''}${f.changed && f.fresh ? ', ' : ''}${f.fresh ? `${f.fresh} new` : ''} since, ${f.unchanged} unchanged`
-                      : 'nothing has changed since; words and sections can still be refreshed')
+                      ? `${f.changed ? `${f.changed} changed` : ''}${f.changed && f.fresh ? ', ' : ''}${f.fresh ? `${f.fresh} new` : ''} since, ${f.unchanged} unchanged` +
+                        (words ? `; ${words}` : '')
+                      : words
+                        ? `no audio has changed since, but ${words}`
+                        : 'nothing has changed since; words and sections can still be refreshed')
                   );
                 })()
               : prepared.state === 'looking'

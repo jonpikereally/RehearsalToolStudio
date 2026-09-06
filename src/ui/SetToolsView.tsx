@@ -13,13 +13,13 @@ import {
   type HelperVoice,
 } from '../lib/slates';
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
-import { addChordTrack, chordClipsFor } from '../lib/chordTrack';
+import { addChordTrack, chordClipsFor, chordNotationsIn } from '../lib/chordTrack';
 import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
 import { keyRank, type SortSpec } from '../lib/songSort';
 import { addThis } from '../lib/alsEdit';
 import { runningOrderTitles } from '../lib/ableset';
 import SortBar, { useSort } from './SortBar';
-import { parseKey } from '../lib/nashville';
+import { NOTATION_LABEL, parseKey, type ChordNotation } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
 import { findLyricsStudio } from '../lib/lyricsStudio';
 
@@ -96,6 +96,15 @@ export default function SetToolsView() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
+  /** Which of the three chord notations to write; remembered. */
+  const [chordTarget, setChordTarget] = useState<ChordNotation>(() => {
+    const saved = localStorage.getItem('ls.settools.chordTarget');
+    return saved === 'names' || saved === 'numbers' || saved === 'roman' ? saved : 'numbers';
+  });
+  const pickChordTarget = (t: ChordNotation) => {
+    setChordTarget(t);
+    localStorage.setItem('ls.settools.chordTarget', t);
+  };
   const [progress, setProgress] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -347,9 +356,12 @@ export default function SetToolsView() {
     setError(null);
     setDone(null);
     try {
-      const { clips, trackName, converted, withoutKey } = chordClipsFor(project, keyFor, [
-        ...selected,
-      ]);
+      const { clips, trackName, converted, withoutKey, alreadyHad } = chordClipsFor(
+        project,
+        keyFor,
+        [...selected],
+        chordTarget,
+      );
 
       /*
        * A song whose locator never named a key can still be converted — the
@@ -361,7 +373,11 @@ export default function SetToolsView() {
         return;
       }
       if (!clips.length) {
-        setError('Nothing to convert — this set has no chord track, or already has both.');
+        setError(
+          alreadyHad.length
+            ? `Nothing to write — ${alreadyHad.length === 1 ? 'the song' : `all ${alreadyHad.length} songs`} with chords already ${alreadyHad.length === 1 ? 'has' : 'have'} ${NOTATION_LABEL[chordTarget].toLowerCase()}.`
+            : 'Nothing to convert — these songs have no chord track.',
+        );
         return;
       }
       setAskKeys(null);
@@ -782,14 +798,46 @@ export default function SetToolsView() {
 
               {tool === 'chords' && (
                 <>
+                  <div className="field stacked">
+                    <label>
+                      Chords to write
+                      <span className="hint">
+                        Converted from whichever chords the set has, each song in its own key. A song that
+                        already has the chosen kind is left alone.
+                      </span>
+                    </label>
+                    <div className="controls flush" style={{ gap: 8 }}>
+                      {(() => {
+                        const seen = project ? chordNotationsIn(project, [...selected]) : { withChords: 0, have: { names: 0, numbers: 0, roman: 0 } };
+                        return (['names', 'numbers', 'roman'] as ChordNotation[]).map((kind) => {
+                          const has = seen.have[kind];
+                          const note =
+                            !seen.withChords ? '' : has === seen.withChords ? ' · in the set' : has ? ` · in ${has} of ${seen.withChords}` : '';
+                          return (
+                            <button
+                              key={kind}
+                              className={chordTarget === kind ? 'chip on' : 'chip'}
+                              aria-pressed={chordTarget === kind}
+                              disabled={!!progress}
+                              onClick={() => pickChordTarget(kind)}
+                              title={has === seen.withChords && seen.withChords ? 'Every chosen song with chords has these already' : undefined}
+                            >
+                              {NOTATION_LABEL[kind]}
+                              {note && <span style={{ opacity: 0.6 }}>{note}</span>}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
                   <div className="btn-row">
                     <button className="btn primary" disabled={!!progress} onClick={() => void addChords()}>
-                      {wholeSet ? 'Convert chords, whole set' : `Convert chords, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                      {`Write ${NOTATION_LABEL[chordTarget].toLowerCase()}, ${wholeSet ? 'whole set' : `${selected.size} song${selected.size === 1 ? '' : 's'}`}`}
                     </button>
                   </div>
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    Writes the chord language the set is missing — names from numbers or numbers from
-                    names, each song in its own key — as a +LYRICS track in a copy of the set.
+                    Classical names say what to play; Nashville numbers and Roman numerals say what a chord does,
+                    and survive a change of key. Written as a +LYRICS track in a copy of the set.
                   </div>
                 </>
               )}
