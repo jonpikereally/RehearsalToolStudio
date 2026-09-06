@@ -6,6 +6,7 @@ import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
 import type { Aside } from '../lib/localSource';
+import { folderBaseOf } from '../lib/preparedSet';
 import { readBytes } from '../lib/source';
 import * as local from '../lib/localSource';
 import type { PublishResult } from '../lib/publish';
@@ -222,7 +223,14 @@ export default function PrepareSetDialog({
       setPublished(out.published);
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
-        setError('Stopped. Songs already written are in the folder; running it again rewrites the rest.');
+        // What the stop left behind: nothing, when it came before the first
+        // file was written; else the songs written over, which undo puts back.
+        const touched = new Set((aside.current?.songs ?? []).map((a) => folderBaseOf(a.folder).toLowerCase())).size;
+        setError(
+          touched
+            ? `Stopped. ${touched === 1 ? 'One song' : `${touched} songs`} had been written over — undo puts ${touched === 1 ? 'it' : 'them'} back as ${touched === 1 ? 'it was' : 'they were'}; running again rewrites the rest.`
+            : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.',
+        );
       } else {
         setError(err instanceof Error ? err.message : String(err));
       }

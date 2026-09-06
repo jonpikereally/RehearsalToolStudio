@@ -5,6 +5,7 @@ import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
 import { audioKeysFor, runPrepare, standingFor, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
 import type { Aside } from '../lib/localSource';
+import { folderBaseOf } from '../lib/preparedSet';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 import { runningOrderTitles } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
@@ -120,11 +121,14 @@ export default function AutoUpdate() {
       } catch (err) {
         if (!current()) return;
         const aborted = (err as { name?: string })?.name === 'AbortError';
+        const touched = new Set((aside.current?.songs ?? []).map((a) => folderBaseOf(a.folder).toLowerCase())).size;
         setPhase({
           kind: 'error',
           at,
           message: aborted
-            ? 'Stopped. Songs already written are in the folder; the next save, or a prepare, writes the rest.'
+            ? touched
+              ? `Stopped. ${touched === 1 ? 'One song' : `${touched} songs`} had been written over — undo puts ${touched === 1 ? 'it' : 'them'} back; the next save, or a prepare, writes the rest.`
+              : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.'
             : err instanceof Error ? err.message : String(err),
         });
       } finally {
