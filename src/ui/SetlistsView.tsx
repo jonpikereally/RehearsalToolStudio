@@ -4,10 +4,13 @@ import PrepareSetDialog from './PrepareSetDialog';
 import { navigate, setlistUrl } from '../lib/router';
 import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
+import { usePreparedStanding } from '../lib/usePreparedStanding';
 
 export default function SetlistsView() {
-  const { library, createSetlist, currentSet, settings, saveSettings, publishFolderName } = useStore();
+  const { library, createSetlist, currentSet, settings, saveSettings, publishFolderName, setSaved } = useStore();
   const [preparing, setPreparing] = useState(false);
+  // Looked up again after a save has been read, and after the dialog closes.
+  const prepared = usePreparedStanding(currentSet, `${setSaved?.at ?? ''}|${preparing}`);
   const inSetCount = library.songs.filter((s) => s.setPath === currentSet).length;
 
   // The set's own running order, and any made by hand out of its songs.
@@ -60,10 +63,27 @@ export default function SetlistsView() {
       {currentSet && inSetCount > 0 && (
         <div className="panel btn-row">
           <button className="btn primary" onClick={() => setPreparing(true)}>
-            Prepare the whole set for Rehearsal Tool
+            {prepared.state === 'found' ? 'Update the set for Rehearsal Tool' : 'Prepare the whole set for Rehearsal Tool'}
           </button>
           <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
-            all {inSetCount} song{inSetCount === 1 ? '' : 's'}, as small files the band's app plays
+            {prepared.state === 'found'
+              ? (() => {
+                  const f = prepared.found;
+                  const when = f.lastPrepared ? new Date(f.lastPrepared) : null;
+                  const stamp = when && !Number.isNaN(when.getTime())
+                    ? when.toLocaleDateString([], { day: 'numeric', month: 'short' })
+                    : null;
+                  const behind = f.changed + f.fresh;
+                  return (
+                    `prepared${stamp ? ` ${stamp}` : ''} into “${f.folder}” — ` +
+                    (behind
+                      ? `${f.changed ? `${f.changed} changed` : ''}${f.changed && f.fresh ? ', ' : ''}${f.fresh ? `${f.fresh} new` : ''} since, ${f.unchanged} unchanged`
+                      : 'nothing has changed since; words and sections can still be refreshed')
+                  );
+                })()
+              : prepared.state === 'looking'
+                ? 'looking for it in the band’s folder…'
+                : `all ${inSetCount} song${inSetCount === 1 ? '' : 's'}, as small files the band's app plays`}
           </span>
         </div>
       )}

@@ -168,6 +168,8 @@ export default function PrepareSetDialog({
   const titles = project ? titlesOf(project) : [];
   // Nothing chosen yet means the whole set, which is what the button says.
   const selected = chosen ?? new Set(titles);
+  // Nothing ticked can still be a run: the unchanged songs' words and sections.
+  const refreshable = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged').length;
   const toggle = (title: string) => {
     const next = new Set(selected);
     if (next.has(title)) next.delete(title);
@@ -273,7 +275,7 @@ export default function PrepareSetDialog({
         aria-label="Prepare for Rehearsal Tool"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>Prepare {alsName ?? 'the set'} for Rehearsal Tool</h3>
+        <h3>{lastPrepared ? 'Update' : 'Prepare'} {alsName ?? 'the set'} for Rehearsal Tool</h3>
         {/* The form, until a run has finished: then what happened is all that's shown. */}
         {!result && (
           <>
@@ -522,12 +524,14 @@ export default function PrepareSetDialog({
             <button
               className="btn primary"
               onClick={() => void start()}
-              disabled={busy || !setPath || selected.size === 0}
+              disabled={busy || !setPath || (selected.size === 0 && !refreshable)}
             >
               {busy
                 ? 'Preparing…'
                 : selected.size === 0
-                  ? 'Nothing chosen'
+                  ? refreshable
+                    ? `Refresh words and sections of ${refreshable} unchanged song${refreshable === 1 ? '' : 's'}`
+                    : 'Nothing chosen'
                   : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
                       selected.size === titles.length && titles.length
                         ? 'the whole setlist'
