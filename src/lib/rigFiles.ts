@@ -1,6 +1,7 @@
 import type { AlsProject } from './alsParser';
 import type { Patch, PatchClip } from '../types';
-import { songFolderName } from './prepare.ts';
+import { songFolderBase } from './prepare.ts';
+import { folderBaseOf } from './preparedSet.ts';
 import type { RigTrackSpec } from './rigTrack.ts';
 
 /**
@@ -13,8 +14,9 @@ import type { RigTrackSpec } from './rigTrack.ts';
  * track per member, for the leader to drag into the real set. The next
  * prepare then reads them back as the set's own, and the loop is closed.
  *
- * Keyed by song folder, as everything in a prepared set is, with bars
- * counted from the song's own first bar. The patch is the shape the
+ * Keyed by song name — a folder name without its render date, as every
+ * match in a prepared set goes — with bars counted from the song's own
+ * first bar. The patch is the shape the
  * manifest already uses, so the website reads and writes one thing.
  */
 
@@ -84,13 +86,14 @@ export function rigTrackSpecFor(
 ): { spec: RigTrackSpec; unknownFolders: string[] } {
   const byFolder = new Map<string, (typeof project.songs)[number]>();
   for (const song of project.songs) {
-    const folder = songFolderName(song, project).toLowerCase();
+    const folder = songFolderBase(song).toLowerCase();
     if (!byFolder.has(folder)) byFolder.set(folder, song);
   }
   const changes: RigTrackSpec['changes'] = [];
   const unknownFolders: string[] = [];
   for (const [folder, list] of Object.entries(file.songs)) {
-    const song = byFolder.get(folder.toLowerCase());
+    // Keyed by song name, or by a folder name dated or not: the title part is the song.
+    const song = byFolder.get(folderBaseOf(folder).toLowerCase());
     if (!song) {
       if (list.length) unknownFolders.push(folder);
       continue;

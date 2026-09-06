@@ -3,7 +3,8 @@ import { needsRender, renderTrack, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
-import { MANIFEST_NAME, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
+import { MANIFEST_NAME, SONG_FILE_NAME, sameSong, folderBaseOf, songFileFor, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
+import { songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
@@ -144,7 +145,7 @@ export interface PrepareOptions {
    * so whatever the folder held can be moved aside and put back if the run
    * is stopped or regretted. A song that writes nothing is never announced.
    */
-  beforeSong?: (folderName: string) => Promise<void>;
+  beforeSong?: (folderName: string, previousFolder?: string) => Promise<void>;
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
   /**
    * Transpose and stretch a decoded file, for a clip Live plays shifted or
@@ -177,8 +178,9 @@ export interface PrepareOptions {
 }
 
 /**
- * The manifest's order as folder names: the given running order first, by
- * title, then whatever of the set it did not name, as the set has it.
+ * The manifest's order as song names — folder names without their date:
+ * the given running order first, by title, then whatever of the set it did
+ * not name, as the set has it.
  */
 export function folderOrder(project: AlsProject, songOrder?: string[] | null): string[] {
   const arranged = project.songs.map((s) => s.title);
@@ -187,8 +189,8 @@ export function folderOrder(project: AlsProject, songOrder?: string[] | null): s
   for (const title of titles) {
     const song = project.songs.find((s) => s.title === title);
     if (!song) continue;
-    const folder = songFolderName(song, project);
-    if (!out.includes(folder)) out.push(folder);
+    const name = songFolderBase(song);
+    if (!out.includes(name)) out.push(name);
   }
   return out;
 }
@@ -273,20 +275,52 @@ function safeName(text: string): string {
   return text.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+/** The day, as a folder name carries it: `2026-09-06`. */
+export function renderStamp(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** The song's name as a folder would carry it: the title, made safe. What a song is known by in a prepared set. */
+export function songFolderBase(song: AlsSong): string {
+  return safeName(song.title);
+}
+
 /**
- * The song folder, carrying what the scan needs to know.
- *
- * Tempo, key and time signature go in curly brackets because that is how File
- * mode reads them — so a prepared set is understood by the same rules a
- * hand-made folder is, with no special case anywhere.
+ * The song folder: `<Title> (<date>)` — the title, and the day its audio was
+ * rendered, so the folder says how fresh its files are. Older sets carried
+ * the tempo, key and meter here in curly brackets; those now travel in the
+ * manifest and in the folder's own song.json, and a song is matched by its
+ * title part whichever way its folder is named (see folderBaseOf).
  */
-export function songFolderName(song: AlsSong, project: AlsProject): string {
-  const facts = [
-    String(Math.round(tempoOf(song, project) * 10) / 10),
-    song.key ?? '',
-    `${project.timeSigNum}-${project.timeSigDen}`,
-  ].filter(Boolean);
-  return `${safeName(song.title)} {${facts.join(', ')}}`;
+export function songFolderName(song: AlsSong, renderedOn: string = renderStamp()): string {
+  return `${songFolderBase(song)} (${renderedOn})`;
+}
+
+/**
+ * What a written part was made from, beside its label: the facts a person
+ * asks about a stem — which tracks, whether it was frozen or shifted, how
+ * much of the song it covers, how loud, and how big the file came out.
+ */
+function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
+  const clips = part.stems.flatMap((s) => s.clips.filter((c) => !c.disabled));
+  const shifted = clips.find((c) => (c.semitones ?? 0) !== 0 || Math.abs((c.speed ?? 1) - 1) > 1e-6);
+  const bars = song.endBar - song.startBar + 1;
+  const from = clips.length ? Math.max(1, Math.floor(Math.min(...clips.map((c) => c.startBar)))) : null;
+  const to = clips.length ? Math.min(bars, Math.ceil(Math.max(...clips.map((c) => c.endBar)))) : null;
+  const gain = part.combined ? 1 : (part.stems[0]?.gain ?? 1);
+  return {
+    file: partFileName(song.title, part.name, part.reference),
+    sources: part.stems.map((s) => s.name),
+    ...(part.stems.some((s) => s.frozen) ? { frozen: true } : {}),
+    ...(shifted
+      ? { shifted: { semitones: shifted.semitones ?? 0, speed: Math.round((shifted.speed ?? 1) * 10000) / 10000 } }
+      : {}),
+    ...(from !== null && to !== null && to >= from ? { covers: { fromBar: from, toBar: to } } : {}),
+    ...(gain > 0 && Math.abs(gain - 1) > 1e-3 ? { gainDb: Math.round(20 * Math.log10(gain) * 10) / 10 } : {}),
+    sizeBytes,
+    bitrate,
+    sampleRate,
+  };
 }
 
 /**
@@ -441,7 +475,7 @@ async function sha1Hex(bytes: ArrayBuffer): Promise<string> {
 }
 
 /** The tempo Live plays the song at: the automation's where there is any. *//** The tempo Live plays the song at: the automation's where there is any. */
-function tempoOf(song: AlsSong, project: AlsProject): number {
+export function tempoOf(song: AlsSong, project: AlsProject): number {
   return song.startBpm ?? song.bpm ?? project.tempo;
 }
 
@@ -468,11 +502,14 @@ export function mergeSongs(
   written: PreparedSongInfo[],
   setOrder: string[],
 ): PreparedSongInfo[] {
-  const mine = new Map(written.map((w) => [w.folder, w]));
-  const kept = existing.filter((song) => !mine.has(song.folder));
-  const order = new Map(setOrder.map((folder, i) => [folder, i]));
+  // By the song's name, not the folder's: a song rendered again on a new day
+  // has a new folder, and replaces its older self rather than joining it.
+  const nameOf = (folder: string) => folderBaseOf(folder).toLowerCase();
+  const mine = new Set(written.map((w) => nameOf(w.folder)));
+  const kept = existing.filter((song) => !mine.has(nameOf(song.folder)));
+  const order = new Map(setOrder.map((name, i) => [nameOf(name), i]));
   return [...kept, ...written].sort(
-    (a, b) => (order.get(a.folder) ?? Infinity) - (order.get(b.folder) ?? Infinity),
+    (a, b) => (order.get(nameOf(a.folder)) ?? Infinity) - (order.get(nameOf(b.folder)) ?? Infinity),
   );
 }
 
@@ -483,6 +520,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   } = opts;
 
   const folder = `${setsFolder(root)}/${safeName(setName)}`;
+  // The day and the moment, for the folders' names and the entries' record of it.
+  const stamp = renderStamp();
+  const renderedAt = new Date().toISOString();
+  // What is already in that folder: the entries to merge with, and where
+  // each song's files were before this run.
+  const existing = (await opts.readManifest?.()) ?? null;
   const wanted = opts.only?.length ? new Set(opts.only) : null;
   const chosen = wanted ? project.songs.filter((s) => wanted.has(s.title)) : project.songs;
   const skipped: PrepareResult['skipped'] = [];
@@ -608,7 +651,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
     const bpm = tempoOf(song, project);
     const durationSec = barToSeconds(song.endBar - song.startBar + 1, bpm, project);
-    const songFolder = `${folder}/${songFolderName(song, project)}`;
+    const folderName = songFolderName(song, stamp);
+    const songFolder = `${folder}/${folderName}`;
+    // The folder this song had before, when the day has moved its name on.
+    const previousFolder = existing?.songs.find((e) => sameSong(e.folder, folderName))?.folder;
     let wroteAny = false;
     /** The parts that actually reached the folder, for the manifest. */
     const wroteParts: PreparedPart[] = [];
@@ -753,7 +799,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             label,
             name: label,
             kind: 'sampler',
-            id: `${songFolderName(song, project)}#sampler:${label}`.toLowerCase(),
+            id: `${folderName}#sampler:${label}`.toLowerCase(),
             role: 'stem',
             rev: samples.map((s) => s.rev.slice(0, 8)).join('+'),
             order: wroteParts.length,
@@ -845,10 +891,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           onProgress: (r) => report('encoding', r),
         });
 
-        if (!wroteAny) await opts.beforeSong?.(songFolderName(song, project));
+        if (!wroteAny) {
+          await opts.beforeSong?.(folderName, previousFolder && previousFolder !== folderName ? previousFolder : undefined);
+        }
         report('writing', 1);
         await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
-        const info = partInfoFor(song.title, part.name, part.reference);
+        const info = { ...partInfoFor(song.title, part.name, part.reference), ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate) };
         wroteParts.push(info);
         if (info.record) records.push({ song: song.title, part: info.label });
         partsWritten++;
@@ -889,8 +937,13 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
        * lead-in would go unmentioned and put every song fractionally late.
        */
       written.push({
-        folder: songFolderName(song, project),
+        folder: folderName,
         title: song.title,
+        renderedAt,
+        tempo: Math.round(tempoOf(song, project) * 10) / 10,
+        timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
+        bars: song.endBar - song.startBar + 1,
+        durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
         firstBarOffsetSec: paddingSec,
         originalKey: song.key ?? undefined,
         notes: song.notes || undefined,
@@ -910,15 +963,19 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             : undefined,
         audioKey: opts.audioKeys?.[song.title],
       });
+      // The song's own copy of its entry, in its folder, for a reader that has
+      // only the folder — and the one place the stems' facts are sure to be.
+      await writeFile(
+        `${songFolder}/${SONG_FILE_NAME}`,
+        new Blob([JSON.stringify(songFileFor(written[written.length - 1], safeName(setName), opts.alsPath), null, 2)], {
+          type: 'application/json',
+        }),
+      );
     }
   }
 
   if (written.length) {
-    const songs = mergeSongs(
-      ((await opts.readManifest?.()) ?? { songs: [] }).songs,
-      written,
-      folderOrder(project, opts.songOrder),
-    );
+    const songs = mergeSongs(existing?.songs ?? [], written, folderOrder(project, opts.songOrder));
 
     const manifest: PreparedManifest = {
       preparedBy: 'rehearsaltool',

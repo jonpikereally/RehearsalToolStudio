@@ -1,4 +1,5 @@
 import type { FileEntry } from './files';
+import { RENDER_DATE_SUFFIX } from './preparedSet.ts';
 import { normalisePath } from './paths.ts';
 import type { Library, Setlist, Song, Variant, VariantRole } from '../types';
 
@@ -253,7 +254,8 @@ function extractTags(name: string): Tags {
 /** Read the tags off a song or folder name. */
 export function parseNameMeta(name: string): NameMeta {
   const { rest, bpm, key, timeSig } = extractTags(name);
-  return { title: tidy(rest) || name.trim(), bpm, key, timeSig };
+  // A prepared song folder ends in the day it was rendered, which is not the title.
+  return { title: tidy(rest.replace(RENDER_DATE_SUFFIX, ' ')) || name.trim(), bpm, key, timeSig };
 }
 
 export interface ParsedFileName {

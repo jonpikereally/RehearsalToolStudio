@@ -1805,12 +1805,19 @@ group('preparing a set');
    * The whole architecture rests on this: what Ableton mode writes has to be
    * read back by the same rules a hand-made folder is, with no special case.
    */
-  const folder = songFolderName(song, project);
-  check('the folder carries the song facts', folder === 'Fix You {136, Eb, 4-4}', folder);
+  const folder = songFolderName(song, '2026-09-06');
+  check('the folder is the title and the day it was rendered', folder === 'Fix You (2026-09-06)', folder);
 
   const meta = parseNameMeta(folder);
-  check('and File mode reads them back', meta.title === 'Fix You' && meta.bpm === 136 && meta.key === 'Eb', JSON.stringify(meta));
-  check('time signature included', meta.timeSig?.num === 4 && meta.timeSig?.den === 4);
+  check('and File mode reads the title back without the date', meta.title === 'Fix You', JSON.stringify(meta));
+  const older = parseNameMeta('Fix You {136, Eb, 4-4}');
+  check('an older folder still reads its facts', older.title === 'Fix You' && older.bpm === 136 && older.key === 'Eb' && older.timeSig?.den === 4);
+  const { folderBaseOf, sameSong, renderDateOf } = await import('../src/lib/preparedSet.ts');
+  check('a song is known by its title whichever way its folder is named',
+    folderBaseOf('Fix You (2026-09-06)') === 'Fix You' && folderBaseOf('Fix You {136, Eb, 4-4}') === 'Fix You'
+      && sameSong('Fix You {136, Eb, 4-4}', 'fix you (2026-09-07)') && sameSong('Fix You (2026-09-06)', 'Fix You'));
+  check('a title that ends in brackets of its own keeps them', folderBaseOf('Live (2019)') === 'Live (2019)' && renderDateOf('Live (2019)') === null);
+  check('and the day is read off a dated one', renderDateOf('Fix You (2026-09-06)') === '2026-09-06');
 
   const file = partFileName('Fix You', 'Bass 1');
   check("Ableton's track number is dropped", file === 'Fix You [bass].mp3', file);
@@ -1856,7 +1863,7 @@ group('prepared set manifest');
     chords: [{ bar: 3, text: 'Eb' }],
   };
 
-  const folder = songFolderName(alsSong, project);
+  const folder = songFolderName(alsSong, '2026-08-13');
   const setFolder = '/S/Rehearsal Tool/Sets/Coldplay 2026-08-13';
   const manifestPath = `${setFolder}/set.json`;
   const manifest = {
@@ -2637,6 +2644,17 @@ group('manifest validation');
   const out = applyManifest(target, 'Root/set.json', { preparedBy: 'rehearsaltool', songs: [{ folder: 42 }] });
   check('an invalid manifest applies nothing and reports',
     out.applied === 0 && (out.errors?.length ?? 0) > 0, JSON.stringify(out));
+
+  // The folder's name no longer says the tempo or meter; the entry does.
+  const dated = [{ id: 't', folderPath: 'Root/Yellow (2026-09-06)', title: 'Yellow (2026-09-06)', markers: [],
+    bpm: 120, tempoUnset: true, timeSigNum: 4, timeSigDen: 4, variants: [] }];
+  applyManifest(dated, 'Root/set.json', { preparedBy: 'rehearsaltool',
+    songs: [{ folder: 'Yellow (2026-09-06)', title: 'Yellow', tempo: 87, timeSignature: '6/8', renderedAt: '2026-09-06T08:00:00.000Z', bars: 40, durationSec: 165.5 }] });
+  check('a manifest sets the tempo, meter and title the folder name no longer carries',
+    dated[0].bpm === 87 && dated[0].timeSigNum === 6 && dated[0].timeSigDen === 8 && dated[0].title === 'Yellow' && dated[0].tempoUnset === false,
+    JSON.stringify(dated[0]));
+  const badSig = validateManifest({ preparedBy: 'rehearsaltool', songs: [{ folder: 'x', timeSignature: '4-4' }] });
+  check('a meter written the folder way is named as wrong', !badSig.ok && badSig.errors[0].includes('timeSignature'));
 }
 
 /* --------------------------- patches through prepare ------------------------ */
@@ -3221,8 +3239,9 @@ group('the file API');
     await fsp.writeFile(join(set, 'Yellow', 'a.mp3'), 'old drums');
     await fsp.writeFile(join(set, 'set.json'), '{"old":true}');
     check('undo is refused outside a prepared set', (await call('undo-begin', { dir: songs, set: 'Band' })).status === 400);
-    check('and for a set that is not there', (await call('undo-begin', { dir: songs, set: 'Sets/Nope' })).status === 404);
     check('nothing to undo before a run begins', (await call('undo-restore', { dir: songs, set: 'Sets/Fri', songs: [] })).status === 409);
+    check('a set not there yet is made, since the run is about to write it',
+      (await ask('undo-begin', { dir: songs, set: 'Sets/Fresh' })).ok === true && (await has(join(songs, 'Sets', 'Fresh', '.undo'))));
     check('a run begins by keeping the manifest', (await ask('undo-begin', { dir: songs, set: 'Sets/Fri' })).ok === true
       && (await fsp.readFile(join(set, '.undo', 'set.json'), 'utf8')) === '{"old":true}');
     check('a song folder is moved aside before it is written', (await ask('undo-keep', { dir: songs, set: 'Sets/Fri', song: 'Yellow' })).kept === true
@@ -3796,8 +3815,21 @@ group('updating a prepared set without re-rendering');
     updatableSong(song('Yellow'), project, manifest, ['Yellow {120, G, 4-4}']).ok === true);
 
   // The lead-in describes files on disk, so it is carried, never re-derived.
-  const info = songInfoFor(fixYou, project, '/Sets/Friday.als', 0.0261);
+  const info = songInfoFor(fixYou, project, '/Sets/Friday.als', { folder, firstBarOffsetSec: 0.0261, renderedAt: '2026-01-01T00:00:00.000Z' });
   check('the manifest entry keeps the lead-in it was given', info.firstBarOffsetSec === 0.0261);
+  check('and says the tempo, meter and length the folder name no longer carries',
+    info.tempo === 120 && info.timeSignature === '4/4' && info.bars === 33 && info.renderedAt === '2026-01-01T00:00:00.000Z', JSON.stringify(info));
+  check('a refresh writes into the folder the files are in, dated as it was',
+    updatableSong(fixYou, project, manifest, []).folder === folder);
+  const { mergeSongs: merge } = await import('../src/lib/prepare.ts');
+  const merged = merge(
+    [{ folder: '22 {104, F, 4-4}', title: '22', firstBarOffsetSec: 0 }, { folder: 'Mine (2026-09-01)', title: 'Mine', firstBarOffsetSec: 0 }],
+    [{ folder: '22 (2026-09-06)', title: '22', firstBarOffsetSec: 0 }],
+    ['Mine', '22'],
+  );
+  check('a song rendered on a new day replaces its older folder in the manifest',
+    merged.length === 2 && merged[0].folder === 'Mine (2026-09-01)' && merged[1].folder === '22 (2026-09-06)',
+    JSON.stringify(merged.map((m) => m.folder)));
   check('and is named by the same folder rule the audio was written under',
     info.folder === folder, info.folder);
 
@@ -4260,7 +4292,7 @@ group('a song\'s audio as a key');
   const manifest = { preparedBy: 'rehearsaltool', preparedAt: 'x', paddingSec: 0, songs: [{ folder: 'Yellow {120}', title: 'Yellow', firstBarOffsetSec: 0, audioKey: base }] };
   check('the manifest carries the key', validateManifest(manifest).ok);
   check('and refuses one that is not text', !validateManifest({ ...manifest, songs: [{ ...manifest.songs[0], audioKey: 5 }] }).ok);
-  check('a words-only update carries it forward', songInfoFor(song(), project, '/x.als', 0, undefined, base).audioKey === base);
+  check('a words-only update carries it forward', songInfoFor(song(), project, '/x.als', { folder: 'Yellow {120}', firstBarOffsetSec: 0, audioKey: base }).audioKey === base);
 }
 
 /* ------------------------------ what the band is shown ------------------------------ */

@@ -101,7 +101,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const partCount = printing.length + (combining.length ? 1 : 0);
   // The folder the rest of the set went into, if it was ever named; else today's.
   const setName = setNameFor(song.setPath ?? null);
-  const folderName = alsSong && project ? songFolderName(alsSong, project) : '';
+  const folderName = alsSong ? songFolderName(alsSong) : '';
 
   const stop = () => running.current?.abort();
 
@@ -134,9 +134,16 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         print: printing.map((s) => s.name),
         combine: combining.length ? [{ name: combinedName || 'band', stems: combining.map((s) => s.name) }] : [],
       };
+      // What is about to be written over is kept aside, as a set-wide run keeps it.
+      const setFolder = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}`;
+      await local.undoBegin(folder, setFolder);
       const ctx = new AudioContext();
       const done = await prepareSet({
         songOrder: liveOrder?.titles,
+        beforeSong: async (name, previous) => {
+          if (previous) await local.undoKeep(folder, setFolder, previous);
+          await local.undoKeep(folder, setFolder, name);
+        },
         project,
         alsPath: setPath,
         only: [alsSong.title],

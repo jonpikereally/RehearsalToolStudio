@@ -80,7 +80,7 @@ export default function AutoUpdate() {
         // The folder this set already has in the band's folder, whatever
         // either is called now: known by the songs in it.
         const keys = await audioKeysFor(project, currentSet);
-        const folderName = await preparedNameFor(band, currentSet, keys.byFolder);
+        const folderName = await preparedNameFor(band, currentSet, keys.byName);
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
           if (current()) setPhase({ kind: 'unprepared', at });

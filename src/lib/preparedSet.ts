@@ -15,11 +15,50 @@ import type { ChartLane, Marker, PatchClip, SamplerNote, SamplerSample, Song, Te
  */
 
 export const MANIFEST_NAME = 'set.json';
+/** One per song folder: the song's own entry, readable without the set's manifest. */
+export const SONG_FILE_NAME = 'song.json';
+
+/**
+ * A song folder is `<Title> (<date>)`: the title, and the day its audio was
+ * last rendered, so a folder says how fresh its files are. Older sets named
+ * it `<Title> {tempo, key, sig}`. What identifies the song across both — and
+ * across renders, since the date moves — is the title part, which is what
+ * every match in a prepared set goes by.
+ */
+export const RENDER_DATE_SUFFIX = /\s*\((\d{4}-\d{2}-\d{2})\)\s*$/;
+
+/** The song's name from its folder's: the title part, without the date or the older facts. */
+export function folderBaseOf(folderName: string): string {
+  return folderName.replace(RENDER_DATE_SUFFIX, '').replace(/\s*\{[^}]*\}\s*$/, '').trim();
+}
+
+/** The day a song folder's audio was rendered, from its name; null for an older folder. */
+export function renderDateOf(folderName: string): string | null {
+  return RENDER_DATE_SUFFIX.exec(folderName)?.[1] ?? null;
+}
+
+/** Whether two folder names — or a folder name and a song name — are the same song's. */
+export function sameSong(a: string, b: string): boolean {
+  return folderBaseOf(a).toLowerCase() === folderBaseOf(b).toLowerCase();
+}
+
+/** What a song folder's own file holds: the entry, and which set it belongs to. */
+export function songFileFor(entry: PreparedSongInfo, setFolder: string, fromSet?: string): Record<string, unknown> {
+  return { preparedBy: 'rehearsaltool', set: setFolder, ...(fromSet ? { fromSet } : {}), ...entry };
+}
 
 export interface PreparedSongInfo {
-  /** The song's folder name, relative to the set. */
+  /** The song's folder name, relative to the set: `<Title> (<date rendered>)`. */
   folder: string;
   title: string;
+  /** When the song's audio was last rendered, in full; its folder carries the day. */
+  renderedAt?: string;
+  /** The tempo at the song's start, to one decimal, and its meter as `4/4`. */
+  tempo?: number;
+  timeSignature?: string;
+  /** How long the song is: in bars, and in seconds through its tempo map. */
+  bars?: number;
+  durationSec?: number;
   /**
    * Seconds from the start of each file to the downbeat of bar 1.
    *
@@ -111,6 +150,26 @@ export interface PreparedPart {
    * fader beside the band's drums. Always a `mix` and always `reference`.
    */
   record?: boolean;
+  /*
+   * What an audio part was made from — the studio's facts about the stem,
+   * for whoever wonders why a part sounds as it does. All optional; a part
+   * written before they existed carries none.
+   */
+  /** The file's name in the folder. */
+  file?: string;
+  /** The Live tracks the part was rendered from: one, or several for a combined part. */
+  sources?: string[];
+  /** Rendered from Live's own freeze of the track, its devices included. */
+  frozen?: boolean;
+  /** Transposed or stretched from its file in the render: semitones, and the speed ratio. */
+  shifted?: { semitones: number; speed: number };
+  /** The bars of the song the part has audio in, 1-based and inclusive. */
+  covers?: { fromBar: number; toBar: number };
+  /** The fader level the part was rendered at, in dB; absent at unity. */
+  gainDb?: number;
+  sizeBytes?: number;
+  bitrate?: number;
+  sampleRate?: number;
 }
 
 export interface PreparedManifest {
@@ -172,6 +231,11 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
       bad('"firstBarOffsetSec" must be a number of seconds');
     }
     if (song.originalKey !== undefined && typeof song.originalKey !== 'string') bad('"originalKey" must be text');
+    if (song.renderedAt !== undefined && typeof song.renderedAt !== 'string') bad('"renderedAt" must be text');
+    if (song.tempo !== undefined && typeof song.tempo !== 'number') bad('"tempo" must be a number');
+    if (song.timeSignature !== undefined && !/^\d+\/\d+$/.test(String(song.timeSignature))) bad('"timeSignature" must be like "4/4"');
+    if (song.bars !== undefined && typeof song.bars !== 'number') bad('"bars" must be a number');
+    if (song.durationSec !== undefined && typeof song.durationSec !== 'number') bad('"durationSec" must be a number');
     for (const [field, wantBar] of [['tempoMap', 'bpm'], ['chords', 'text']] as const) {
       const list = song[field] as unknown;
       if (list === undefined) continue;
@@ -283,6 +347,12 @@ export function manifestFromSongs(
        */
       const before = previous?.songs.find((e) => e.folder.toLowerCase() === info.folder.toLowerCase());
       if (before?.parts?.length) info.parts = before.parts;
+      if (before?.renderedAt) info.renderedAt = before.renderedAt;
+      if (before?.audioKey) info.audioKey = before.audioKey;
+      if (before?.bars) info.bars = before.bars;
+      if (before?.durationSec) info.durationSec = before.durationSec;
+      if (song.bpm) info.tempo = song.bpm;
+      if (song.timeSigNum && song.timeSigDen) info.timeSignature = `${song.timeSigNum}/${song.timeSigDen}`;
       return info;
     });
 
@@ -321,6 +391,14 @@ export function applyManifest(
     if (!info) continue;
     applied++;
 
+    // The folder's name no longer carries these; the entry does.
+    if (info.title) song.title = info.title;
+    if (typeof info.tempo === 'number' && info.tempo > 0) song.bpm = info.tempo;
+    const sig = info.timeSignature?.match(/^(\d+)\/(\d+)$/);
+    if (sig) {
+      song.timeSigNum = Number(sig[1]);
+      song.timeSigDen = Number(sig[2]);
+    }
     song.firstBarOffsetSec = info.firstBarOffsetSec ?? song.firstBarOffsetSec;
     if (info.originalKey) song.originalKey = info.originalKey;
     if (info.notes !== undefined) song.notes = info.notes || undefined;

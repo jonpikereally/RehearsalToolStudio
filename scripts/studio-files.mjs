@@ -345,7 +345,8 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
      */
     async 'undo-begin'({ dir, set }) {
       const full = preparedSetPath(dir, set);
-      if (!(await stat(full).catch(() => null))?.isDirectory()) throw new Refusal(404, `${set} is not there`);
+      // A first prepare's set folder is not there yet; the run is about to make it anyway.
+      await mkdir(full, { recursive: true });
       await rm(join(full, UNDO), { recursive: true, force: true });
       await mkdir(join(full, UNDO), { recursive: true });
       if (await there(join(full, MANIFEST))) await copyFile(join(full, MANIFEST), join(full, UNDO, MANIFEST));

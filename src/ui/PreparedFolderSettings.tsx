@@ -48,7 +48,7 @@ export default function PreparedFolderSettings() {
       if (!band || !live) return;
       const project = await parseAls((await readBytes(currentSet)).bytes);
       const keys = await audioKeysFor(project, currentSet);
-      const found = await locatePrepared(band, currentSet, keys.byFolder);
+      const found = await locatePrepared(band, currentSet, keys.byName);
       if (!live) return;
       if ('error' in found) return;
       setName(found.setFolder.split('/').pop() ?? null);

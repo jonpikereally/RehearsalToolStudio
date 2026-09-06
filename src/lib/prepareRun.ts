@@ -5,9 +5,9 @@ import { holdAwake } from './keepAwake';
 import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
-import { prepareSet, songFolderName, type PrepareProgress, type PrepareResult } from './prepare';
+import { prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
 import { markPrepareRunning } from './prepareState';
-import { MANIFEST_NAME, type PreparedManifest } from './preparedSet';
+import { MANIFEST_NAME, sameSong, type PreparedManifest } from './preparedSet';
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
@@ -28,8 +28,8 @@ import { updatePrepared } from './updatePrepared';
 /** Every song's audio key as it stands now, by title and by folder name. */
 export interface AudioKeys {
   byTitle: Record<string, string>;
-  /** Keyed by song folder name, lower-cased, as manifests name songs. */
-  byFolder: Record<string, string>;
+  /** Keyed by song name — the folder's title part, lower-cased — as manifests are matched. */
+  byName: Record<string, string>;
 }
 
 /**
@@ -63,14 +63,14 @@ export async function audioKeysFor(project: AlsProject, setPath: string): Promis
     sampleRate: 48000,
   };
   const byTitle: Record<string, string> = {};
-  const byFolder: Record<string, string> = {};
+  const byName: Record<string, string> = {};
   for (const song of project.songs) {
     if (byTitle[song.title]) continue;
     const key = audioKeyFor(song, project, inputs);
     byTitle[song.title] = key;
-    byFolder[songFolderName(song, project).toLowerCase()] = key;
+    byName[songFolderBase(song).toLowerCase()] = key;
   }
-  return { byTitle, byFolder };
+  return { byTitle, byName };
 }
 
 export interface Standing {
@@ -117,8 +117,8 @@ export async function standingFor(
   const standing = new Map<string, AudioStanding>();
   for (const song of project.songs) {
     if (standing.has(song.title)) continue;
-    const folder = songFolderName(song, project).toLowerCase();
-    const entry = manifest?.songs.find((e) => e.folder.toLowerCase() === folder);
+    const name = songFolderBase(song);
+    const entry = manifest?.songs.find((e) => sameSong(e.folder, name));
     standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
   }
   return { standing, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
@@ -220,8 +220,11 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
             return { bytes: got.bytes, size: got.size };
           },
           writeFile,
+          // The song's folder as it was — and, when the day has moved its
+          // name on, the older folder too — kept aside for undo.
           beforeSong: aside
-            ? async (name) => {
+            ? async (name, previous) => {
+                if (previous) aside.push({ folder: previous, kept: await local.undoKeep(band, setFolder, previous) });
                 aside.push({ folder: name, kept: await local.undoKeep(band, setFolder, name) });
               }
             : undefined,

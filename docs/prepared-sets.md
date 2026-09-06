@@ -73,18 +73,26 @@ player, and both are what make the set more than a pile of audio.
 
 ## The song folder
 
-`<Title> {<tempo>, <key>, <num>-<den>}`
+`<Title> (<date rendered>)` — for example `Cruel Summer (2026-09-06)`.
 
-| Field | What it is | Notes |
-| --- | --- | --- |
-| tempo | the tempo Live plays the song at, to one decimal | the tempo automation's value at the song's start when there is any, else the set's tempo |
-| key | the song's key, as the set's locator wrote it | left out when the set does not say |
-| time signature | the set's, hyphenated | `4-4`, never `4/4`: a slash cannot appear in a file name |
+The title, and the day the song's audio was last rendered, so a folder says
+how fresh its files are. A song whose audio has not changed keeps its folder
+and its date across later prepares; a song rendered again on a later day
+gets a new folder, and its old one is taken out of the set (kept aside for
+undo, in a hidden `.undo` folder a scan must ignore). The set's `set.json`
+always names the folder each song is in now.
 
-The website's scan lifts these from the folder name and strips the curly block
-from the title, the same as for a folder someone named by hand. A song may
-change tempo part way through; the folder name carries only the first tempo,
-and the manifest carries the rest.
+**A song's identity is the title part of its folder name** — the name with
+the trailing ` (YYYY-MM-DD)` removed — not the folder name itself, which
+moves with the date. Key per-song state, rig files and anything else that
+must survive a re-render by set + song name, never by folder. Strip the date
+from the title when showing it.
+
+Older sets named the folder `<Title> {<tempo>, <key>, <num>-<den>}`; a
+reader should still strip that curly block from the title and may still
+lift the facts from it. Everything it carried now travels in `set.json` and
+in the folder's own `song.json` (`tempo`, `timeSignature`, `originalKey`),
+and both kinds of folder can sit in one set.
 
 ## The parts
 
@@ -181,8 +189,13 @@ way a hand-made folder would.
   "paddingSec": 0.0261,
   "songs": [
     {
-      "folder": "Cruel Summer {85, G, 4-4}",
+      "folder": "Cruel Summer (2026-09-06)",
       "title": "Cruel Summer",
+      "renderedAt": "2026-09-06T08:31:12.000Z",
+      "tempo": 85,
+      "timeSignature": "4/4",
+      "bars": 96,
+      "durationSec": 271.06,
       "firstBarOffsetSec": 0.0261,
       "originalKey": "G",
       "notes": "Piano intro. Watch the drummer for the stop.",
@@ -190,9 +203,13 @@ way a hand-made folder would.
       "markers": [{ "bar": 1, "name": "Intro" }, { "bar": 5, "name": "Verse 1" }],
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
       "parts": [
-        { "label": "ref song", "name": "song", "role": "mix", "reference": true, "record": true },
-        { "label": "ref drums", "name": "drums", "reference": true },
-        { "label": "bass", "name": "bass" },
+        { "label": "ref song", "name": "song", "role": "mix", "reference": true, "record": true,
+          "file": "Cruel Summer [ref song].mp3", "sources": ["REF SONG"], "frozen": true,
+          "shifted": { "semitones": -2, "speed": 1 }, "covers": { "fromBar": 1, "toBar": 96 },
+          "sizeBytes": 4351020, "bitrate": 128, "sampleRate": 48000 },
+        { "label": "ref drums", "name": "drums", "reference": true, "file": "Cruel Summer [ref drums].mp3", "sources": ["REF DRUMS"] },
+        { "label": "bass", "name": "bass", "file": "Cruel Summer [bass].mp3", "sources": ["Bass"], "gainDb": -3.5,
+          "covers": { "fromBar": 9, "toBar": 96 } },
         { "label": "click", "name": "click", "kind": "sampler",
           "id": "cruel summer {85, g, 4-4}#sampler:click", "role": "stem", "rev": "1a2b3c4d+5e6f7a8b", "order": 2,
           "samples": [
@@ -224,8 +241,13 @@ way a hand-made folder would.
 | `fromSet` | no | the `.als` it came from, relative to the Studio's sets folder; absent when written by hand |
 | `paddingSec` | no | the encoder lead-in for this run, in seconds |
 | `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order |
-| `songs[].folder` | yes | the song folder's name, relative to the set folder; how the entry is matched to the scanned song, case-insensitively |
-| `songs[].title` | no | the song's title, in case the folder name had to be cleaned |
+| `songs[].folder` | yes | the song folder's name, relative to the set folder, as it is now; how the entry is matched to the scanned song, case-insensitively |
+| `songs[].title` | no | the song's title, in case the folder name had to be cleaned. Prefer it to the folder name |
+| `songs[].renderedAt` | no | when the song's audio was last rendered, ISO; the folder name carries the day |
+| `songs[].tempo` | no | the tempo at the song's start, to one decimal — what the folder name used to carry. `tempoMap` has the rest |
+| `songs[].timeSignature` | no | the meter, as `4/4` |
+| `songs[].bars` | no | the song's length in bars |
+| `songs[].durationSec` | no | the song's length in seconds, through its tempo map |
 | `songs[].firstBarOffsetSec` | no | seconds from the start of each file to the downbeat of bar 1 |
 | `songs[].originalKey` | no | the key the set gave the song |
 | `songs[].notes` | no | free text about the song, from the info text of its group track in Live; line breaks kept, worth showing as typed |
@@ -234,7 +256,7 @@ way a hand-made folder would.
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
 | `songs[].audioKey` | no | the Studio's own note of what the song's audio was made from, so its next prepare can skip a song whose audio has not changed. Opaque text; ignore it |
-| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
+| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. An audio part may also say what it was made from: `file` (its name in the folder), `sources` (the Live tracks it was rendered from; several for a combined part), `frozen` (rendered from Live's own freeze, devices included), `shifted: {semitones, speed}` (transposed or stretched from its file in the render), `covers: {fromBar, toBar}` (the bars of the song it has audio in, 1-based, inclusive), `gainDb` (the fader level it was rendered at; absent at unity), `sizeBytes`, `bitrate`, `sampleRate`. Facts to show, not to act on. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?, source?}, lengthBars?, endPatch?, member?, name?}`. `bar` is 1-based and may be fractional; `program` and `bank` are the bytes sent (bank = MSB × 128 + LSB), `controls` a list of `{cc, value}`. `member` is whose rig it is, from a track named `RIG <member> (<rig>)` in the set; `name` the clip's name. Send a change a quarter-second before its bar: bank, then program, then the CCs, on `channel` |
 
 Rules the reader follows, and a writer can rely on:
@@ -243,8 +265,12 @@ Rules the reader follows, and a writer can rely on:
   are checked strictly for type, and a manifest that fails applies nothing;
   the errors are shown rather than swallowed, since a `set.json` can be
   written by hand.
-- **Matching is by folder name**, case-insensitive. A song in the folder that
-  the manifest does not mention is left exactly as scanned.
+- **Matching is by folder name**, case-insensitive, and the manifest names
+  the folder each song is in now. A song in the folder that the manifest does
+  not mention is left exactly as scanned. Across prepares, a song is the same
+  song by the title part of its folder name — the Studio's own matching goes
+  by that, so a song rendered on a new day replaces its older entry rather
+  than joining it.
 - **A manifest's values replace the song's where the manifest has them.**
   Where it has none, what the library already held stays: a manifest with no
   `patchClips` does not wipe patch changes programmed in the app.
@@ -254,6 +280,48 @@ Rules the reader follows, and a writer can rely on:
   the folder, replaces that song's entry, keeps every other, and writes the
   whole back in set order. Songs no longer in the set keep their entry at the
   end rather than being dropped, because their files are still there.
+
+## `song.json`
+
+One per song folder, written with the parts and rewritten whenever the
+song's words or sections are refreshed. It is the song's own `set.json`
+entry with three fields in front — so a reader that has the folder knows
+everything about the song without the set's manifest, and the stems' facts
+are sure to be there:
+
+```json
+{
+  "preparedBy": "rehearsaltool",
+  "set": "YBWM Set 2026.09.06",
+  "fromSet": "/YBWM Set 2026.09.06.als",
+  "folder": "Cruel Summer (2026-09-06)",
+  "title": "Cruel Summer",
+  "renderedAt": "2026-09-06T08:31:12.000Z",
+  "tempo": 85,
+  "timeSignature": "4/4",
+  "bars": 96,
+  "durationSec": 271.06,
+  "originalKey": "G",
+  "notes": "Piano intro. Watch the drummer for the stop.",
+  "firstBarOffsetSec": 0.0261,
+  "tempoMap": [], "markers": [], "chords": [], "lanes": [], "patchClips": [],
+  "parts": [
+    { "label": "bass", "name": "bass", "file": "Cruel Summer [bass].mp3", "sources": ["Bass"],
+      "covers": { "fromBar": 9, "toBar": 96 }, "sizeBytes": 4351020, "bitrate": 128, "sampleRate": 48000 }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `preparedBy` | exactly `"rehearsaltool"`, as in `set.json` |
+| `set` | the set folder's name, the one under `Sets/` this song belongs to |
+| `fromSet` | the `.als` the set came from, as in `set.json` |
+| everything else | the song's `set.json` entry, field for field, as documented above |
+
+Where `song.json` and `set.json` disagree, `set.json` is the set's word on
+order and membership and `song.json` the song's word on itself; they are
+written together and should not disagree.
 
 ## `.rehearsal-tool.json`
 
@@ -305,6 +373,17 @@ the same way.
    no instrument word left in it is then the record.
 7. Play the parts of a song together; they are the same length and start at
    the same instant.
+8. Take a song's title from `title`, else from the folder name with its
+   trailing ` (YYYY-MM-DD)` — or, for an older set, its curly block —
+   removed. Take its tempo and meter from `tempo` and `timeSignature` when
+   present, else from the curly block of an older folder name.
+9. Key anything you keep per song — a member's rig file, a saved mix, a
+   note — by set + song name (the title part), never by folder name: a song
+   rendered again on a later day is in a new folder. Ignore any folder
+   whose name starts with a dot; `.undo` is the Studio's kept-aside copy of
+   folders it wrote over, there to be put back, not to be played.
+10. Read `song.json` inside a song folder for that song alone, when the set's
+   manifest is not to hand or the stems' facts are wanted.
 
 ## Rigs: patch changes from the band
 
@@ -321,7 +400,7 @@ folder, one file per member per prepared set:
   "rig": "Neural DSP Quad Cortex",
   "updatedAt": "2026-09-05T23:40:00Z",
   "songs": {
-    "22 {104, F, 4-4}": [
+    "22": [
       { "bar": 1,  "name": "Scene A", "patch": { "channel": 1, "program": 3, "bank": 2, "controls": [{ "cc": 43, "value": 0 }] } },
       { "bar": 33, "name": "Scene C", "patch": { "channel": 1, "controls": [{ "cc": 43, "value": 2 }] } }
     ]
@@ -329,8 +408,10 @@ folder, one file per member per prepared set:
 }
 ```
 
-- Keyed by song folder, as everything here is. `bar` counts from the song's
-  own first bar. The patch is the same shape as in `patchClips`.
+- Keyed by song name — the title part of the folder name, without its
+  render date (an older folder name with its curly block is read the same
+  way). `bar` counts from the song's own first bar. The patch is the same
+  shape as in `patchClips`.
 - The website should send a member their own file's changes for their rig,
   and the set's `patchClips` only where their file says nothing for a song —
   otherwise the leader's Cortex scene fires on the guitarist's Helix. A

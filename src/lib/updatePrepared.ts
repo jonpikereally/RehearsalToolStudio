@@ -1,8 +1,10 @@
 import type { AlsProject, AlsSong } from './alsParser';
 import { clipsFromMarks, clipsFromRig, laneList, songIdFor } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
-import { folderOrder, lyricsFileFor, mergeSongs, songFolderName } from './prepare.ts';
-import { MANIFEST_NAME, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
+import { folderOrder, lyricsFileFor, mergeSongs, songFolderBase, tempoOf } from './prepare.ts';
+import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
+import { songLengthSec } from './infoTrack.ts';
+import { parseNameMeta } from './scan.ts';
 
 /**
  * Bringing a prepared set's words and structure up to date, without touching a
@@ -53,7 +55,7 @@ export interface PreparedSetAt {
 export function contentScore(manifest: PreparedManifest, keys: Record<string, string>): number {
   let score = 0;
   for (const entry of manifest.songs) {
-    const now = keys[entry.folder.toLowerCase()];
+    const now = keys[folderBaseOf(entry.folder).toLowerCase()];
     if (now && entry.audioKey === now) score++;
   }
   return score;
@@ -148,13 +150,24 @@ export function songInfoFor(
   song: AlsSong,
   project: AlsProject,
   alsPath: string,
-  firstBarOffsetSec: number,
-  parts?: PreparedSongInfo['parts'],
-  audioKey?: string,
+  /** What the files on disk say, which this cannot re-derive: their folder, lead-in, parts, key and date. */
+  carried: {
+    folder: string;
+    firstBarOffsetSec: number;
+    parts?: PreparedSongInfo['parts'];
+    audioKey?: string;
+    renderedAt?: string;
+  },
 ): PreparedSongInfo {
+  const { folder, firstBarOffsetSec, parts, audioKey, renderedAt } = carried;
   return {
-    folder: songFolderName(song, project),
+    folder,
     title: song.title,
+    renderedAt,
+    tempo: Math.round(tempoOf(song, project) * 10) / 10,
+    timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
+    bars: song.endBar - song.startBar + 1,
+    durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
     firstBarOffsetSec,
     /*
      * Carried, not derived, for the same reason as the lead-in: these name
@@ -198,21 +211,40 @@ export function updatableSong(
   project: AlsProject,
   manifest: PreparedManifest,
   presentFolders: string[],
-): { ok: true; entry: PreparedSongInfo | null } | { ok: false; reason: string } {
-  const wanted = songFolderName(song, project).toLowerCase();
-  const entry = manifest.songs.find((s) => s.folder.toLowerCase() === wanted) ?? null;
-  if (entry) return { ok: true, entry };
-  if (presentFolders.some((f) => f.toLowerCase() === wanted)) return { ok: true, entry: null };
-
-  const named = manifest.songs.find((s) => s.title === song.title);
-  if (named) {
-    return {
-      ok: false,
-      reason:
-        `its folder is “${named.folder}” but the set now makes it “${songFolderName(song, project)}” — ` +
-        'the tempo, key or time signature has changed, so the audio there is out of date too. Prepare it properly.',
+): { ok: true; entry: PreparedSongInfo | null; folder: string } | { ok: false; reason: string } {
+  const name = songFolderBase(song);
+  const entry = manifest.songs.find((s) => sameSong(s.folder, name)) ?? null;
+  if (entry) {
+    // The facts the audio was rendered under: from the entry, or for an
+    // older set from the curly block its folder name carried.
+    const meta = entry.tempo === undefined ? parseNameMeta(entry.folder) : null;
+    const was = {
+      bpm: entry.tempo ?? meta?.bpm ?? null,
+      key: entry.tempo !== undefined ? entry.originalKey ?? null : meta?.key ?? null,
+      sig: entry.timeSignature ?? (meta?.timeSig ? `${meta.timeSig.num}/${meta.timeSig.den}` : null),
     };
+    const now = {
+      bpm: Math.round(tempoOf(song, project) * 10) / 10,
+      key: song.key ?? null,
+      sig: `${project.timeSigNum}/${project.timeSigDen}`,
+    };
+    const moved =
+      (was.bpm !== null && Math.abs(was.bpm - now.bpm) > 0.05) ||
+      (was.key !== null && was.key !== now.key) ||
+      (was.sig !== null && was.sig !== now.sig);
+    if (moved) {
+      return {
+        ok: false,
+        reason:
+          `its audio was rendered at ${was.bpm ?? '?'} BPM${was.key ? ` in ${was.key}` : ''}${was.sig ? `, ${was.sig}` : ''} ` +
+          `and the set now has it at ${now.bpm} BPM${now.key ? ` in ${now.key}` : ''}, ${now.sig} — ` +
+          'the tempo, key or time signature has changed, so the audio there is out of date too. Prepare it properly.',
+      };
+    }
+    return { ok: true, entry, folder: entry.folder };
   }
+  const present = presentFolders.find((f) => sameSong(f, name));
+  if (present) return { ok: true, entry: null, folder: present };
   return { ok: false, reason: 'it has never been prepared into this set' };
 }
 
@@ -243,7 +275,8 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       continue;
     }
 
-    const folderName = songFolderName(song, project);
+    // The folder the files are in — dated when it was rendered, not today.
+    const folderName = standing.folder;
     const songFolder = `${setFolder}/${folderName}`;
     const base = safeName(song.title);
 
@@ -263,16 +296,21 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       chartsWritten++;
     }
 
-    written.push(
-      songInfoFor(
-        song,
-        project,
-        alsPath,
-        // The files' own lead-in, kept exactly. Nothing here re-encodes them.
-        standing.entry?.firstBarOffsetSec ?? manifest.paddingSec,
-        standing.entry?.parts,
-        standing.entry?.audioKey,
-      ),
+    const entry = songInfoFor(song, project, alsPath, {
+      folder: standing.folder,
+      // The files' own lead-in, kept exactly. Nothing here re-encodes them.
+      firstBarOffsetSec: standing.entry?.firstBarOffsetSec ?? manifest.paddingSec,
+      parts: standing.entry?.parts,
+      audioKey: standing.entry?.audioKey,
+      renderedAt: standing.entry?.renderedAt,
+    });
+    written.push(entry);
+    // The folder's own copy of the entry, refreshed with it.
+    await writeFile(
+      `${songFolder}/${SONG_FILE_NAME}`,
+      new Blob([JSON.stringify(songFileFor(entry, setFolder.split('/').pop() ?? setFolder, alsPath), null, 2)], {
+        type: 'application/json',
+      }),
     );
   }
 
