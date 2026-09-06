@@ -91,6 +91,8 @@ export default function SetToolsView() {
   /* The song picker: sorted, and narrowed by a few typed letters. */
   const [pickSort, setPickSort] = useSort('ls.sort.settools');
   const [pickFilter, setPickFilter] = useState('');
+  /** The picker itself, shown only while songs are being chosen: a line otherwise. */
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<string | null>(null);
@@ -520,76 +522,73 @@ export default function SetToolsView() {
   const ready = voices !== null && voices.length > 0 && !!voice;
 
   return (
-    <div style={{ padding: '16px' }}>
-      <div>
-        <div style={{ color: 'var(--text-dim)', fontSize: 14, marginBottom: 16 }}>
-          Everything the studio does to an Ableton set: a preflight check, spoken slates, the
-          missing chord language, timed lyric clips, patch changes, a printable setlist. Anything
-          that writes writes to a copy, never the original.
-        </div>
-
-        {!lone && (
-          <div className="field">
-            <label>
-              The set
-              <span className="hint">
-                {currentSet
-                  ? 'The set chosen on opening — change it from the bar above.'
-                  : 'No set chosen. Slates and Lyrics work without one; the rest need a set, from the Songs tab or a single .als here.'}
-              </span>
-            </label>
-            <div className="btn-row">
-              {currentSet && <span className="code">{currentSet.split('/').pop()}</span>}
-              <button className="btn" disabled={!!progress} onClick={() => void openLoneAls()}>
-                Open a single .als…
-              </button>
-            </div>
-          </div>
+    <>
+      <div className="topbar">
+        <h1>
+          Set tools
+          <span className="sub" style={{ display: 'block' }}>
+            {lone
+              ? `${lone.name} — opened on its own; what comes out goes to a folder you choose`
+              : currentSet
+                ? `${currentSet.split('/').pop()}${project ? ` · ${titles.length} song${titles.length === 1 ? '' : 's'}` : ''}`
+                : 'No set chosen — Slates and Lyrics work without one; the rest need a set'}
+          </span>
+        </h1>
+        {lone && currentSet && (
+          <button className="btn" disabled={!!progress} onClick={backToSet}>
+            Back to {currentSet.split('/').pop()?.replace(/\.als$/i, '')}
+          </button>
         )}
+        <button
+          className="btn"
+          disabled={!!progress}
+          onClick={() => void openLoneAls()}
+          title="Work on a set file that isn't in the folder"
+        >
+          {lone ? 'Different .als…' : 'Open a single .als…'}
+        </button>
+      </div>
 
-        {lone && (
-          <div className="field">
-            <label>
-              The set
-              <span className="hint">
-                Opened on its own, so its audio isn't to hand — everything here changes the .als
-                itself. What comes out goes to a folder you choose.
-              </span>
-            </label>
-            <div className="btn-row">
-              <span className="code">{lone.name}</span>
-              <button className="btn" disabled={!!progress} onClick={() => void openLoneAls()}>
-                Different .als…
-              </button>
-              {currentSet && (
-                <button className="btn" disabled={!!progress} onClick={backToSet}>
-                  Back to {currentSet.split('/').pop()?.replace(/\.als$/i, '')}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
+      <div style={{ padding: '12px 16px 16px' }}>
         {!project && tool !== 'slates' && tool !== 'lyrics' && (
-          <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-            Choose a set above — this tool works on one. Slates and Lyrics work without.
+          <div className="notice quiet">
+            Choose a set from the Songs tab — this tool works on one. Slates and Lyrics work without.
           </div>
         )}
 
+        {/*
+          The songs every tool acts on: a line saying which, and the picker
+          only while they are being chosen. The whole set is the usual case,
+          and a list of twenty tick boxes above every tool was most of the page.
+        */}
         {project && (
-          <>
-            <div className="notice">
-              {titles.length} song{titles.length === 1 ? '' : 's'}: {titles.slice(0, 6).join(', ')}
-              {titles.length > 6 ? '…' : ''}
-            </div>
-
-            <div className="field stacked">
-              <label>
-                What to work on
-                <span className="hint">
-                  The whole set, or the songs you tick. Every function below acts on this.
+          <div className="picker">
+            <div className="picker-summary">
+              <span className="control-label">Working on</span>
+              <strong>
+                {wholeSet
+                  ? `all ${titles.length} songs`
+                  : selected.size === 0
+                    ? 'no songs'
+                    : `${selected.size} of ${titles.length} songs`}
+              </strong>
+              {!wholeSet && selected.size > 0 && (
+                <span className="picker-names">
+                  {titles.filter((t) => selected.has(t)).slice(0, 4).join(', ')}
+                  {selected.size > 4 ? '…' : ''}
                 </span>
-              </label>
+              )}
+              <button
+                className={pickerOpen ? 'chip on' : 'chip'}
+                onClick={() => setPickerOpen((o) => !o)}
+                aria-expanded={pickerOpen}
+                disabled={!!progress}
+              >
+                {pickerOpen ? 'Done' : 'Choose songs'}
+              </button>
+            </div>
+            {pickerOpen && (
+              <div className="picker-body">
               <div className="picker-bar">
                 <button className="btn" disabled={!!progress} onClick={() => setChosen(new Set(titles))}>
                   Whole set
@@ -668,15 +667,11 @@ export default function SetToolsView() {
                   <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>No song matches.</div>
                 )}
               </div>
-            </div>
-          </>
+              </div>
+            )}
+          </div>
         )}
 
-        {/*
-          The tools themselves. Below the set and the songs to work on, because
-          those are the same whichever tool is chosen — a shared control under
-          the tab bar would read as belonging to the tab.
-        */}
         <nav className="subtabs" role="tablist" aria-label="Set tools">
           {(
             [
@@ -703,7 +698,7 @@ export default function SetToolsView() {
           ))}
         </nav>
 
-        <div id="settool-panel" role="tabpanel" aria-labelledby={`settool-${tool}`}>
+        <div id="settool-panel" className="tool-panel" role="tabpanel" aria-labelledby={`settool-${tool}`}>
           {project && (
             <>
               {tool === 'update' && (
@@ -974,7 +969,7 @@ export default function SetToolsView() {
           {tool === 'lyrics' && <LyricClipsPanel />}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

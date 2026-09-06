@@ -97,6 +97,22 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSAppTransportSecurity</key>
 	<dict><key>NSAllowsLocalNetworking</key><true/></dict>
+	<!-- Folders and sets can be dropped on the Dock icon; the app never claims .als from Live. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key><string>Folder</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>None</string>
+			<key>LSItemContentTypes</key><array><string>public.folder</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key><string>Ableton Live Set</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>None</string>
+			<key>CFBundleTypeExtensions</key><array><string>als</string></array>
+		</dict>
+	</array>
 </dict>
 </plist>
 PLIST

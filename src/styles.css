@@ -324,7 +324,7 @@ button {
   gap: 4px;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
-  margin: 20px 0 16px;
+  margin: 12px 0 12px;
   scrollbar-width: none;
 }
 
@@ -2208,6 +2208,71 @@ input[type='range'] {
   flex: 0 0 auto;
 }
 
+/* A line saying which songs the set tools act on, opening into the picker. */
+.picker {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  padding: 10px 12px;
+  margin-bottom: 4px;
+}
+
+.picker-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+
+.picker-summary strong {
+  font-weight: 600;
+}
+
+.picker-summary .picker-names {
+  color: var(--text-dim);
+  font-size: 13px;
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-summary .chip {
+  margin-left: auto;
+  min-height: 32px;
+}
+
+.picker-body {
+  margin-top: 10px;
+}
+
+/* The tool's own controls, in a card under the tab it belongs to. */
+.tool-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  padding: 4px 14px 14px;
+}
+
+.tool-panel .notice {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.tool-panel .subtabs {
+  margin-top: 0;
+}
+
+/* A note that is only worth knowing, kept out of the way of the page. */
+.notice.quiet {
+  color: var(--text-dim);
+  background: transparent;
+  border-style: dashed;
+  font-size: 13px;
+}
+
 /* the row of orders above a list of songs */
 
 .sortbar {
@@ -2761,4 +2826,40 @@ input[type='range'] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Over everything while a folder or a set is dragged across the window. */
+.drop-veil {
+  position: fixed;
+  inset: 8px;
+  z-index: 200;
+  border: 3px dashed var(--accent);
+  border-radius: 14px;
+  background: rgba(13, 15, 19, 0.82);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* A switch with its explanation beside it, the whole row clickable. */
+.switch-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.switch-row input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex: none;
+}
+
+.notice .progress,
+.notice .progress-fill {
+  display: block;
 }

@@ -3195,6 +3195,22 @@ group('the file API');
   const st = await ask('stat', { dir: songs, path: '/Band/Yellow/Yellow.als' });
   check('stat answers name, size and date', st.name === 'Yellow.als' && st.size === 15);
   check('a leading slash is tolerated', (await ask('exists', { dir: songs, path: '/Band/Yellow/Yellow.als' })).exists);
+
+  // A set or a folder dropped on the app: granted as a pick, no dialog asked.
+  asked = null;
+  const yellow = join(songs, 'Band', 'Yellow');
+  const opened = await ask('open', { path: join(yellow, 'Yellow.als'), slot: 'songs' });
+  check('a set handed to the app grants its folder and names the set',
+    opened.dir === yellow && opened.name === 'Yellow' && opened.file === 'Yellow.als', JSON.stringify(opened));
+  check('with no dialog asked', asked === null);
+  check('and that folder is now the songs folder', (await ask('stored', { slot: 'songs' })).dir === yellow);
+  check('so its files can be read', (await ask('exists', { dir: yellow, path: 'Yellow.als' })).exists);
+  const folderOpened = await ask('open', { path: songs, slot: 'songs' });
+  check('a folder handed to the app is granted as picked', folderOpened.dir === songs && folderOpened.file === undefined);
+  check('a file that is not a set is refused',
+    (await call('open', { path: join(yellow, 'Yellow [drums].wav') })).status === 400);
+  check('as is a path that is not there', (await call('open', { path: join(songs, 'nowhere') })).status === 404);
+  check('and a slot that is not one', (await call('open', { path: songs, slot: 'attic' })).status === 400);
   check('a missing file does not exist', (await ask('exists', { dir: songs, path: 'Band/Nope.als' })).exists === false);
   check('and cannot be stat-ed', (await call('stat', { dir: songs, path: 'Band/Nope.als' })).status === 404);
 

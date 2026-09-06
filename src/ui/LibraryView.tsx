@@ -150,23 +150,25 @@ export default function LibraryView() {
 
       {lastScan && !scanning && (
         <div className="notice spread">
-          <span>
-            {summariseScan(lastScan)}
-          </span>
+          <span>{summariseScan(lastScan)}</span>
           <button className="icon-btn" onClick={dismissScanResult} aria-label="Dismiss">
             ×
           </button>
         </div>
       )}
+      {lastScan && !scanning && lastScan.alsNotes?.length ? (
+        <div className="notice quiet">{lastScan.alsNotes.join('. ')}.</div>
+      ) : null}
 
       {inSet.length > 0 && (
-        <div style={{ padding: '12px 16px 0' }}>
+        <div className="picker-bar" style={{ padding: '12px 16px 0' }}>
           <input
-            type="text"
+            className="text-input"
+            type="search"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter songs…"
-            aria-label="Filter songs"
+            placeholder="Find a song…"
+            aria-label="Find a song"
           />
           <SortBar sort={sort} onChange={setSort} />
         </div>
@@ -322,8 +324,7 @@ function summariseScan(scan: ScanResult): string {
           : ' — none of them as a setlist'),
     );
   }
-  const notes = scan.alsNotes?.length ? ` ${scan.alsNotes.join('. ')}.` : '';
-  if (parts.length) return `Scan complete${from} — ${parts.join(', ')}.${notes}`;
+  if (parts.length) return `Scan complete${from} — ${parts.join(', ')}.`;
 
   // Nothing found: say what the scan actually saw, so the cause is obvious.
   if (scan.filesSeen === 0) {

@@ -267,6 +267,37 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       return { dir: chosen, name: basename(chosen) };
     },
 
+    /**
+     * A path the Mac app was handed rather than one chosen in a dialog: a
+     * folder or a set dropped on the window or the Dock icon. Granted as a
+     * choice in the dialog is, a drop being the same gesture by another
+     * route. For a set it is the set's folder that is granted — and made
+     * the songs folder when a slot is named — with the set named alongside.
+     */
+    async open({ path, slot }) {
+      if (typeof path !== 'string' || !path) throw new Refusal(400, 'path is required');
+      if (slot !== undefined && !SLOTS.has(slot)) throw new Refusal(400, 'no such slot');
+      const st = await stat(path).catch(() => null);
+      if (!st) throw new Refusal(404, `${path} is not there`);
+      let dir = resolve(path);
+      let file;
+      if (st.isFile()) {
+        if (extname(path).toLowerCase() !== '.als') {
+          throw new Refusal(400, `Not an Ableton set or a folder: ${basename(path)}`);
+        }
+        file = basename(path);
+        dir = dirname(dir);
+      } else if (!st.isDirectory()) {
+        throw new Refusal(400, 'that is neither a file nor a folder');
+      }
+      roots.add(dir);
+      if (slot) {
+        slots[slot] = dir;
+        await save();
+      }
+      return { dir, name: basename(dir), ...(file ? { file } : {}) };
+    },
+
     async stored({ slot }) {
       if (!SLOTS.has(slot)) throw new Refusal(400, 'no such slot');
       const dir = slots[slot];

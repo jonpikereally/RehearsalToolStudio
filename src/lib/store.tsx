@@ -11,6 +11,9 @@ import { setlistFromProject, songsFromProject } from './alsImport';
 import * as source from './source';
 import * as local from './localSource';
 import { normalisePath } from './paths.ts';
+import { setToolsAlone } from './toolsAlone';
+import { prepareRunning } from './prepareState';
+import { navigate } from './router';
 
 /**
  * Library state, persisted to localStorage for instant startup and written to
@@ -29,6 +32,8 @@ const SS_SET = 'ls.currentSet';
 /** Every set the last scan found, whether or not its songs have audio here. */
 const LS_SETS = 'ls.knownSets';
 const PUSH_DEBOUNCE_MS = 1500;
+/** How often the open set is looked at for a save by Live: a stat, nothing more. */
+const SET_WATCH_MS = 3000;
 
 export interface Settings {
   /**
@@ -55,6 +60,12 @@ export interface Settings {
   /** Read from the chosen folder on this machine. */
   useLocal: boolean;
   /**
+   * Prepare the set again, where it changed, whenever Live saves it — with
+   * nobody asked. Off until it is turned on: writing the band's folder is
+   * something to choose.
+   */
+  autoUpdate: boolean;
+  /**
    * The output device to play out of, where the browser lets a page choose.
    * Kept with its label as well as its id: ids are opaque, and a device that
    * has gone missing is worth naming rather than showing as a code.
@@ -69,6 +80,7 @@ const DEFAULT_SETTINGS: Settings = {
   jumpSizes: [1, 4, 8, 16],
   keepAwake: true,
   useLocal: false,
+  autoUpdate: false,
   outputDevice: null,
 };
 
@@ -126,7 +138,16 @@ interface StoreValue {
   createSetlist: (name: string) => Setlist;
   deleteSetlist: (id: string) => void;
   /** Read the folder again: every set in it, and drop a song whose files have gone. */
-  rescan: () => Promise<void>;
+  rescan: () => Promise<string[]>;
+  /** A folder or a set dropped on the app: it becomes the folder, and its set is opened. */
+  openDropped: (path: string) => Promise<void>;
+  /**
+   * The set was saved by Live while the studio was open, and the folder has
+   * been read again since. Whoever keeps the prepared set current acts on it;
+   * dismissed when it has been dealt with.
+   */
+  setSaved: { path: string; at: number } | null;
+  dismissSetSaved: () => void;
   /** `replace` takes the folder's library whole, discarding what is held here. */
   pullNow: (opts?: { replace?: boolean }) => Promise<void>;
   /** Choose the synced folder on this machine. Must come from a click. */
@@ -551,8 +572,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const rescan = useCallback(async () => {
-    if (!source.canRead()) return;
+  const rescan = useCallback(async (): Promise<string[]> => {
+    if (!source.canRead()) return [];
     setScanning(true);
     setScanProgress('Listing files…');
     setLastScan(null);
@@ -721,13 +742,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result.library;
       });
       setScanProgress('');
+      return setFiles.map((f) => f.path);
     } catch (err) {
       reportError(err);
       setScanProgress('');
+      return [];
     } finally {
       setScanning(false);
     }
   }, [settings.root, schedulePush]);
+
+  /**
+   * A folder or a set dropped on the app. Its folder becomes the folder, as
+   * choosing it in Settings would, and is read; the set dropped, or the one
+   * set found, is opened — the chooser otherwise, with what the scan found.
+   */
+  const openDropped = useCallback(
+    async (path: string) => {
+      const { folder, file } = await local.openPath(path);
+      source.configureSource({ root: settings.root, useLocal: true, folder: folder.handle });
+      setLocalFolderName(folder.name);
+      setLocalStatus('ready');
+      setSettings((prev) => ({ ...prev, useLocal: true }));
+      setToolsAlone(false);
+      chooseSet(null);
+      const found = await rescan();
+      const dropped = file ? found.find((p) => p.split('/').pop()?.toLowerCase() === file.toLowerCase()) : undefined;
+      chooseSet(dropped ?? (found.length === 1 ? found[0] : null));
+      navigate('/');
+    },
+    [settings.root, rescan, chooseSet],
+  );
 
   /*
    * The folder is the truth, so it is read on every launch: every set in it,
@@ -742,6 +787,65 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void rescan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canReadLibrary]);
+
+  /* ------------------------------ the set, saved ---------------------------- */
+
+  /**
+   * Live saving the set while the studio is open.
+   *
+   * The studio sits beside Live and the set is saved often, so the set is
+   * looked at every few seconds — a stat, nothing more — and a change in its
+   * size or date is a save. Live writes in more than one go, so the file has
+   * to hold still for a look before it counts. Then the folder is read again,
+   * so the songs, the running order and the tools all see the set as it now
+   * is, and the save is announced for whoever keeps the prepared set current.
+   * A save that lands mid-prepare, or mid-scan, waits for that to end.
+   */
+  const [setSaved, setSetSaved] = useState<{ path: string; at: number } | null>(null);
+  const rescanRef = useRef(rescan);
+  rescanRef.current = rescan;
+  const scanningRef = useRef(false);
+  scanningRef.current = scanning;
+  useEffect(() => {
+    setSetSaved(null);
+    if (!currentSet || !canReadLibrary) return;
+    let on = true;
+    let seen: string | null = null;
+    let pending: string | null = null;
+    const look = async () => {
+      if (!on || scanningRef.current || prepareRunning()) return;
+      let rev: string;
+      try {
+        const st = await source.statFile(currentSet);
+        rev = `${st.modified}-${st.size}`;
+      } catch {
+        return; // mid-write, or gone; the next look says
+      }
+      if (!on) return;
+      if (seen === null) {
+        seen = rev;
+        return;
+      }
+      if (rev === seen) {
+        pending = null;
+        return;
+      }
+      // Changed: seen once is a write in progress, seen twice is a save.
+      if (pending !== rev) {
+        pending = rev;
+        return;
+      }
+      seen = rev;
+      pending = null;
+      await rescanRef.current();
+      if (on) setSetSaved({ path: currentSet, at: Date.now() });
+    };
+    const timer = window.setInterval(() => void look(), SET_WATCH_MS);
+    return () => {
+      on = false;
+      window.clearInterval(timer);
+    };
+  }, [currentSet, canReadLibrary]);
 
   /** The band's folder, asked for once and remembered by the server. */
   const pickPublishFolder = useCallback(async () => {
@@ -782,6 +886,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createSetlist,
       deleteSetlist,
       rescan,
+      openDropped,
+      setSaved,
+      dismissSetSaved: () => setSetSaved(null),
       pullNow,
       pickLocalFolder,
       publishFolderName,
@@ -796,7 +903,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
+      rescan, openDropped, setSaved, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       pickLocalFolder, stopUsingLocalFiles, forgetLocalFolder,
       publishFolderName, pickPublishFolder, publishFolder, resourcesFolderName, pickResourcesFolder,
     ],

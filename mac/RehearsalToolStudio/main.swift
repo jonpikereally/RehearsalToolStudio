@@ -52,9 +52,58 @@ func page(_ title: String, _ detail: String) -> String {
     """
 }
 
+/*
+ * The web view, taking a folder or a set dropped on it before WebKit can
+ * make a page of the file. Everything else dragged in — text into a field —
+ * goes on to WebKit as it always did.
+ */
+final class StudioWebView: WKWebView {
+    var onDrop: (([String]) -> Void)?
+    var onDragging: ((Bool) -> Void)?
+
+    /// The folders and Ableton sets among what is being dragged.
+    private func openable(_ info: NSDraggingInfo) -> [String] {
+        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.map(\.path).filter { path in
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { return false }
+            return isDir.boolValue || path.lowercased().hasSuffix(".als")
+        }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if openable(sender).isEmpty { return super.draggingEntered(sender) }
+        onDragging?(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        openable(sender).isEmpty ? super.draggingUpdated(sender) : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragging?(false)
+        if let sender, !openable(sender).isEmpty { return }
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        openable(sender).isEmpty ? super.prepareForDragOperation(sender) : true
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let paths = openable(sender)
+        onDragging?(false)
+        if paths.isEmpty { return super.performDragOperation(sender) }
+        onDrop?(paths)
+        return true
+    }
+}
+
 final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
-    var web: WKWebView!
+    var web: StudioWebView!
     var titleWatch: NSKeyValueObservation?
     /// The build the page was loaded from, to notice when the server has moved on.
     var loadedBuild: String?
@@ -87,7 +136,9 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         // "Inspect Element" in the context menu: the studio is a tool, and tools get opened up.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
-        web = WKWebView(frame: .zero, configuration: config)
+        web = StudioWebView(frame: .zero, configuration: config)
+        web.onDrop = { [weak self] paths in self?.open(paths) }
+        web.onDragging = { [weak self] over in self?.tell("studio:drag", ["over": over]) }
         web.navigationDelegate = self
         web.uiDelegate = self
         web.underPageBackgroundColor = ink
@@ -208,6 +259,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         let again = contentDiedAt.map { now.timeIntervalSince($0) < 60 } ?? false
         contentDiedAt = now
         note("web content process terminated" + (again ? " again; not reloading" : "; reloading"))
+        pageReady = false
         if again {
             web.loadHTMLString(page("The studio's page stopped twice in a minute",
                 "WebKit shut its web content process down, usually for memory. Reload from the menu (⌘R) to try again; if it keeps happening, quit any song runs and rescan."), baseURL: nil)
@@ -229,6 +281,11 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "studio", let body = message.body as? [String: Any] else { return }
+        // The page is up and listening: anything dropped before now can go to it.
+        if body["ready"] as? Bool == true {
+            pageReady = true
+            open([])
+        }
         if let wanted = body["awake"] as? Bool {
             if wanted, awake == nil {
                 let reason = (body["reason"] as? String) ?? "Working"
@@ -239,6 +296,33 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
                 awake = nil
             }
         }
+    }
+
+    // MARK: - Folders and sets handed to the app: dropped on the window or the Dock, or opened from the Finder.
+
+    /// Paths waiting for the page, which takes them up once it says it is listening.
+    var pendingOpens: [String] = []
+    var pageReady = false
+
+    func open(_ paths: [String]) {
+        pendingOpens += paths
+        guard pageReady, !pendingOpens.isEmpty else { return }
+        let batch = pendingOpens
+        pendingOpens = []
+        tell("studio:open", ["paths": batch])
+    }
+
+    /// An event on the page's window, its detail as JSON.
+    func tell(_ event: String, _ detail: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(json)}))",
+                               completionHandler: nil)
+    }
+
+    /// A folder or a set dropped on the Dock icon, or opened with the app from the Finder.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        open(urls.map(\.path))
     }
 
     // MARK: - The menu bar, without which copy and paste do nothing in a web view.

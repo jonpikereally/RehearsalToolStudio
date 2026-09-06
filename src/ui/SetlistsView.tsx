@@ -6,7 +6,7 @@ import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 
 export default function SetlistsView() {
-  const { library, createSetlist, currentSet } = useStore();
+  const { library, createSetlist, currentSet, settings, saveSettings, publishFolderName } = useStore();
   const [preparing, setPreparing] = useState(false);
   const inSetCount = library.songs.filter((s) => s.setPath === currentSet).length;
 
@@ -65,6 +65,30 @@ export default function SetlistsView() {
           <span style={{ color: 'var(--text-dim)', fontSize: 13, alignSelf: 'center' }}>
             all {inSetCount} song{inSetCount === 1 ? '' : 's'}, as small files the band's app plays
           </span>
+        </div>
+      )}
+      {/*
+        Live saves the set; the studio notices. Whether it then rewrites the
+        band's folder on its own is a choice, made here beside the button
+        that does it by hand.
+      */}
+      {currentSet && inSetCount > 0 && (
+        <div className="panel" style={{ paddingTop: 0 }}>
+          <label className="switch-row">
+            <input
+              type="checkbox"
+              checked={settings.autoUpdate}
+              onChange={(e) => saveSettings({ autoUpdate: e.target.checked })}
+            />
+            <span>
+              <strong>Auto-update when Live saves the set</strong>
+              <span className="hint" style={{ display: 'block' }}>
+                {settings.autoUpdate
+                  ? `Watching ${currentSet.split('/').pop()} — each save prepares the songs whose audio changed again and refreshes the words and sections of the rest, into “${publishFolderName ?? 'the band’s folder'}”.`
+                  : 'Off: each save is noticed and offered as an update, and nothing is written until you say.'}
+              </span>
+            </span>
+          </label>
         </div>
       )}
       {preparing && <PrepareSetDialog onClose={() => setPreparing(false)} />}

@@ -156,6 +156,20 @@ export async function forgetFolder(slot: FolderSlot = 'songs'): Promise<void> {
   await call('forget', { slot });
 }
 
+/**
+ * A folder or a set the Mac app was handed — dropped on the window or on the
+ * Dock icon. Its folder (the set's own, for a set) becomes the songs folder,
+ * remembered as one chosen in Settings would be; the set's name comes back
+ * with it so it can be the one opened.
+ */
+export async function openPath(path: string): Promise<{ folder: LocalFolder; file?: string }> {
+  const opened = await call<{ dir: string; name: string; file?: string }>('open', { path, slot: 'songs' });
+  return {
+    folder: { handle: wrap({ dir: opened.dir, name: opened.name }), name: opened.name },
+    ...(opened.file ? { file: opened.file } : {}),
+  };
+}
+
 /* ---------------------------------- paths --------------------------------- */
 
 /** The part of a path below the root: what the folder itself holds. */

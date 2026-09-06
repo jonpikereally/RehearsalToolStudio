@@ -12,6 +12,7 @@ import Onboarding from './ui/Onboarding';
 import ChooseSet from './ui/ChooseSet';
 import { toolsAlone } from './lib/toolsAlone';
 import SetToolsView from './ui/SetToolsView';
+import AutoUpdate from './ui/AutoUpdate';
 
 /**
  * Whether the studio's server is now serving a newer build than this page.
@@ -44,9 +45,53 @@ function useNewerBuild(): string | null {
   return newer;
 }
 
+/**
+ * A folder or a set dropped on the window, or on the Dock icon.
+ *
+ * The Mac app takes the drop before WebKit can make a page of the file, and
+ * hands the paths to this window as an event; it says when a drag is over
+ * the window too, so the page can show it is a place to drop. A drop the app
+ * did not take — in a plain browser — has no path a server could open, and
+ * is only stopped from loading the file as a page.
+ */
+function useDropped(open: (path: string) => Promise<void>): { over: boolean; error: string | null; clear: () => void } {
+  const [over, setOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const paths = (e as CustomEvent<{ paths?: string[] }>).detail?.paths ?? [];
+      if (!paths.length) return;
+      setError(null);
+      open(paths[0]).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    };
+    const onDrag = (e: Event) => setOver(!!(e as CustomEvent<{ over?: boolean }>).detail?.over);
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('studio:open', onOpen);
+    window.addEventListener('studio:drag', onDrag);
+    window.addEventListener('dragover', swallow);
+    window.addEventListener('drop', swallow);
+    // The page is up: anything dropped while it was starting can come now.
+    const handlers = (window as unknown as { webkit?: { messageHandlers?: Record<string, { postMessage(m: unknown): void }> } })
+      .webkit?.messageHandlers;
+    try {
+      handlers?.studio?.postMessage({ ready: true });
+    } catch {
+      /* not the Mac app, then */
+    }
+    return () => {
+      window.removeEventListener('studio:open', onOpen);
+      window.removeEventListener('studio:drag', onDrag);
+      window.removeEventListener('dragover', swallow);
+      window.removeEventListener('drop', swallow);
+    };
+  }, [open]);
+  return { over, error, clear: () => setError(null) };
+}
+
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library, openDropped } = useStore();
+  const drop = useDropped(openDropped);
   const newerBuild = useNewerBuild();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
@@ -118,6 +163,19 @@ export default function App() {
           </button>
         </div>
       )}
+      {drop.over && (
+        <div className="drop-veil" aria-hidden="true">
+          <span>Drop to open</span>
+        </div>
+      )}
+      {drop.error && (
+        <div className="notice error spread" style={{ margin: 0, borderRadius: 0 }}>
+          <span>{drop.error}</span>
+          <button className="icon-btn" onClick={drop.clear} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       <nav className="tabbar">
         <TabButton on={section === 'library'} to="/" glyph="♪" label="Songs" />
         <TabButton on={section.startsWith('setlist')} to="/setlists" glyph="≡" label="Setlists" />
@@ -134,6 +192,8 @@ export default function App() {
           </button>
         </div>
       )}
+      {/* Live saved the set: what is being done about it, wherever you are. */}
+      <AutoUpdate />
       {/*
         A run is held in memory and governs Previous and Next, so it says so
         wherever you are — state that changes what buttons do should never be

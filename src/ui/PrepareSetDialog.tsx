@@ -1,22 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
-import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
-import { holdAwake } from '../lib/keepAwake';
-import { audioKeyFor, audioStanding, type AudioStanding } from '../lib/audioKey';
-import { songFolderName } from '../lib/prepare';
-import { DEFAULT_BITRATE } from '../lib/mp3';
-import { updatePrepared } from '../lib/updatePrepared';
-import { statFile } from '../lib/source';
+import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
-import { overallProgress, prepareSet, type PrepareProgress, type PrepareResult } from '../lib/prepare';
+import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
+import { runPrepare, standingFor, titlesOf } from '../lib/prepareRun';
 import { readBytes } from '../lib/source';
-import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
-import { publishLibrary, type PublishResult } from '../lib/publish';
-import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
+import type { PublishResult } from '../lib/publish';
 import { SETS_FOLDER } from '../lib/prints';
-import { resolveStemPath } from '../lib/alsImport';
 import { defaultSetName, rememberSetName, safeSetName, setNameFor } from '../lib/setName';
 
 /**
@@ -133,51 +125,13 @@ export default function PrepareSetDialog({
       const band = await publishFolder();
       if (!band || !live) return;
       const folderName = safeSetName(setName) || defaultSetName(setPath);
-      let manifest: PreparedManifest | null = null;
-      try {
-        const { bytes } = await local.readBytes(band, '', `${SETS_FOLDER}/${folderName}/${MANIFEST_NAME}`);
-        manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
-      } catch {
-        manifest = null; // never prepared under this name: every song is new
-      }
-      const revs = new Map<string, string | null>();
-      const paths = new Set<string>();
-      for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
-        if (!clip.disabled) paths.add(resolveStemPath(setPath, clip.path));
-      }
-      // A stat apiece, a dozen at a time; a missing file is a fact, not a failure.
-      const list = [...paths];
-      for (let i = 0; i < list.length; i += 12) {
-        await Promise.all(
-          list.slice(i, i + 12).map(async (path) => {
-            try {
-              const st = await statFile(path);
-              revs.set(path.toLowerCase(), `${st.modified}-${st.size}`);
-            } catch {
-              revs.set(path.toLowerCase(), null);
-            }
-          }),
-        );
-      }
+      const found = await standingFor(project, setPath, band, folderName);
       if (!live) return;
-      const inputs = {
-        fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
-        bitrate: DEFAULT_BITRATE,
-        sampleRate: 48000,
-      };
-      const nextKeys: Record<string, string> = {};
-      const next = new Map<string, AudioStanding>();
-      for (const song of project.songs) {
-        if (nextKeys[song.title]) continue;
-        const key = audioKeyFor(song, project, inputs);
-        nextKeys[song.title] = key;
-        const folder = songFolderName(song, project).toLowerCase();
-        const entry = manifest?.songs.find((e) => e.folder.toLowerCase() === folder);
-        next.set(song.title, audioStanding(key, entry?.audioKey, !!entry));
-      }
-      setKeys(nextKeys);
-      setStanding(next);
-      setLastPrepared(manifest?.preparedAt ?? null);
+      setKeys(found.keys);
+      setStanding(found.standing);
+      setLastPrepared(found.lastPrepared);
+      const next = found.standing;
+      const manifest = found.manifest;
       // Unchanged songs start unticked; anything ticked by hand already is kept.
       if (manifest) {
         setChosen((was) => {
@@ -192,11 +146,7 @@ export default function PrepareSetDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, setPath, publishFolderName, setName]);
 
-  // Titles, deduped and in set order: a count-in locator repeats its song's.
-  const titles: string[] = [];
-  for (const song of project?.songs ?? []) {
-    if (titles[titles.length - 1] !== song.title) titles.push(song.title);
-  }
+  const titles = project ? titlesOf(project) : [];
   // Nothing chosen yet means the whole set, which is what the button says.
   const selected = chosen ?? new Set(titles);
   const toggle = (title: string) => {
@@ -207,139 +157,40 @@ export default function PrepareSetDialog({
   };
 
   /**
-   * Prepare, and hand the result to the band.
-   *
-   * Everything is written into the band's folder rather than beside the set it
-   * came from: that folder is a different Dropbox app folder and the only one
-   * they can read. The library goes with it, because a folder of files with no
-   * library is a folder the band's app can make nothing of.
-   *
-   * The folder is asked for inside the click when it is not already granted —
-   * a picker opened after an await is a picker the browser refuses.
+   * Prepare, and hand the result to the band. The run itself is in
+   * prepareRun; the folder is asked for inside the click when it is not
+   * already granted — a picker opened after an await is a picker the browser
+   * refuses.
    */
   const go = async (folder: local.FolderHandle) => {
     if (!setPath) return;
     running.current = new AbortController();
-    // Minutes of work nobody is touching is what a Mac calls idle; held
-    // awake, or the display sleeps, the app naps and the run crawls.
-    const releaseAwake = holdAwake('Preparing a set');
     setBusy(true);
     setError(null);
     setResult(null);
     setPublished(null);
     setRefreshed(null);
     try {
-      /*
-       * Let go of what is only being held for listening. The player keeps the
-       * song it has open decoded, and a run keeps every song of it — up to the
-       * budget in Settings — while preparing needs the machine's memory for
-       * source WAVs, a rendered part and the encoder's copy of it. Nobody
-       * rehearses through a prepare, and the alternative is the browser
-       * quietly killing the encoder's worker mid-song.
-       */
-      releaseReady();
-      clearDecodedCache();
-
-      const { bytes } = await readBytes(setPath);
-      const full = project ?? (await parseAls(bytes));
-      const ctx = new AudioContext();
+      const full = project ?? (await parseAls((await readBytes(setPath)).bytes));
       // A blank field means today's name, the same as never having typed one.
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       rememberSetName(setPath, folderName === defaultSetName(setPath) ? '' : folderName);
-
-      const done = await prepareSet({
+      const out = await runPrepare({
         project: full,
-        alsPath: setPath,
-        only: [...selected],
-        /*
-         * What is already in that folder, so a run of one song leaves the
-         * songs prepared before it describing themselves as they did.
-         */
-        readManifest: async () => {
-          const path = `${SETS_FOLDER}/${folderName}/${MANIFEST_NAME}`;
-          try {
-            const { bytes: raw } = await local.readBytes(folder, '', path);
-            return JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
-          } catch {
-            return null; // nothing prepared here yet, which is the usual case
-          }
-        },
-        // The band's folder is its own root; nothing of the studio's path
-        // structure comes with it.
-        root: '',
-        setName: folderName,
-        resolvePath: (relative) => resolveStemPath(setPath, relative),
-        readFile: async (path) => (await readBytes(path)).bytes,
-        readSlice: async (path, start, end) => {
-          const got = await readBytes(path, undefined, undefined, { start, end });
-          return { bytes: got.bytes, size: got.size };
-        },
-        writeFile: (path, data) => local.writeFile(folder, '', path, data),
-        decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
-        // What everything is rendered at, so the lead-in is measured there too.
-        sampleRate: ctx.sampleRate,
-        // Cached under the file it came from: a key without it once served
-        // one stem's render for every stem of the song.
-        shift: ({ buffer, semitones, speed, source, prime, onProgress }) =>
-          (prime ? primeShiftedRender : getShiftedBuffer)({
-            ctx,
-            path: source,
-            rev: `prepare:${buffer.length}@${buffer.sampleRate}`,
-            semitones,
-            tempo: speed,
-            source: buffer,
-            budgetBytes: settings.cacheBudgetGB * 1e9,
-            onProgress,
-            signal: running.current?.signal,
-          }),
-        parallelShifts: shiftLanes(),
-        audioKeys: keys,
+        setPath,
+        band: folder,
+        folderName,
+        selected: [...selected],
+        standing,
+        keys,
         songOrder,
-        onProgress: setProgress,
+        cacheBudgetGB: settings.cacheBudgetGB,
         signal: running.current.signal,
+        onProgress: setProgress,
       });
-      void ctx.close();
-      setResult(done);
-
-      /*
-       * The songs left alone still get their words and sections: a lyric
-       * fixed in the set lands everywhere, whether or not any audio moved.
-       * The cheap path, over the manifest the run just wrote.
-       */
-      const untouched = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
-      if (untouched.length) {
-        try {
-          const setFolder = `${SETS_FOLDER}/${folderName}`;
-          const { bytes: raw } = await local.readBytes(folder, '', `${setFolder}/${MANIFEST_NAME}`);
-          const manifest = JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
-          const under = `${setFolder.toLowerCase()}/`;
-          const presentFolders = [
-            ...new Set(
-              (await local.listFiles(folder, ''))
-                .map((f) => f.path.replace(/^\/+/, ''))
-                .filter((path) => path.toLowerCase().startsWith(under))
-                .map((path) => path.slice(under.length).split('/')[0])
-                .filter((name) => name && !name.includes('.')),
-            ),
-          ];
-          const refresh = await updatePrepared({
-            project: full,
-            alsPath: setPath,
-            setFolder,
-            manifest,
-            presentFolders,
-            only: untouched,
-            songOrder,
-            writeFile: (path, data) => local.writeFile(folder, '', path, data),
-            signal: running.current?.signal,
-          });
-          setRefreshed({ count: refresh.updated.length });
-        } catch (err) {
-          if ((err as { name?: string })?.name === 'AbortError') throw err;
-          setRefreshed({ count: 0, error: err instanceof Error ? err.message : String(err) });
-        }
-      }
-      setPublished(await publishLibrary(folder));
+      setResult(out.result);
+      setRefreshed(out.refreshed);
+      setPublished(out.published);
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
         setError('Stopped. Songs already written are in the folder; running it again rewrites the rest.');
@@ -347,7 +198,6 @@ export default function PrepareSetDialog({
         setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
-      releaseAwake();
       running.current = null;
       setBusy(false);
       setProgress(null);
