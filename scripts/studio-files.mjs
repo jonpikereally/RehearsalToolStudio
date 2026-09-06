@@ -426,7 +426,9 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       mkdirSync(logDir, { recursive: true });
       const log = join(logDir, 'lyrics-studio.log');
       const out = openSync(log, 'a');
-      const child = spawn(uv, ['run', 'server.py'], { cwd, detached: true, stdio: ['ignore', out, out] });
+      // An app's PATH has no Homebrew on it, and Lyrics Studio needs ffmpeg from there.
+      const path = ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH ?? '/usr/bin:/bin'].join(':');
+      const child = spawn(uv, ['run', 'server.py'], { cwd, detached: true, stdio: ['ignore', out, out], env: { ...process.env, PATH: path } });
       child.unref();
       return { started: true, log };
     },

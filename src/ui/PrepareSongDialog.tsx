@@ -42,7 +42,7 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
 };
 
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
-  const { publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
+  const { publishFolderName, pickPublishFolder, publishFolder, settings, outputSet } = useStore();
   const [project, setProject] = useState<AlsProject | null>(null);
   const liveOrder = useLiveOrder(project, song.setPath ?? null);
   const [alsSong, setAlsSong] = useState<AlsSong | null>(null);
@@ -100,7 +100,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const combining = stems.filter((s) => choice[s.name] === 'combine');
   const partCount = printing.length + (combining.length ? 1 : 0);
   // The folder the rest of the set went into, if it was ever named; else today's.
-  const setName = setNameFor(song.setPath ?? null);
+  const setName = outputSet?.name ?? setNameFor(song.setPath ?? null);
   const folderName = alsSong ? songFolderName(alsSong) : '';
 
   const stop = () => running.current?.abort();

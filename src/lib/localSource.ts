@@ -132,6 +132,17 @@ export async function pickFolder(
   return { handle: wrap({ dir: picked.dir, name: picked.name }), name: picked.name };
 }
 
+/** Prompt for one file and answer with where it is, for a file another app or a later read will take up. */
+export async function pickFilePath(opts: { description: string; extensions: string[] }): Promise<{ dir: string; name: string }> {
+  const picked = await call<{ cancelled?: true; dir: string; name: string }>('pick', {
+    kind: 'file',
+    prompt: `Choose ${opts.description}`,
+    extensions: opts.extensions,
+  });
+  if (picked.cancelled) throw aborted();
+  return { dir: picked.dir, name: picked.name };
+}
+
 /** Prompt for one file — a set off another machine, say — and read it. */
 export async function pickFile(opts: { description: string; extensions: string[] }): Promise<PickedFile> {
   const picked = await call<{

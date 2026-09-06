@@ -11,8 +11,7 @@ import { readBytes } from '../lib/source';
 import * as local from '../lib/localSource';
 import type { PublishResult } from '../lib/publish';
 import { SETS_FOLDER } from '../lib/prints';
-import { defaultSetName, rememberSetName, rememberedSetName, safeSetName, setNameFor } from '../lib/setName';
-import { preparedNameFor } from '../lib/locatePrepared';
+import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -48,7 +47,7 @@ export default function PrepareSetDialog({
   /** The running order to write, by title, when a setlist's own; else the set's. */
   order?: string[];
 }) {
-  const { currentSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
+  const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -81,8 +80,8 @@ export default function PrepareSetDialog({
   const liveOrder = useLiveOrder(project, order ? null : setPath);
   const songOrder = order ?? liveOrder?.titles ?? undefined;
   /** What the band will see the set called: their folder's name. */
-  const [setName, setSetName] = useState(() => setNameFor(setPath));
-  useEffect(() => setSetName(setNameFor(setPath)), [setPath]);
+  // The folder chosen at launch; a set without one — the tools alone — falls back to its own name.
+  const setName = outputSet?.name ?? setNameFor(setPath);
 
   /*
    * The song list comes from the set itself, so it has to be read before
@@ -132,20 +131,6 @@ export default function PrepareSetDialog({
       // The band's folder as already granted; never a dialog from an effect.
       const band = await publishFolder();
       if (!band || !live) return;
-      /*
-       * Nothing typed and nothing remembered: the set may still have a
-       * folder in the band's folder — prepared under a name it has since
-       * lost, or the .als renamed since. That folder's name, then, rather
-       * than today's, so the songs already there count as prepared.
-       */
-      if (!rememberedSetName(setPath) && setName === defaultSetName(setPath)) {
-        const located = await preparedNameFor(band, setPath);
-        if (!live) return;
-        if (located !== setName) {
-          setSetName(located);
-          return; // and back here with the name that was found
-        }
-      }
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       const found = await standingFor(project, setPath, band, folderName);
       if (!live) return;
@@ -198,9 +183,7 @@ export default function PrepareSetDialog({
     setUndone(null);
     try {
       const full = project ?? (await parseAls((await readBytes(setPath)).bytes));
-      // A blank field means today's name, the same as never having typed one.
       const folderName = safeSetName(setName) || defaultSetName(setPath);
-      rememberSetName(setPath, folderName === defaultSetName(setPath) ? '' : folderName);
       const touched: Aside[] = [];
       aside.current = { folder: folderName, songs: touched };
       const out = await runPrepare({
@@ -315,31 +298,11 @@ export default function PrepareSetDialog({
       </div>
 
       <div className="field">
-        <label htmlFor="set-folder">
-          Call the set
-          <span className="hint">
-            The folder the band opens, under{' '}
-            <span className="code">{SETS_FOLDER}/</span>. Remembered for this set,
-            so a song prepared later lands in the same folder.
-          </span>
+        <label>
+          Into
+          <span className="hint">The set folder chosen at launch, under <span className="code">{SETS_FOLDER}/</span> in the band's folder.</span>
         </label>
-        <div className="btn-row">
-          <input
-            id="set-folder"
-            className="text-input"
-            type="text"
-            value={setName}
-            onChange={(e) => setSetName(e.target.value)}
-            onBlur={() => setSetName((v) => safeSetName(v) || defaultSetName(setPath))}
-            disabled={busy}
-            aria-label="Name of the prepared set's folder"
-          />
-          {safeSetName(setName) !== defaultSetName(setPath) && (
-            <button className="btn" disabled={busy} onClick={() => setSetName(defaultSetName(setPath))}>
-              Today's name
-            </button>
-          )}
-        </div>
+        <span className="code">{`${SETS_FOLDER}/${safeSetName(setName) || defaultSetName(setPath)}`}</span>
       </div>
 
       {titles.length > 0 && (

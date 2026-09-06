@@ -11,7 +11,7 @@ import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest } from './
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
-import { readBytes, statFile } from './source';
+import { absolutePath, readBytes, statFile } from './source';
 import { updatePrepared, wordsChanged } from './updatePrepared';
 
 /**
@@ -196,6 +196,8 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
     const titles = titlesOf(project);
     const selected = new Set(o.selected);
     const setFolder = `${SETS_FOLDER}/${folderName}`;
+    // Where the session is, for the manifest to remember; a lone set has no folder to say.
+    const sessionPath = await absolutePath(setPath).catch(() => undefined);
     const writeFile = (path: string, data: Blob) => local.writeFile(band, '', path, data);
 
     let result: PrepareResult | null = null;
@@ -260,6 +262,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           parallelShifts: shiftLanes(),
           audioKeys: keys,
           songOrder,
+          sessionPath,
           onProgress,
           signal,
         });
@@ -307,6 +310,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           presentFolders,
           only: untouched,
           songOrder,
+          sessionPath,
           writeFile,
           signal,
         });

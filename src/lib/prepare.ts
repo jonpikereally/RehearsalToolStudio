@@ -173,6 +173,8 @@ export interface PrepareOptions {
    * the band's app plays them in it. Titles left out follow in set order.
    */
   songOrder?: string[];
+  /** The session's absolute path, remembered in the manifest so the folder knows what feeds it. */
+  sessionPath?: string;
   onProgress?: (p: PrepareProgress) => void;
   signal?: AbortSignal;
 }
@@ -981,6 +983,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
       preparedBy: 'rehearsaltool',
       preparedAt: new Date().toISOString(),
       fromSet: opts.alsPath,
+      ...((opts.sessionPath ?? existing?.session) ? { session: opts.sessionPath ?? existing?.session } : {}),
       paddingSec,
       songs,
     };

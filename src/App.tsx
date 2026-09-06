@@ -9,7 +9,8 @@ import SetlistsView from './ui/SetlistsView';
 import SetlistView from './ui/SetlistView';
 import SettingsView from './ui/SettingsView';
 import Onboarding from './ui/Onboarding';
-import ChooseSet from './ui/ChooseSet';
+import ChooseOutput from './ui/ChooseOutput';
+import ChooseSession from './ui/ChooseSession';
 import { toolsAlone } from './lib/toolsAlone';
 import SetToolsView from './ui/SetToolsView';
 import AutoUpdate from './ui/AutoUpdate';
@@ -90,7 +91,7 @@ function useDropped(open: (path: string) => Promise<void>): { over: boolean; err
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library, openDropped, watching } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourcesFolderName, library, openDropped, watching } = useStore();
   const drop = useDropped(openDropped);
   const newerBuild = useNewerBuild();
   const run = useRun();
@@ -115,17 +116,22 @@ export default function App() {
   const playing = section === 'song' && songId ? { songId, setlistId } : section === 'settings' ? held : null;
   const heldSong = section === 'settings' && held ? library.songs.find((s) => s.id === held.songId) : undefined;
 
+  /*
+   * A launch goes: the band's folder, then which set folder in it, then the
+   * session that feeds it — usually silent, since the folder remembers.
+   * Settings is always reachable, and the set tools without a set when the
+   * chooser was skipped for the tools that need none.
+   */
+  const aside = section === 'settings' || (section === 'tools' && toolsAlone());
   let body: JSX.Element | null;
   if (section === 'song' && songId) {
     body = null;
-    // Set tools work on a lone .als with no folder at all, so they stay
-    // reachable before a folder is chosen — as Settings always has.
-  } else if (!usingLocalFolder && section !== 'settings' && section !== 'tools') {
+  } else if (!aside && !publishFolderName) {
     body = <Onboarding />;
-    // Everything is about one set, so a launch chooses it before anything
-    // else — unless the chooser was skipped for the tools that need none.
-  } else if (usingLocalFolder && !currentSet && section !== 'settings' && !(section === 'tools' && toolsAlone())) {
-    body = <ChooseSet />;
+  } else if (!aside && !outputSet) {
+    body = <ChooseOutput />;
+  } else if (!aside && (!usingLocalFolder || !currentSet)) {
+    body = <ChooseSession />;
   } else if (section === 'setlists') {
     body = <SetlistsView />;
   } else if (section === 'setlist' && (route.query.get('id') ?? route.path[1])) {
@@ -185,7 +191,12 @@ export default function App() {
       {currentSet && section !== 'song' && (
         <div className="setbar">
           <span>
-            Set: <strong>{sets.find((s) => s.path === currentSet)?.name ?? currentSet.split('/').pop()}</strong>
+            Set: <strong>{outputSet?.name ?? sets.find((s) => s.path === currentSet)?.name ?? currentSet.split('/').pop()}</strong>
+            {outputSet && (
+              <span style={{ color: 'var(--text-dim)' }}>
+                {' '}← {(sessionPath ?? currentSet).split('/').pop()}
+              </span>
+            )}
             {/* The watch on the set, so nobody wonders whether a save will be noticed. */}
             {watching && (
               <span
@@ -207,7 +218,13 @@ export default function App() {
               </span>
             )}
           </span>
-          <button className="chip" onClick={() => chooseSet(null)}>
+          <button
+            className="chip"
+            onClick={() => {
+              chooseSet(null);
+              chooseOutput(null);
+            }}
+          >
             Change set
           </button>
         </div>

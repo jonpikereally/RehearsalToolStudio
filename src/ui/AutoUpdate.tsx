@@ -39,7 +39,7 @@ type Phase =
 const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export default function AutoUpdate() {
-  const { currentSet, setSaved, dismissSetSaved, settings, saveSettings, publishFolder, library } = useStore();
+  const { currentSet, outputSet, setSaved, dismissSetSaved, settings, saveSettings, publishFolder, library } = useStore();
   const [phase, setPhase] = useState<Phase | null>(null);
   const [dialog, setDialog] = useState(false);
   /** The save being acted on, so a newer one is not answered twice and an older run's news is dropped. */
@@ -81,7 +81,7 @@ export default function AutoUpdate() {
         // The folder this set already has in the band's folder, whatever
         // either is called now: known by the songs in it.
         const keys = await audioKeysFor(project, currentSet);
-        const folderName = await preparedNameFor(band, currentSet, keys.byName);
+        const folderName = outputSet?.name ?? (await preparedNameFor(band, currentSet, keys.byName));
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
           if (current()) setPhase({ kind: 'unprepared', at });

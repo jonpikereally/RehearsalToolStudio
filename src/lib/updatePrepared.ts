@@ -114,6 +114,8 @@ export interface UpdateOptions {
   only?: string[];
   /** The running order by title, as for prepareSet; the arrangement's without. */
   songOrder?: string[];
+  /** The session's absolute path, kept in the manifest. */
+  sessionPath?: string;
   writeFile: (path: string, data: Blob) => Promise<string>;
   onProgress?: (p: { title: string; index: number; count: number }) => void;
   signal?: AbortSignal;
@@ -342,6 +344,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       preparedBy: 'rehearsaltool',
       preparedAt: new Date().toISOString(),
       fromSet: alsPath,
+      ...((opts.sessionPath ?? manifest.session) ? { session: opts.sessionPath ?? manifest.session } : {}),
       // Describes the MP3s in the folder, which this run has not touched.
       paddingSec: manifest.paddingSec,
       songs: mergeSongs(manifest.songs, written, folderOrder(project, opts.songOrder)),

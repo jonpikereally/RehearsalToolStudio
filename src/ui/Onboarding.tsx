@@ -4,29 +4,24 @@ import { navigate } from '../lib/router';
 import { APP_NAME } from '../lib/appMode';
 
 /**
- * The studio's first run: point it at the folder the sets are in.
+ * The studio's first run: point it at the band's folder.
  *
- * One way in, so there is no choice to make. It used to offer Dropbox as well,
- * back when one build served both the band and the workshop — the band signs
- * in to Rehearsal Tool now, and the studio reads a folder on the machine it is
- * running on, which is the machine the Ableton sets are on.
+ * Everything the studio makes goes into that folder — a Dropbox app folder
+ * the band's phones read — and every launch begins by choosing a set folder
+ * inside it. The Ableton sessions come after, one per set folder, wherever
+ * they live: their own folders are read when they are opened.
  */
 export default function Onboarding() {
-  const { pickLocalFolder, rescan } = useStore();
+  const { pickPublishFolder } = useStore();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /*
-   * The picker has to be opened by the click itself, so this can't be moved
-   * behind an await. Scanning straight afterwards means the songs are simply
-   * there, rather than leaving a chosen folder and an empty library.
-   */
+  // The picker has to be opened by the click itself, so this can't be moved behind an await.
   const chooseFolder = async () => {
     setBusy(true);
     setError(null);
     try {
-      await pickLocalFolder();
-      await rescan();
+      await pickPublishFolder();
     } catch (err) {
       // Closing the picker isn't a failure, so don't shout about it.
       const message = err instanceof Error ? err.message : String(err);
@@ -43,22 +38,20 @@ export default function Onboarding() {
       </div>
 
       <div className="empty">
-        <h2>Where are your sets?</h2>
-        <p>
-          Point this at the folder your Ableton sets and their stems live in.
-        </p>
+        <h2>Where is the band's folder?</h2>
+        <p>The Rehearsal Tool folder in Dropbox: the one the band's phones read, and the one every prepared set goes into.</p>
       </div>
 
       <div className="source-choices">
         <div className="source-card">
-          <h3>A folder on this computer</h3>
+          <h3>The band's folder</h3>
           <p>
-            Read straight off this machine — nothing to download, big WAV stems open instantly,
-            and writing back is just writing a file.
+            Chosen once and remembered. Each set folder inside it is prepared from an Ableton session, which you point
+            at when you open the folder.
           </p>
           {error && <div className="notice error">{error}</div>}
           <button className="btn primary" onClick={() => void chooseFolder()} disabled={busy}>
-            {busy ? 'Scanning…' : 'Choose a folder'}
+            {busy ? 'Choosing…' : "Choose the band's folder"}
           </button>
         </div>
       </div>

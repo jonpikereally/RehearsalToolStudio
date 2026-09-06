@@ -13,7 +13,7 @@ export default function LocalFolderSettings() {
   const {
     settings, saveSettings, rescan, scanning, scanProgress,
     localStatus, localFolderName, pickLocalFolder, forgetLocalFolder,
-    resourcesFolderName, pickResourcesFolder, sets, currentSet, chooseSet,
+    resourcesFolderName, pickResourcesFolder, alsFiles, currentSet, chooseSessionFile,
   } = useStore();
 
   const [error, setError] = useState<string | null>(null);
@@ -42,11 +42,11 @@ export default function LocalFolderSettings() {
   );
 
   return (
-    <SettingsSection id="local" title="Your sets" summary={summary} defaultOpen>
+    <SettingsSection id="local" title="The session's folder" summary={summary} defaultOpen>
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         {ready
-          ? `Reading “${localFolderName}” straight off disk — every Ableton set in it, and everything written back beside them.`
-          : 'Point it at the folder your Ableton sets and stems live in.'}
+          ? `Reading “${localFolderName}” straight off disk — the folder of the session that feeds the set, where its stems are — and writing copies back beside it.`
+          : 'The folder of the Ableton session, once one is opened.'}
       </div>
 
       {error && <div className="notice error">{error}</div>}
@@ -72,28 +72,27 @@ export default function LocalFolderSettings() {
         launch; this is the same choice from here, for a folder that holds
         several sets, without going back through it.
       */}
-      {on && sets.length > 0 && (
+      {on && alsFiles.length > 0 && (
         <div className="field">
           <label htmlFor="open-set">
-            Set open in the studio
+            Session open in the studio
             <span className="hint">
-              {sets.length === 1
-                ? 'The one Ableton set in this folder.'
-                : `Which of the ${sets.length} Ableton sets in this folder the studio is working on.`}
+              {alsFiles.length === 1
+                ? 'The one .als in this folder.'
+                : `Which of the ${alsFiles.length} .als files in this folder is read as the set — an older save, say.`}
             </span>
           </label>
           <select
             id="open-set"
             className="jump-select"
             value={currentSet ?? ''}
-            onChange={(e) => chooseSet(e.target.value || null)}
+            onChange={(e) => e.target.value && void run(() => chooseSessionFile(e.target.value))}
             style={{ maxWidth: 360 }}
           >
-            {!currentSet && <option value="">Choose a set…</option>}
-            {sets.map((set) => (
-              <option key={set.path} value={set.path}>
-                {set.name}
-                {set.songs ? ` · ${set.songs} song${set.songs === 1 ? '' : 's'}` : ''}
+            {!currentSet && <option value="">Choose a session…</option>}
+            {alsFiles.map((path) => (
+              <option key={path} value={path}>
+                {path.replace(/^\//, '')}
               </option>
             ))}
           </select>

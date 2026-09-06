@@ -178,6 +178,12 @@ export interface PreparedManifest {
   /** The set this came from, for when someone wonders where it went. */
   /** The .als it came from — absent when written by hand or from the editor. */
   fromSet?: string;
+  /**
+   * The Ableton session that feeds this folder, as its absolute path on the
+   * Mac the studio runs on: what the studio opens when this folder is
+   * chosen. The studio's own; a player ignores it.
+   */
+  session?: string;
   paddingSec: number;
   songs: PreparedSongInfo[];
 }
@@ -216,6 +222,8 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
   if (m.preparedBy !== 'rehearsaltool') {
     errors.push(`"preparedBy" must be exactly "rehearsaltool" — it is how the scan knows this file is meant for it`);
   }
+  if (m.session !== undefined && typeof m.session !== 'string') errors.push('"session" must be text');
+  if (m.session !== undefined && typeof m.session !== 'string') errors.push('"session" must be text');
   if (!Array.isArray(m.songs)) {
     errors.push('"songs" must be a list');
     return { ok: false, errors };

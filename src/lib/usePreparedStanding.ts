@@ -35,7 +35,7 @@ export type PreparedLookup =
 
 /** `version` changes whenever the answer might have: a save, a prepare finished. */
 export function usePreparedStanding(setPath: string | null, version: string): PreparedLookup {
-  const { publishFolderName, publishFolder } = useStore();
+  const { publishFolderName, publishFolder, outputSet } = useStore();
   const [lookup, setLookup] = useState<PreparedLookup>({ state: 'idle' });
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
         }
         const project = await parseAls((await readBytes(setPath)).bytes);
         const keys = await audioKeysFor(project, setPath);
-        const folder = await preparedNameFor(band, setPath, keys.byName);
+        const folder = outputSet?.name ?? (await preparedNameFor(band, setPath, keys.byName));
         const standing = await standingFor(project, setPath, band, folder, keys);
         if (!live) return;
         if (!standing.manifest) {
@@ -82,7 +82,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setPath, publishFolderName, version]);
+  }, [setPath, publishFolderName, version, outputSet?.name]);
 
   return lookup;
 }

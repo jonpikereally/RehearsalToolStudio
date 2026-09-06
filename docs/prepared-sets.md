@@ -239,6 +239,7 @@ way a hand-made folder would.
 | `preparedBy` | yes, exactly `"rehearsaltool"` | how the scan knows the file is meant for it; anything else is ignored |
 | `preparedAt` | no | ISO time of the run |
 | `fromSet` | no | the `.als` it came from, relative to the Studio's sets folder; absent when written by hand |
+| `session` | no | the Ableton session that feeds this folder, as its absolute path on the Mac the Studio runs on — what the Studio opens when the folder is chosen at launch. The Studio's own; ignore it |
 | `paddingSec` | no | the encoder lead-in for this run, in seconds |
 | `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order |
 | `songs[].folder` | yes | the song folder's name, relative to the set folder, as it is now; how the entry is matched to the scanned song, case-insensitively |

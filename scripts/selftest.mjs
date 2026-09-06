@@ -2716,6 +2716,8 @@ group('manifest validation');
     validateManifest(example).errors.join('; '));
   check('unknown fields are tolerated',
     validateManifest({ ...example, futureField: 1 }).ok);
+  check('the session that feeds the folder is text', validateManifest({ ...example, session: '/Users/x/Set.als' }).ok
+    && !validateManifest({ ...example, session: 5 }).ok);
 
   // Mistakes name themselves instead of vanishing.
   const wrongTempo = validateManifest({ ...example, songs: [{ folder: 'X', tempoMap: [{ bar: 'one', bpm: 87 }] }] });

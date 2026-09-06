@@ -44,6 +44,13 @@ APP_DIR = Path(__file__).resolve().parent
 # have — or wherever LYRICS_STUDIO_DATA says, which the packaged app sets, since
 # an app bundle is not a place to write into.
 DATA_DIR = Path(os.environ.get("LYRICS_STUDIO_DATA") or APP_DIR)
+
+# Started from an app rather than a Terminal, a process has no Homebrew on
+# its PATH, and ffmpeg — which cuts the regions and which Whisper reads audio
+# through — is not found. Put the usual places on, once, for everything below.
+for _bin in ("/opt/homebrew/bin", "/usr/local/bin"):
+    if os.path.isdir(_bin) and _bin not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = _bin + os.pathsep + os.environ.get("PATH", "")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
@@ -1297,7 +1304,17 @@ def seconds_to_beats(tmap: list[tuple[float, float]], sec: float) -> float:
 def audio_clips(track) -> list:
     """A track's arrangement regions, in timeline order. Both the region list
     shown in the page and the transcriber index into this, so the numbering
-    the user picks always refers to the same region."""
+    the user picks always refers to the same region.
+
+    A frozen track plays Live's own render of itself — the freeze file, in
+    the FreezeSequencer — not its original clips, whose files may be gone or
+    elsewhere. What Live plays is what gets listened to."""
+    freeze = track.find("Freeze")
+    if freeze is not None and freeze.get("Value") == "true":
+        frozen = track.findall(
+            "DeviceChain/FreezeSequencer/Sample/ArrangerAutomation/Events/AudioClip")
+        if frozen:
+            return sorted(frozen, key=lambda c: float(c.find("CurrentStart").get("Value")))
     clips = track.findall(
         "DeviceChain/MainSequencer/Sample/ArrangerAutomation/Events/AudioClip")
     return sorted(clips, key=lambda c: float(c.find("CurrentStart").get("Value")))
@@ -1553,8 +1570,12 @@ def als_progress(als_path: str, track_id: str):
 
 
 def extract_region(sample: str, start: float, dur: float, dest: str) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(500, "ffmpeg is not installed, and it is what cuts a region out of its file. "
+                                 "In Terminal: brew install ffmpeg")
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}",
+        [ffmpeg, "-y", "-v", "error", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}",
          "-i", sample, "-ac", "1", "-ar", "16000", dest],
         check=True, capture_output=True, timeout=600,
     )
@@ -1729,6 +1750,42 @@ def als_transcribe(req: AlsTranscribeRequest):
         "range": ({"start_bar": req.start_bar, "end_bar": req.end_bar}
                   if (req.start_bar is not None or req.end_bar is not None) else None),
     }
+
+
+# Transcriptions running as jobs, for a page that cannot hold a request open
+# for the minutes one takes: WebKit cuts a request off after about a minute
+# with no answer. Started, then asked after.
+TRANSCRIBE_JOBS: dict[str, dict] = {}
+
+
+@app.post("/api/als_transcribe_start")
+def als_transcribe_start(req: AlsTranscribeRequest):
+    """Begin a transcription and answer at once with a job id; /api/als_job
+    says how it went. The work itself is als_transcribe, unchanged."""
+    import threading
+    import uuid
+    job = uuid.uuid4().hex
+    TRANSCRIBE_JOBS[job] = {"status": "running"}
+
+    def run():
+        try:
+            TRANSCRIBE_JOBS[job] = {"status": "done", "result": als_transcribe(req)}
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, str) else json.dumps(e.detail)
+            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": detail}
+        except Exception as e:  # noqa: BLE001 — the page needs the words, whatever they are
+            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job": job}
+
+
+@app.get("/api/als_job")
+def als_job(job: str):
+    state = TRANSCRIBE_JOBS.get(job)
+    if state is None:
+        raise HTTPException(404, "No such transcription.")
+    return state
 
 
 def midi_clip_prototype(root):

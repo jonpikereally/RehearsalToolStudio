@@ -103,6 +103,12 @@ export async function abletLive(path: string): Promise<local.AbleSetLive> {
   return local.abletLive(config.folder!, config.root, path);
 }
 
+/** Where a file of the folder is on this Mac, for another app that reads it itself. */
+export async function absolutePath(path: string): Promise<string> {
+  if (!localReady()) throw new Error('No folder is chosen to read from.');
+  return local.absolutePath(config.folder!, config.root, path);
+}
+
 export async function statFile(path: string): Promise<{ name: string; size: number; modified: number }> {
   if (!localReady()) throw new Error('No folder is chosen to read from.');
   return local.statFile(config.folder!, config.root, path);

@@ -3,7 +3,9 @@ import type { FileEntry } from './files';
 import { isManifestName, setFolderOf, type PreparedManifest } from './preparedSet';
 import { isPreparedSet } from './prints';
 import { contentScore, setFor, type PreparedSetAt } from './updatePrepared';
-import { defaultSetName, rememberSetName, rememberedSetName } from './setName';
+import { defaultSetName, rememberSetName, rememberedSetName, safeSetName } from './setName';
+import { SETS_FOLDER } from './prints';
+import { MANIFEST_NAME } from './preparedSet';
 
 /**
  * Finding the prepared set in the band's folder that a given `.als` produced.
@@ -112,4 +114,61 @@ export async function preparedNameFor(
     return name;
   }
   return remembered ?? defaultSetName(alsPath);
+}
+
+/** A set folder in the band's folder, as the launch screen lists it. */
+export interface OutputSet {
+  /** `Sets/<name>`, relative to the band's folder. */
+  folder: string;
+  name: string;
+  songs: number;
+  preparedAt?: string;
+  /** The Ableton session it is prepared from, as remembered in its manifest. */
+  session?: string;
+}
+
+/** Every set folder under Sets/, newest first. */
+export async function outputSets(band: local.FolderHandle): Promise<OutputSet[]> {
+  const { candidates } = await preparedCandidates(band);
+  return candidates
+    .map((c) => ({
+      folder: c.folder,
+      name: c.folder.split('/').pop() ?? c.folder,
+      songs: c.manifest.songs.length,
+      preparedAt: c.manifest.preparedAt,
+      session: c.manifest.session,
+    }))
+    .sort((a, b) => (b.preparedAt ?? '').localeCompare(a.preparedAt ?? ''));
+}
+
+const json = (value: unknown) => new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+
+/**
+ * Remember which session feeds a set folder, in its manifest. A folder with
+ * no manifest yet gets one with nothing prepared in it, so the folder is
+ * there to be listed and opened before its first prepare.
+ */
+export async function rememberSession(band: local.FolderHandle, setFolder: string, alsPath: string): Promise<void> {
+  const path = `${setFolder}/${MANIFEST_NAME}`;
+  let manifest: PreparedManifest;
+  try {
+    const { bytes } = await local.readBytes(band, '', path);
+    manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
+  } catch {
+    manifest = { preparedBy: 'rehearsaltool', preparedAt: new Date().toISOString(), paddingSec: 0, songs: [] };
+  }
+  if (manifest.session === alsPath) return;
+  await local.writeFile(band, '', path, json({ ...manifest, session: alsPath }));
+}
+
+/** Make a set folder under Sets/, named and fed by a session, with nothing prepared in it yet. */
+export async function createOutputSet(band: local.FolderHandle, name: string, alsPath: string): Promise<OutputSet> {
+  const clean = safeSetName(name);
+  if (!clean) throw new Error('The folder needs a name.');
+  const folder = `${SETS_FOLDER}/${clean}`;
+  if (await local.exists(band, '', `${folder}/${MANIFEST_NAME}`)) {
+    throw new Error(`There is already a set folder called “${clean}”. Open that one, or choose another name.`);
+  }
+  await rememberSession(band, folder, alsPath);
+  return { folder, name: clean, songs: 0, preparedAt: new Date().toISOString(), session: alsPath };
 }

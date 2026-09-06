@@ -132,7 +132,12 @@ export async function transcribeTrack(
   };
   void poll();
   try {
-    const res = await fetch(`${base}/api/als_transcribe`, {
+    /*
+     * Started, then asked after. The listening takes minutes, and a window's
+     * request that gets no answer in about one is cut off with "Load failed";
+     * so the server takes the job and the page comes back for the result.
+     */
+    const started = await fetch(`${base}/api/als_transcribe_start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -145,17 +150,28 @@ export async function transcribeTrack(
         isolate: !!req.isolate,
       }),
     });
-    const raw = await res.text();
-    let body: Record<string, unknown> = {};
+    const raw = await started.text();
+    let opened: Record<string, unknown> = {};
     try {
-      body = JSON.parse(raw) as Record<string, unknown>;
+      opened = JSON.parse(raw) as Record<string, unknown>;
     } catch {
       // A crash comes back as a traceback, not JSON: its last line is the error.
-      if (!res.ok) throw new Error(raw.trim().split('\n').pop() || `${res.status} from Lyrics Studio`);
+      throw new Error(raw.trim().split('\n').pop() || `${started.status} from Lyrics Studio`);
     }
-    if (!res.ok) {
-      const detail = body.detail ?? body.error ?? `${res.status} from Lyrics Studio`;
+    if (!started.ok || typeof opened.job !== 'string') {
+      const detail = opened.detail ?? opened.error ?? `${started.status} from Lyrics Studio`;
       throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    let body: Record<string, unknown>;
+    for (;;) {
+      await sleep(2000);
+      const res = await fetch(`${base}/api/als_job?${new URLSearchParams({ job: opened.job })}`);
+      const state = (await res.json().catch(() => ({}))) as { status?: string; result?: Record<string, unknown>; error?: string };
+      if (state.status === 'done' && state.result) {
+        body = state.result;
+        break;
+      }
+      if (state.status === 'failed' || !res.ok) throw new Error(state.error ?? `${res.status} from Lyrics Studio`);
     }
     type Raw = { text: string; start: number; end: number; start_beat: number; end_beat: number; words?: Raw[] };
     const word = (w: Raw): TranscribedWord => ({ text: w.text, start: w.start, end: w.end, startBeat: w.start_beat, endBeat: w.end_beat });

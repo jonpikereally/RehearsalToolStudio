@@ -13,6 +13,7 @@ import * as local from './localSource';
 import { normalisePath } from './paths.ts';
 import { setToolsAlone } from './toolsAlone';
 import { prepareRunning } from './prepareState';
+import { rememberSession, type OutputSet } from './locatePrepared.ts';
 import { navigate } from './router';
 
 /**
@@ -29,6 +30,9 @@ const LS_REV = 'ls.libraryRev';
 const LS_SETTINGS = 'ls.settings';
 /** The set being worked on. Session-scoped: every launch asks again. */
 const SS_SET = 'ls.currentSet';
+/** The set folder chosen at launch, and the session read for it, kept across a reload. */
+const SS_OUTPUT = 'ls.outputSet';
+const SS_SESSION = 'ls.sessionFile';
 /** Every set the last scan found, whether or not its songs have audio here. */
 const LS_SETS = 'ls.knownSets';
 const PUSH_DEBOUNCE_MS = 1500;
@@ -147,6 +151,24 @@ interface StoreValue {
   localFolderName: string | null;
   /** The set everything on screen is about, as its path in the folder. */
   currentSet: string | null;
+  /**
+   * The set folder in the band's folder the studio is about — chosen at
+   * launch, before the session — and the session it remembers.
+   */
+  outputSet: OutputSet | null;
+  chooseOutput: (set: OutputSet | null) => void;
+  /**
+   * Open an Ableton session by its absolute path: its folder becomes the one
+   * stems are read from, that one file is the set, and the set folder — when
+   * one is chosen — remembers it as what feeds it.
+   */
+  openSession: (alsPath: string) => Promise<void>;
+  /** The session's absolute path, once opened. */
+  sessionPath: string | null;
+  /** Every .als in the session's folder, for switching between saves of it. */
+  alsFiles: string[];
+  /** Open one of those by its path in the folder. */
+  chooseSessionFile: (path: string) => Promise<void>;
   /** The sets the library knows, for choosing between. */
   sets: KnownSet[];
   chooseSet: (path: string | null) => void;
@@ -266,6 +288,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
+  const [outputSet, setOutputSet] = useState<OutputSet | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(SS_OUTPUT);
+      return raw ? (JSON.parse(raw) as OutputSet) : null;
+    } catch {
+      return null;
+    }
+  });
+  const chooseOutput = useCallback((set: OutputSet | null) => {
+    setOutputSet(set);
+    try {
+      if (set) sessionStorage.setItem(SS_OUTPUT, JSON.stringify(set));
+      else sessionStorage.removeItem(SS_OUTPUT);
+    } catch {
+      /* a session that can't remember still works */
+    }
+  }, []);
+  /**
+   * The one .als the scan reads, when a session was opened by name. Without
+   * it the scan takes the newest .als of each project folder, which was the
+   * rule before sessions were chosen — and is still the rule for a dropped
+   * folder.
+   */
+  const [sessionFile, setSessionFile] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(SS_SESSION);
+    } catch {
+      return null;
+    }
+  });
+  const sessionFileRef = useRef(sessionFile);
+  sessionFileRef.current = sessionFile;
+  const [sessionPath, setSessionPath] = useState<string | null>(null);
+  const [alsFiles, setAlsFiles] = useState<string[]>([]);
 
   const [knownSets, setKnownSets] = useState<{ path: string; name: string }[]>(() =>
     loadLocal(LS_SETS, []),
@@ -617,7 +673,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const prints = findPrints(files);
       // Facts a prepared set's folder names have no room for.
       const manifests = files.filter((f) => isPreparedSet(f.path) && isManifestName(f.name));
-      const setFiles = newestSetPerFolder(usable);
+      const wantedFile = sessionFileRef.current?.replace(/^\/+/, '').toLowerCase() ?? null;
+      const setFiles = wantedFile
+        ? usable.filter((f) => f.path.replace(/^\/+/, '').toLowerCase() === wantedFile)
+        : newestSetPerFolder(usable);
+      // The sessions here: every .als but the copies the studio's own tools wrote.
+      setAlsFiles(
+        usable
+          .filter((f) => /\.als$/i.test(f.name) && !/( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i.test(f.name))
+          .map((f) => f.path),
+      );
       setKnownSets(setFiles.map((f) => ({ path: f.path, name: f.name.replace(/\.als$/i, '') })));
       /* Sets that couldn't be read at all; the rest of the notes come later. */
       const readErrors: string[] = [];
@@ -781,21 +846,74 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * choosing it in Settings would, and is read; the set dropped, or the one
    * set found, is opened — the chooser otherwise, with what the scan found.
    */
-  const openDropped = useCallback(
-    async (path: string) => {
-      const { folder, file } = await local.openPath(path);
+  const rememberSessionFile = (file: string | null) => {
+    sessionFileRef.current = file;
+    setSessionFile(file);
+    try {
+      if (file) sessionStorage.setItem(SS_SESSION, file);
+      else sessionStorage.removeItem(SS_SESSION);
+    } catch {
+      /* a session that can't remember still works */
+    }
+  };
+
+  const openSession = useCallback(
+    async (alsPath: string) => {
+      const { folder, file } = await local.openPath(alsPath);
+      if (!file) throw new Error('That is a folder, not an Ableton session.');
       source.configureSource({ root: settings.root, useLocal: true, folder: folder.handle });
       setLocalFolderName(folder.name);
       setLocalStatus('ready');
       setSettings((prev) => ({ ...prev, useLocal: true }));
       setToolsAlone(false);
       chooseSet(null);
+      rememberSessionFile(file);
       const found = await rescan();
-      const dropped = file ? found.find((p) => p.split('/').pop()?.toLowerCase() === file.toLowerCase()) : undefined;
-      chooseSet(dropped ?? (found.length === 1 ? found[0] : null));
+      const opened = found.find((p) => p.split('/').pop()?.toLowerCase() === file.toLowerCase());
+      if (!opened) throw new Error(`${file} could not be read as a set.`);
+      chooseSet(opened);
+      setSessionPath(alsPath);
+      // The set folder remembers what feeds it, for the next launch.
+      if (outputSet) {
+        const band = await local.storedFolder('publish');
+        if (band) await rememberSession(band.handle, outputSet.folder, alsPath).catch(() => undefined);
+      }
       navigate('/');
     },
-    [settings.root, rescan, chooseSet],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.root, rescan, chooseSet, outputSet],
+  );
+
+  /** Another .als in the session's folder: an older save, say. */
+  const chooseSessionFile = useCallback(
+    async (path: string) => {
+      const abs = await source.absolutePath(path);
+      await openSession(abs);
+    },
+    [openSession],
+  );
+
+  const openDropped = useCallback(
+    async (path: string) => {
+      const { folder, file } = await local.openPath(path);
+      if (file) {
+        await openSession(path);
+        return;
+      }
+      // A folder: its newest set, as before a session could be named.
+      source.configureSource({ root: settings.root, useLocal: true, folder: folder.handle });
+      setLocalFolderName(folder.name);
+      setLocalStatus('ready');
+      setSettings((prev) => ({ ...prev, useLocal: true }));
+      setToolsAlone(false);
+      chooseSet(null);
+      rememberSessionFile(null);
+      setSessionPath(null);
+      const found = await rescan();
+      chooseSet(found.length === 1 ? found[0] : null);
+      navigate('/');
+    },
+    [settings.root, rescan, chooseSet, openSession],
   );
 
   /*
@@ -897,6 +1015,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [currentSet, canReadLibrary]);
 
+  /*
+   * After a reload the session's file is remembered but not where it is;
+   * the folder is, so the path is looked up again once the folder reads.
+   */
+  useEffect(() => {
+    if (!canReadLibrary || !currentSet || sessionPath) return;
+    let on = true;
+    void source.absolutePath(currentSet).then((p) => on && setSessionPath(p)).catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [canReadLibrary, currentSet, sessionPath]);
+
   /** The band's folder, asked for once and remembered by the server. */
   const pickPublishFolder = useCallback(async () => {
     const picked = await local.pickFolder('publish');
@@ -937,6 +1068,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteSetlist,
       rescan,
       openDropped,
+      outputSet,
+      chooseOutput,
+      openSession,
+      sessionPath,
+      alsFiles,
+      chooseSessionFile,
       setSaved,
       dismissSetSaved: () => setSetSaved(null),
       watching,
@@ -954,7 +1091,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, openDropped, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
+      rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, alsFiles, chooseSessionFile, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       pickLocalFolder, stopUsingLocalFiles, forgetLocalFolder,
       publishFolderName, pickPublishFolder, publishFolder, resourcesFolderName, pickResourcesFolder,
     ],
