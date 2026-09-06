@@ -54,17 +54,21 @@ export const DEFAULT_INFO_TRACK = 'ADD THIS SONG INFO';
 
 /**
  * How a clip's lines are joined depends on who reads it. A track flagged
- * +LYRICS is read by AbleSet, which breaks a name at a backslash and bolds
- * between double stars; any other track is read by a person in Live, where
- * those would be noise, so its clip is one plain line with dots between.
+ * +LYRICS is read by AbleSet, which bolds between double stars; any other
+ * track is read by a person in Live, where that would be noise, so its clip
+ * is plain. Lines are separated by a slash either way.
  */
 export function abletReads(trackName: string): boolean {
   return /\+LYRICS\b/i.test(trackName);
 }
 
-/** AbleSet's line break inside one clip. */
-const BREAK = ' \\ ';
-const PLAIN_BREAK = ' · ';
+/**
+ * How the lines of one clip are separated. A slash, not AbleSet's own
+ * backslash: a clip name on the timeline reads as one line either way, and
+ * a slash reads as a break to a person where a backslash reads as a typo.
+ */
+const BREAK = ' / ';
+const PLAIN_BREAK = ' / ';
 
 /** Text a clip name can carry: no line breaks of its own, no stray backslashes. */
 function clean(text: string): string {

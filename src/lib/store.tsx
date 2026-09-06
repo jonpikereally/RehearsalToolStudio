@@ -148,6 +148,12 @@ interface StoreValue {
    */
   setSaved: { path: string; at: number } | null;
   dismissSetSaved: () => void;
+  /**
+   * The watch on the open set, for saying so: whether Live is running, and
+   * whether looking is paused for a scan or a prepare. Null when no set is
+   * watched.
+   */
+  watching: { live: boolean; paused: boolean } | null;
   /** `replace` takes the folder's library whole, discarding what is held here. */
   pullNow: (opts?: { replace?: boolean }) => Promise<void>;
   /** Choose the synced folder on this machine. Must come from a click. */
@@ -802,18 +808,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * A save that lands mid-prepare, or mid-scan, waits for that to end.
    */
   const [setSaved, setSetSaved] = useState<{ path: string; at: number } | null>(null);
+  const [watching, setWatching] = useState<{ live: boolean; paused: boolean } | null>(null);
   const rescanRef = useRef(rescan);
   rescanRef.current = rescan;
   const scanningRef = useRef(false);
   scanningRef.current = scanning;
   useEffect(() => {
     setSetSaved(null);
+    setWatching(null);
     if (!currentSet || !canReadLibrary) return;
     let on = true;
     let seen: string | null = null;
     let pending: string | null = null;
+    let said: string | null = null;
+    // What the watch is doing, said only when it changes: every look
+    // re-rendering every page would be its own kind of noise.
+    const say = (live: boolean, paused: boolean) => {
+      const now = `${live}|${paused}`;
+      if (now === said) return;
+      said = now;
+      if (on) setWatching({ live, paused });
+    };
     const look = async () => {
-      if (!on || scanningRef.current || prepareRunning()) return;
+      if (!on) return;
+      const paused = scanningRef.current || prepareRunning();
+      say(await local.liveRunning().catch(() => false), paused);
+      if (!on || paused) return;
       let rev: string;
       try {
         const st = await source.statFile(currentSet);
@@ -840,6 +860,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await rescanRef.current();
       if (on) setSetSaved({ path: currentSet, at: Date.now() });
     };
+    void look();
     const timer = window.setInterval(() => void look(), SET_WATCH_MS);
     return () => {
       on = false;
@@ -889,6 +910,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       openDropped,
       setSaved,
       dismissSetSaved: () => setSetSaved(null),
+      watching,
       pullNow,
       pickLocalFolder,
       publishFolderName,
@@ -903,7 +925,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, openDropped, setSaved, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
+      rescan, openDropped, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       pickLocalFolder, stopUsingLocalFiles, forgetLocalFolder,
       publishFolderName, pickPublishFolder, publishFolder, resourcesFolderName, pickResourcesFolder,
     ],

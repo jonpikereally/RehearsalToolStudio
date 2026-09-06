@@ -239,6 +239,11 @@ export async function reveal(folder: FolderHandle, root: string, path: string): 
   await call('reveal', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/** Whether Ableton Live is running on this Mac right now. */
+export async function liveRunning(): Promise<boolean> {
+  return (await call<{ running: boolean }>('live-running', {})).running;
+}
+
 /* ---------------------------------- undo ---------------------------------- */
 
 /** A song folder a prepare moved aside, or found nothing to move. */

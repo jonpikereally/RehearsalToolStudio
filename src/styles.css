@@ -96,6 +96,40 @@ button {
   font-weight: 600;
 }
 
+/* The watch on the set: a dot that breathes while Live is open. */
+.setbar .watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.setbar .watch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.45;
+}
+
+.setbar .watch.live .watch-dot {
+  background: #4cd08a;
+  opacity: 1;
+  animation: watch-breathe 2.4s ease-in-out infinite;
+}
+
+.setbar .watch.paused .watch-dot {
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+@keyframes watch-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 208, 138, 0.55); }
+  50% { box-shadow: 0 0 0 5px rgba(76, 208, 138, 0); }
+}
+
 .topbar {
   display: flex;
   align-items: center;

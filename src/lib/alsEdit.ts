@@ -106,3 +106,52 @@ export function cleanTrack(track: string, name: string): string {
     '<AutomationEnvelopes>\n\t\t\t\t\t<Envelopes />\n\t\t\t\t</AutomationEnvelopes>',
   );
 }
+
+/** What an attribute value said before it was escaped. */
+function unesc(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+/**
+ * A copy with only the tracks a tool added.
+ *
+ * The copy exists to be opened beside the real set and its new tracks
+ * dragged across; the set's own tracks in it are dead weight, and a copy
+ * the size of the set is slow to open and easy to mistake for it. So every
+ * track goes except the ones named ADD THIS — and any named in `keep`, for
+ * a tool that put its clips on a track the set already had — and the
+ * return tracks, which every track's sends are counted against and which
+ * weigh nothing. The master track, the locators, the tempo and everything
+ * else on the timeline are outside the track list and untouched. A kept
+ * track is taken out of whatever group it sat in, since the group is gone.
+ */
+export function keepOnlyAdded(xml: string, keep: string[] = []): { xml: string; kept: number; removed: number } {
+  const tracks = extractBlock(xml, /<Tracks>/);
+  if (!tracks) throw new Error('The set has no track list.');
+  const wanted = new Set(keep.map((n) => n.trim().toLowerCase()));
+  const added = new RegExp(`^${ADD_THIS}\\b`, 'i');
+  const inner = tracks.text;
+  let out = '';
+  let at = 0;
+  let kept = 0;
+  let removed = 0;
+  for (;;) {
+    const block = extractBlock(inner, /<(?:AudioTrack|MidiTrack|GroupTrack|ReturnTrack) Id="\d+"[^>]*>/, at);
+    if (!block) break;
+    const kind = block.text.match(/^<(\w+)/)?.[1] ?? '';
+    const name = unesc(block.text.match(/<EffectiveName Value="([^"]*)"/)?.[1] ?? '').trim();
+    out += inner.slice(at, block.start);
+    if (kind === 'ReturnTrack') {
+      kept++;
+      out += block.text;
+    } else if (added.test(name) || wanted.has(name.toLowerCase())) {
+      kept++;
+      out += block.text.replace(/<TrackGroupId Value="-?\d+"/, '<TrackGroupId Value="-1"');
+    } else {
+      removed++;
+    }
+    at = block.end;
+  }
+  out += inner.slice(at);
+  return { xml: xml.slice(0, tracks.start) + out + xml.slice(tracks.end), kept, removed };
+}

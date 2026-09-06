@@ -3897,6 +3897,28 @@ group('the running order the band is given');
     setlistsFromManifests(songs, [{ path: 'Sets/X/set.json', manifest: { preparedBy: 'someone', songs: [] } }], []).length === 0);
 }
 
+group('a copy holding only the added tracks');
+{
+  const { keepOnlyAdded } = await import('../src/lib/alsEdit.ts');
+  const xml = `<Ableton><LiveSet><Tracks>
+\t\t\t<AudioTrack Id="8"><Name><EffectiveName Value="Drums" /></Name><TrackGroupId Value="-1" /></AudioTrack>
+\t\t\t<GroupTrack Id="9"><Name><EffectiveName Value="REF" /></Name><TrackGroupId Value="-1" /></GroupTrack>
+\t\t\t<MidiTrack Id="10"><Name><EffectiveName Value="ADD THIS Chords &amp; Nash +LYRICS" /></Name><TrackGroupId Value="9" /></MidiTrack>
+\t\t\t<ReturnTrack Id="11"><Name><EffectiveName Value="A-Reverb" /></Name><TrackGroupId Value="-1" /></ReturnTrack>
+\t\t\t<AudioTrack Id="12"><Name><EffectiveName Value="Slates" /></Name><TrackGroupId Value="-1" /></AudioTrack>
+\t\t</Tracks><MasterTrack><Name><EffectiveName Value="Master" /></Name><AutomationEnvelopes><Tempo /></AutomationEnvelopes></MasterTrack><Locators><Locators><Locator Id="0"><Name Value="22" /><Time Value="64" /></Locator></Locators></Locators></LiveSet></Ableton>`;
+  const only = keepOnlyAdded(xml);
+  check('the set\'s own tracks go, the added one and the returns stay',
+    only.removed === 3 && only.kept === 2 && !/Drums|"REF"|"Slates"/.test(only.xml) && /ADD THIS Chords/.test(only.xml) && /A-Reverb/.test(only.xml), only.xml);
+  check('the kept track is taken out of its group', /<MidiTrack Id="10">[\s\S]*?<TrackGroupId Value="-1"/.test(only.xml));
+  check('the master track, its tempo and the locators are untouched',
+    only.xml.includes('<MasterTrack><Name><EffectiveName Value="Master" /></Name><AutomationEnvelopes><Tempo /></AutomationEnvelopes></MasterTrack>')
+      && only.xml.includes('<Locator Id="0"><Name Value="22" /><Time Value="64" /></Locator>'));
+  const reused = keepOnlyAdded(xml, ['slates']);
+  check('a track a tool put its clips on is kept by name', reused.removed === 2 && /"Slates"/.test(reused.xml));
+  check('a set with no track list is refused', (() => { try { keepOnlyAdded('<Ableton><LiveSet /></Ableton>'); return false; } catch { return true; } })());
+}
+
 /* ----------------------------- reference stems ---------------------------- */
 
 group('reference stems');
@@ -4425,7 +4447,7 @@ group('song info as AbleSet clips');
   check('the key is said', lines.includes('Key: Bb'));
   check('tempo, time and length share a line', lines.some((l) => l === '88 BPM · 4/4 · 64 bars · 2:55'), lines.join(' | '));
   check('sections are listed in order', lines.includes('Sections: INTRO · VERSE 1'));
-  check('notes lose their line breaks for AbleSet\'s own', lines.includes('Watch the drummer \\ for the stop.'), lines.join(' | '));
+  check('notes lose their line breaks for a slash', lines.includes('Watch the drummer / for the stop.'), lines.join(' | '));
   check('tags ride along', lines.includes('#slow'));
   check('unticked facts are left out', infoLinesFor(song(), project, { ...DEFAULT_INFO_FIELDS, sections: false, tags: false, notes: false }).length === 3);
   check('a key typed by hand wins over the locator\'s', infoLinesFor(song(), project, all, 'A').includes('Key: A'));
@@ -4438,13 +4460,13 @@ group('song info as AbleSet clips');
   const bare = infoClipsFor(p2, ['Blank'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false, key: true });
   check('a song with nothing to say under the ticks is named, not written', bare.clips.length === 0 && bare.empty.join() === 'Blank');
   check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
-  check('lines are joined with AbleSet\'s break', /\*\*Yellow\*\* \\ Key: Bb \\ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
+  check('lines are joined with a slash, the title bold for AbleSet', /\*\*Yellow\*\* \/ Key: Bb \/ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 
   // Off AbleSet's tracks, a clip is a plain name for Live: no stars, no backslashes.
   check('the default track is a plain one, and says what to do with it', DEFAULT_INFO_TRACK === 'ADD THIS SONG INFO' && !abletReads(DEFAULT_INFO_TRACK) && abletReads('Info +LYRICS'));
   const plain = infoClipsFor(p2, ['Yellow'], all, { forAbleSet: false }).clips[0].text;
-  check('and its clip is one plain line', plain.startsWith('Yellow · Key: Bb · ') && !/[\\*]/.test(plain), plain);
-  check('with the notes\' line break made a dot too', /Watch the drummer · for the stop\./.test(plain));
+  check('and its clip is one plain line, slashes between', plain.startsWith('Yellow / Key: Bb / ') && !/[\\*]/.test(plain), plain);
+  check('with the notes\' line break a slash too', /Watch the drummer \/ for the stop\./.test(plain));
 }
 
 /* ------------------------------ patch changes from MIDI clips ------------------------------ */

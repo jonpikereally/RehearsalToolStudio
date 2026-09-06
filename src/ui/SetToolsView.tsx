@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { keepOnlyAdded } from '../lib/alsEdit';
 import { inflateAls, parseAls, type AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
 import { isFromMidiClip } from '../lib/alsImport';
@@ -312,7 +313,9 @@ export default function SetToolsView() {
       setProgress('Writing the set…');
       const xml = await inflateAls(await setBytes());
       const result = addSlatesTrack(xml, slates, Date.now() / 1000);
-      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      // Only the new track goes into the copy, on the set's own timeline.
+      const only = keepOnlyAdded(result.xml, result.reusedTrack ? [result.trackName] : []);
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (slates).als`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
@@ -321,7 +324,8 @@ export default function SetToolsView() {
             result.reusedTrack
               ? `on the set's own “${result.trackName}” track`
               : 'on a new Slates track'
-          } in ${copyPath.split('/').pop()} — open that copy in Live. The original is untouched.`,
+          } in ${copyPath.split('/').pop()} — a copy holding only that track, on the set's own timeline and locators. ` +
+          'Open it beside the set and drag the track across. The original is untouched.',
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -365,14 +369,15 @@ export default function SetToolsView() {
 
       const { dir, prefix, base } = await destination();
       const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
-      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const only = keepOnlyAdded(result.xml, [result.trackName]);
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (chords).als`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
 
       setDone(
-        `${result.clipsWritten} chords on a “${trackName}” track across ${converted.length} song` +
-          `${converted.length === 1 ? '' : 's'} in ${copyPath.split('/').pop()} — open that copy in Live. ` +
-          `The original is untouched.` +
+        `${result.clipsWritten} chords on a “${result.trackName}” track across ${converted.length} song` +
+          `${converted.length === 1 ? '' : 's'} in ${copyPath.split('/').pop()} — a copy holding only that track, ` +
+          `on the set's own timeline and locators. Open it beside the set and drag the track across. The original is untouched.` +
           (withoutKey.length
             ? ` ${withoutKey.length} song${withoutKey.length === 1 ? '' : 's'} skipped for want of a key: ${withoutKey.slice(0, 4).join(', ')}.`
             : ''),
@@ -405,13 +410,14 @@ export default function SetToolsView() {
       setProgress('Writing song info…');
       const { dir, prefix, base } = await destination();
       const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
-      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const only = keepOnlyAdded(result.xml, [result.trackName]);
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (info).als`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
-        `${result.clipsWritten} song info clip${result.clipsWritten === 1 ? '' : 's'} on a “${trackName}” track, ` +
-          `${songs.length} song${songs.length === 1 ? '' : 's'}, in ${copyPath.split('/').pop()} — open that copy in Live. ` +
-          'The original is untouched.' +
+        `${result.clipsWritten} song info clip${result.clipsWritten === 1 ? '' : 's'} on a “${result.trackName}” track, ` +
+          `${songs.length} song${songs.length === 1 ? '' : 's'}, in ${copyPath.split('/').pop()} — a copy holding only that track, ` +
+          "on the set's own timeline and locators. Open it beside the set and drag the track across. The original is untouched." +
           (empty.length ? ` ${empty.length} song${empty.length === 1 ? ' had' : 's had'} nothing to say: ${empty.slice(0, 4).join(', ')}.` : ''),
       );
     } catch (err) {
@@ -485,14 +491,15 @@ export default function SetToolsView() {
       }
       setProgress('Writing patch changes…');
       const result = addRigTracks(await inflateAls(await setBytes()), specs, project);
-      const gz = new Blob([result.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const only = keepOnlyAdded(result.xml, result.tracks.map((t) => t.name));
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const { dir, prefix, base } = await destination();
       const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (rig).als`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       const dropped = result.tracks.reduce((n, t) => n + t.dropped, 0);
       setDone(
         `${result.tracks.map((t) => `${t.clips} clip${t.clips === 1 ? '' : 's'} on “${t.name}”`).join(', ')} in ${copyPath.split('/').pop()} — ` +
-          'drag the tracks into the set in Live. The original is untouched.' +
+          "a copy holding only those tracks, on the set's own timeline and locators. Open it beside the set and drag them across. The original is untouched." +
           (dropped ? ` ${dropped} CC${dropped === 1 ? '' : 's'} had no envelope target on the model track and were left out.` : '') +
           (notes.length ? ` ${notes.join('. ')}.` : ''),
       );

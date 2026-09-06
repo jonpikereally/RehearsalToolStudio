@@ -90,7 +90,7 @@ function useDropped(open: (path: string) => Promise<void>): { over: boolean; err
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library, openDropped } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, resourcesFolderName, library, openDropped, watching } = useStore();
   const drop = useDropped(openDropped);
   const newerBuild = useNewerBuild();
   const run = useRun();
@@ -186,6 +186,26 @@ export default function App() {
         <div className="setbar">
           <span>
             Set: <strong>{sets.find((s) => s.path === currentSet)?.name ?? currentSet.split('/').pop()}</strong>
+            {/* The watch on the set, so nobody wonders whether a save will be noticed. */}
+            {watching && (
+              <span
+                className={`watch${watching.paused ? ' paused' : watching.live ? ' live' : ''}`}
+                title={
+                  watching.paused
+                    ? 'The set is looked at every few seconds for a save by Live; paused while a scan or a prepare runs.'
+                    : watching.live
+                      ? 'Live is running. The set is looked at every few seconds, and a save is picked up within about ten.'
+                      : 'Live is not running right now. The set is still looked at every few seconds, in case it is opened.'
+                }
+              >
+                <span className="watch-dot" aria-hidden="true" />
+                {watching.paused
+                  ? 'watch paused while working'
+                  : watching.live
+                    ? 'Live is open — watching for saves'
+                    : 'Live not open — watching for saves'}
+              </span>
+            )}
           </span>
           <button className="chip" onClick={() => chooseSet(null)}>
             Change set

@@ -392,6 +392,12 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       return { restored, removed };
     },
 
+    /** Whether Ableton Live is running on this Mac, so the page can say who it is watching. */
+    async 'live-running'() {
+      const running = await new Promise((done) => execFile('pgrep', ['-f', 'Ableton Live'], (err) => done(!err)));
+      return { running };
+    },
+
     async stored({ slot }) {
       if (!SLOTS.has(slot)) throw new Refusal(400, 'no such slot');
       const dir = slots[slot];
