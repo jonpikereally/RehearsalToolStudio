@@ -44,8 +44,8 @@
  * reopened": a path remembered by the server is a path it can still open
  * tomorrow, where a browser handle had to be granted afresh each session.
  */
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
-import { execFile } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { execFile, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +64,7 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
 /** The set copies the studio and Lyrics Studio make, and may make again. */
-export const OWN_SET_COPY = /( \((slates|chords|info|rig|rehearsaltool)\)| Lyrics)\.als$/i;
+export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i;
 
 /**
  * The running order AbleSet is playing right now, from its own log.
@@ -390,6 +390,50 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       else await rm(join(full, MANIFEST), { force: true });
       await rm(join(full, UNDO), { recursive: true, force: true });
       return { restored, removed };
+    },
+
+    /**
+     * Start Lyrics Studio — the transcriber, its own Python server in this
+     * repo — when the page finds it is not running. Detached, its output
+     * kept in a log, the way the launcher starts it from the Dock; the page
+     * then looks for it by port. Nothing is done when uv is not installed.
+     */
+    async 'lyrics-studio-start'({ restart, port } = {}) {
+      const home = homedir();
+      /*
+       * One started elsewhere — from a Terminal, or an app without leave to
+       * read Downloads — cannot read a set that this server can: macOS grants
+       * a folder per app, and a child of this server has the studio's leave.
+       * So on request the one on `port` is stopped and another started here.
+       */
+      if (restart && Number.isInteger(port)) {
+        const pids = await new Promise((done) =>
+          execFile('lsof', ['-ti', `tcp:${port}`], (err, out) => done(err ? [] : String(out).split(/\s+/).filter(Boolean))),
+        );
+        for (const pid of pids) {
+          try {
+            process.kill(Number(pid), 'SIGTERM');
+          } catch {
+            /* already gone */
+          }
+        }
+        if (pids.length) await new Promise((r) => setTimeout(r, 1500));
+      }
+      const uv = ['/opt/homebrew/bin/uv', join(home, '.local', 'bin', 'uv'), '/usr/local/bin/uv'].find((p) => existsSync(p));
+      if (!uv) throw new Refusal(500, 'uv, which runs Lyrics Studio, is not installed. In Terminal: brew install uv');
+      const cwd = join(dirname(fileURLToPath(import.meta.url)), '..', 'lyrics-studio');
+      const logDir = join(home, 'Library', 'Logs', 'Rehearsal Tool Studio');
+      mkdirSync(logDir, { recursive: true });
+      const log = join(logDir, 'lyrics-studio.log');
+      const out = openSync(log, 'a');
+      const child = spawn(uv, ['run', 'server.py'], { cwd, detached: true, stdio: ['ignore', out, out] });
+      child.unref();
+      return { started: true, log };
+    },
+
+    /** A file's absolute path, for handing to another app on this Mac that reads it itself. */
+    async 'abs-path'({ dir, path }) {
+      return { path: inside(dir, path, { file: true }) };
     },
 
     /** Whether Ableton Live is running on this Mac, so the page can say who it is watching. */

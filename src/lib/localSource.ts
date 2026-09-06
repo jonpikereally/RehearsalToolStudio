@@ -239,6 +239,21 @@ export async function reveal(folder: FolderHandle, root: string, path: string): 
   await call('reveal', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/**
+ * Start Lyrics Studio's server on this Mac; the page then looks for it by
+ * port. With `restart`, the one on that port is stopped first and a fresh
+ * one started as this server's own child, with the studio's leave to read
+ * the folders it can.
+ */
+export async function startLyricsStudio(opts: { restart?: boolean; port?: number } = {}): Promise<{ log: string }> {
+  return call('lyrics-studio-start', opts);
+}
+
+/** A file's absolute path on this Mac, for another app that reads it itself. */
+export async function absolutePath(folder: FolderHandle, root: string, path: string): Promise<string> {
+  return (await call<{ path: string }>('abs-path', { dir: open(folder).dir, path: below(root, path) })).path;
+}
+
 /** Whether Ableton Live is running on this Mac right now. */
 export async function liveRunning(): Promise<boolean> {
   return (await call<{ running: boolean }>('live-running', {})).running;

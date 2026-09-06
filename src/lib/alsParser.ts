@@ -97,6 +97,8 @@ export interface AlsSong {
    */
   stems: {
     name: string;
+    /** The track's Id in the set, for another tool that reads the set itself; none for a part the studio made up, like the click. */
+    trackId?: string;
     /**
      * A reference recording rather than a part of the band's own mix: the
      * finished record to play against, or a piece of it. True when the track
@@ -1394,7 +1396,7 @@ export function parseAlsXml(xml: string): AlsProject {
 
     // Match a group track to the song by name, so stems can be attributed.
     const group = groupFor(meta.title, loc.beat, endBeat);
-    const stems = group
+    const stems: AlsSong['stems'] = group
       ? tracks
           .filter((t) => t.kind === 'AudioTrack' && rootOf(t) === group)
           .map((t) => {
@@ -1466,6 +1468,7 @@ export function parseAlsXml(xml: string): AlsProject {
             const sounding = mine.find((c) => !c.disabled) ?? mine[0];
             return {
               name: t.name,
+              trackId: t.id,
               reference,
               frozen: frozen && mine.some((c) => c.frozen),
               gain,

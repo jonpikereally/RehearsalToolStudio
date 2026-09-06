@@ -92,7 +92,9 @@ app.add_middleware(
         "http://localhost:5174",
         "http://localhost:5177",
     ],
-    allow_methods=["GET"],
+    # The studio drives a transcription from its own page now, which is a POST.
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -1669,14 +1671,25 @@ def als_transcribe(req: AlsTranscribeRequest):
             def to_arrangement(t: float, base=f_start, fn=to_arrangement_sec) -> float:
                 return fn(base + t)
 
+            # Beats beside the seconds, through the set's tempo map, so a
+            # reader placing clips on the ruler needn't carry the map itself.
+            def at(t: float) -> dict:
+                sec = to_arrangement(t)
+                return {"start": sec, "start_beat": seconds_to_beats(tmap, sec)}
+
             for seg in out["segments"]:
+                s_at, e_at = at(seg["start"]), at(seg["end"])
                 segments.append({
-                    "start": to_arrangement(seg["start"]),
-                    "end": to_arrangement(seg["end"]),
+                    "start": s_at["start"],
+                    "end": e_at["start"],
+                    "start_beat": s_at["start_beat"],
+                    "end_beat": e_at["start_beat"],
                     "text": seg["text"],
                     "words": [{"text": w["text"],
-                               "start": to_arrangement(w["start"]),
-                               "end": to_arrangement(w["end"])}
+                               "start": at(w["start"])["start"],
+                               "end": at(w["end"])["start"],
+                               "start_beat": at(w["start"])["start_beat"],
+                               "end_beat": at(w["end"])["start_beat"]}
                               for w in seg.get("words", [])],
                 })
             first_sample = first_sample or str(sample)

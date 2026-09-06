@@ -3315,6 +3315,9 @@ group('the file API');
     (await call('open', { path: join(yellow, 'Yellow [drums].wav') })).status === 400);
   check('as is a path that is not there', (await call('open', { path: join(songs, 'nowhere') })).status === 404);
   check('and a slot that is not one', (await call('open', { path: songs, slot: 'attic' })).status === 400);
+  check('a file\'s absolute path is given for another app to read it',
+    (await ask('abs-path', { dir: songs, path: 'Band/Yellow/Yellow.als' })).path === join(songs, 'Band', 'Yellow', 'Yellow.als'));
+  check('but not one outside the folder', (await call('abs-path', { dir: songs, path: '../x.als' })).status === 400);
 
   // Undoing a prepare: what a run writes over is kept aside, and put back.
   {
@@ -4016,6 +4019,35 @@ group('a copy holding only the added tracks');
   check('a set with no track list is refused', (() => { try { keepOnlyAdded('<Ableton><LiveSet /></Ableton>'); return false; } catch { return true; } })());
 }
 
+group('lyric clips from a transcription');
+{
+  const { lyricClipsFrom } = await import('../src/lib/lyricClips.ts');
+  const project = { tempo: 120, timeSigNum: 4, timeSigDen: 4, songs: [] };
+  const seg = (startBeat, endBeat, text, words = []) => ({
+    text, startBeat, endBeat, start: startBeat / 2, end: endBeat / 2,
+    words: words.map(([s, e, t]) => ({ text: t, startBeat: s, endBeat: e, start: s / 2, end: e / 2 })),
+  });
+  const heard = [
+    seg(0, 3, 'Look at the stars', [[0, 1, 'Look'], [1, 1.5, 'at'], [1.5, 2, 'the'], [2, 3, 'stars']]),
+    seg(4, 7.5, 'Look how they shine for you'),
+    seg(16, 19, 'And everything you do'),
+  ];
+  const lines = lyricClipsFrom(heard, project, 'line');
+  check('a clip per line, on the set\'s ruler, running while the line is sung',
+    lines.map((c) => `${c.bar}:${c.bars}:${c.text}`).join(' | ') === '1:0.75:Look at the stars | 2:0.875:Look how they shine for you | 5:0.75:And everything you do',
+    lines.map((c) => `${c.bar}:${c.bars}:${c.text}`).join(' | '));
+  const words = lyricClipsFrom(heard, project, 'word');
+  check('a clip per word where the words were timed, the line where they were not',
+    words.length === 6 && words[0].text === 'Look' && words[0].bars === 0.25 && words[4].text === 'Look how they shine for you',
+    JSON.stringify(words.map((c) => [c.bar, c.bars, c.text])));
+  const sections = lyricClipsFrom(heard, project, 'section');
+  check('lines closer than the gap are one section, a rest starts another',
+    sections.length === 2 && sections[0].text === 'Look at the stars Look how they shine for you' && sections[0].bars === 1.875 && sections[1].bar === 5,
+    JSON.stringify(sections.map((c) => [c.bar, c.bars, c.text])));
+  const crowded = lyricClipsFrom([seg(0, 8, 'long line'), seg(1, 2, 'next')], project, 'line');
+  check('a clip ends where the next begins, never overlapping', crowded[0].bars === 0.25 && crowded[1].bar === 1.25, JSON.stringify(crowded));
+}
+
 /* ----------------------------- reference stems ---------------------------- */
 
 group('reference stems');
@@ -4557,6 +4589,10 @@ group('song info as AbleSet clips');
   const bare = infoClipsFor(p2, ['Blank'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false, key: true });
   check('a song with nothing to say under the ticks is named, not written', bare.clips.length === 0 && bare.empty.join() === 'Blank');
   check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
+  const halfBar = { ...project, songs: [song({ title: 'Ragged', startBar: 1, endBar: 63.5 })] };
+  check('a song that ends mid-bar is counted, and its clip drawn, in whole bars rounded up',
+    infoLinesFor(halfBar.songs[0], project, all).some((l) => /\b64 bars\b/.test(l)) && infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars === 64,
+    JSON.stringify([infoLinesFor(halfBar.songs[0], project, all), infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars]));
   check('lines are joined with a slash, the title bold for AbleSet', /\*\*Yellow\*\* \/ Key: Bb \/ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 
   // Off AbleSet's tracks, a clip is a plain name for Live: no stars, no backslashes.

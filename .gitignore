@@ -15,3 +15,6 @@ lyrics-studio/server.log
 lyrics-studio/__pycache__/
 .studio-build.log
 tsconfig.tsbuildinfo
+
+# Lyrics Studio writes the port it chose beside itself
+lyrics-studio/port

@@ -130,13 +130,37 @@ lyrics_port() {
   return 1
 }
 
+#
+# What the server says as it starts is kept — a start that fails used to be
+# thrown away, and a minute later the browser opened on whatever was
+# listening at 8765, a light controller, as if that were the studio. Now a
+# start that fails says so, and where to read why.
+LYRICS_LOG="$HOME/Library/Logs/Rehearsal Tool Studio/lyrics-studio.log"
+
+lyrics_failed() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') launcher: $1" >>"$LYRICS_LOG"
+  MSG="$1
+
+Its log: $LYRICS_LOG
+
+To see the error as it happens, paste into Terminal:
+cd \"$REPO/lyrics-studio\" && ${UV:-uv} run server.py"
+  # The text goes in as arguments, never into the script, so quoting can't bite.
+  /usr/bin/osascript -e 'on run argv' -e 'display alert (item 1 of argv) message (item 2 of argv) as critical' -e 'end run' \
+    "Lyrics Studio didn't start" "$MSG" >/dev/null 2>&1
+  exit 1
+}
+
 start_lyrics_studio() {
   UV="$(find_bin uv)"
   LYRICS_PORT="$(lyrics_port)" && return
-  [ -n "$UV" ] && ( cd "$REPO/lyrics-studio" && /usr/bin/nohup "$UV" run server.py >/dev/null 2>&1 & )
+  /bin/mkdir -p "$(dirname "$LYRICS_LOG")"
+  [ -n "$UV" ] || lyrics_failed "uv, which runs it, was not found. Install it with: brew install uv"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') launcher: starting with $UV" >>"$LYRICS_LOG"
+  ( cd "$REPO/lyrics-studio" && /usr/bin/nohup "$UV" run server.py >>"$LYRICS_LOG" 2>&1 & )
   n=0
   until LYRICS_PORT="$(lyrics_port)"; do
-    n=$((n + 1)); [ $n -gt 120 ] && { LYRICS_PORT=8765; break; }
+    n=$((n + 1)); [ $n -gt 120 ] && lyrics_failed "It did not answer within a minute. The last of its log: $(tail -3 "$LYRICS_LOG" | tr '"' "'" | tr '\n' ' ')"
     sleep 0.5
   done
 }

@@ -119,7 +119,8 @@ export function infoLinesFor(
   if (fields.tempo && bpm) facts.push(`${Math.round(bpm * 10) / 10} BPM`);
   if (fields.timeSig) facts.push(`${song.timeSigNum ?? project.timeSigNum}/${song.timeSigDen ?? project.timeSigDen}`);
   if (fields.length) {
-    const bars = song.endBar - song.startBar + 1;
+    // A song whose end sits mid-bar is a whole number of bars to a person.
+    const bars = Math.ceil(song.endBar - song.startBar + 1 - 1e-6);
     facts.push(`${bars} bar${bars === 1 ? '' : 's'} · ${clock(songLengthSec(song, project))}`);
   }
   if (facts.length) lines.push(facts.join(' · '));
@@ -164,7 +165,8 @@ export function infoClipsFor(
       empty.push(song.title);
       continue;
     }
-    const bars = Math.max(1, song.endBar - song.startBar + 1);
+    // The clip runs whole bars, rounded up, so it ends on a bar line.
+    const bars = Math.max(1, Math.ceil(song.endBar - song.startBar + 1 - 1e-6));
     clips.push({ bar: song.startBar, text: lines.join(forAbleSet ? BREAK : PLAIN_BREAK), bars: opts.wholeSong === false ? 1 : bars });
     songs.push(song.title);
   }

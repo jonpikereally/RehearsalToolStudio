@@ -21,11 +21,11 @@ import { runningOrderTitles } from '../lib/ableset';
 import SortBar, { useSort } from './SortBar';
 import { NOTATION_LABEL, parseKey, type ChordNotation } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
-import { findLyricsStudio } from '../lib/lyricsStudio';
+import { ensureLyricsStudio, findLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack } from '../lib/lyricsStudio';
+import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyricClips';
 
 
 import SlatesPanel from './SlatesPanel';
-import LyricClipsPanel from './LyricClipsPanel';
 import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
 import { useStore } from '../lib/store';
@@ -106,6 +106,14 @@ export default function SetToolsView() {
     localStorage.setItem('ls.settools.chordTarget', t);
   };
   const [progress, setProgress] = useState<string | null>(null);
+  /* The lyrics tab: which song, which of its tracks, and how finely to cut the words. */
+  const [lyricSong, setLyricSong] = useState('');
+  const [lyricTrack, setLyricTrack] = useState('');
+  const [lyricFineness, setLyricFineness] = useState<LyricFineness>(
+    () => (localStorage.getItem('ls.settools.lyricFineness') as LyricFineness) || 'line',
+  );
+  const [lyricIsolate, setLyricIsolate] = useState(false);
+  const [lyricKnown, setLyricKnown] = useState('');
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
@@ -526,6 +534,96 @@ export default function SetToolsView() {
     }
   };
 
+  /*
+   * The lyrics tab's choices, made good: the song is the one chosen, else
+   * the first being worked on; the track is the one chosen, else the
+   * record's own vocal when the song has one, else any vocal, else the
+   * first — a name is all there is to go on, and "REF VOX" is the surest.
+   */
+  const lyricSongObj =
+    project?.songs.find((s) => s.title === lyricSong) ??
+    project?.songs.find((s) => selected.has(s.title)) ??
+    project?.songs[0] ??
+    null;
+  // Only tracks that are in the set: the click and cues the studio adds have no audio to listen to.
+  const stemsOf = (lyricSongObj?.stems ?? []).filter((st) => st.trackId);
+  const vocalish = (name: string) => /\b(vox|vocal|vocals|voice|lead|sing|singer|melody)\b/i.test(name);
+  const lyricStem =
+    stemsOf.find((st) => st.name === lyricTrack) ??
+    stemsOf.find((st) => st.reference && vocalish(st.name)) ??
+    stemsOf.find((st) => vocalish(st.name)) ??
+    stemsOf[0] ??
+    null;
+
+  /**
+   * Words for one song, from one of its tracks, into a copy of the set.
+   *
+   * Lyrics Studio does the listening — started here when it is not up — on
+   * the set file itself, so warping and the tempo map are its own; what
+   * comes back is placed on the set's ruler as clips on a +LYRICS track,
+   * and the copy holds that track alone.
+   */
+  const transcribeLyrics = async () => {
+    if (!project || !setPath || !folder || !lyricSongObj || !lyricStem?.trackId) return;
+    setError(null);
+    setDone(null);
+    try {
+      setProgress('Finding Lyrics Studio…');
+      let url = await ensureLyricsStudio((note) => setProgress(note));
+      setLyricsUrl(url);
+      const alsPath = await local.absolutePath(folder.handle, '', setPath);
+      const where = `“${lyricStem.name}” of ${lyricSongObj.title}`;
+      const listen = () =>
+        transcribeTrack(
+          url,
+          {
+            alsPath,
+            trackId: lyricStem.trackId!,
+            startBar: lyricSongObj.startBar,
+            endBar: lyricSongObj.endBar,
+            isolate: lyricIsolate,
+            lyrics: lyricKnown,
+          },
+          (done, total, phase) => setProgress(`Transcribing ${where} — ${phase}, region ${Math.min(done + 1, total)} of ${total}…`),
+        );
+      setProgress(`Transcribing ${where}… (listening on this Mac; a minute or so per region)`);
+      let heard;
+      try {
+        heard = await listen();
+      } catch (err) {
+        /*
+         * macOS grants a folder per app. A Lyrics Studio started from a
+         * Terminal, or by an app without leave to read Downloads, cannot read
+         * a set this studio can — so it is started again from here, as the
+         * studio's own child, and asked once more.
+         */
+        if (!isFolderRefusal(err)) throw err;
+        url = await restartLyricsStudio(url, (note) => setProgress(note));
+        setLyricsUrl(url);
+        setProgress(`Transcribing ${where}… (listening on this Mac; a minute or so per region)`);
+        heard = await listen();
+      }
+      const clips = lyricClipsFrom(heard.segments, project, lyricFineness);
+      if (!clips.length) throw new Error('Nothing came back to write: no words were heard on that track inside the song.');
+      setProgress('Writing the set…');
+      const { dir, prefix, base } = await destination();
+      const result = addChordTrack(await inflateAls(await setBytes()), clips, 'LYRICS +LYRICS', project);
+      const only = keepOnlyAdded(result.xml, [result.trackName]);
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (lyrics).als`;
+      await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
+      setDone(
+        `${clips.length} lyric clip${clips.length === 1 ? '' : 's'} heard on ${where}, on “${result.trackName}” in ${copyPath.split('/').pop()} — ` +
+          "a copy holding only that track, on the set's own timeline and locators. Open it beside the set and drag the track across. The original is untouched." +
+          (heard.regions.missing ? ` ${heard.regions.missing} region${heard.regions.missing === 1 ? '' : 's'} of the track could not be read.` : ''),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgress(null);
+    }
+  };
+
   const sendToLyricsStudio = async () => {
     if (!setPath || !folder) return;
     setError(null);
@@ -778,21 +876,105 @@ export default function SetToolsView() {
 
               {tool === 'lyrics' && (
                 <>
-                  <div className="btn-row">
-                    <button className="btn primary" disabled={!lyricsUp} onClick={() => void sendToLyricsStudio()}>
-                      Add lyric clips in Lyrics Studio
-                    </button>
-                  </div>
-                  {lyricsUp === false && (
-                    <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                      Lyrics Studio isn't running — open the Lyrics Studio app, or double-click{' '}
-                      <span className="code">Start Lyrics Studio.command</span> first.
+                  {lone ? (
+                    <div className="notice quiet">
+                      Lyrics come from the set's audio, which a set opened on its own does not have to hand. Open the set
+                      from its folder to transcribe a track.
                     </div>
+                  ) : (
+                    <>
+                      <div className="controls flush" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span className="control-label">Song</span>
+                        <select
+                          className="jump-select"
+                          value={lyricSongObj?.title ?? ''}
+                          disabled={!!progress}
+                          onChange={(e) => {
+                            setLyricSong(e.target.value);
+                            setLyricTrack('');
+                          }}
+                          style={{ maxWidth: 320 }}
+                        >
+                          {titles.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="control-label">Track</span>
+                        <select
+                          className="jump-select"
+                          value={lyricStem?.name ?? ''}
+                          disabled={!!progress || !stemsOf.length}
+                          onChange={(e) => setLyricTrack(e.target.value)}
+                          style={{ maxWidth: 320 }}
+                        >
+                          {stemsOf.map((st) => (
+                            <option key={st.name} value={st.name}>
+                              {st.name}
+                              {st.reference ? ' · the record' : ''}
+                            </option>
+                          ))}
+                          {!stemsOf.length && <option value="">no audio tracks in this song</option>}
+                        </select>
+                      </div>
+                      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
+                          <button
+                            key={f}
+                            className={lyricFineness === f ? 'chip on' : 'chip'}
+                            aria-pressed={lyricFineness === f}
+                            disabled={!!progress}
+                            onClick={() => {
+                              setLyricFineness(f);
+                              localStorage.setItem('ls.settools.lyricFineness', f);
+                            }}
+                          >
+                            {FINENESS_LABEL[f]}
+                          </button>
+                        ))}
+                        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 8 }}>
+                          <input type="checkbox" checked={lyricIsolate} disabled={!!progress} onChange={(e) => setLyricIsolate(e.target.checked)} />
+                          <span style={{ fontSize: 14 }}>Isolate the voice first</span>
+                        </label>
+                      </div>
+                      <div className="field stacked">
+                        <label htmlFor="lyric-known">
+                          Known words
+                          <span className="hint">
+                            Optional. The lyrics as you know them, pasted in: the listening is steered by them and the
+                            lines aligned to them, which beats a guess at every mumbled word.
+                          </span>
+                        </label>
+                        <textarea
+                          id="lyric-known"
+                          className="text-input"
+                          rows={3}
+                          value={lyricKnown}
+                          disabled={!!progress}
+                          onChange={(e) => setLyricKnown(e.target.value)}
+                          placeholder="Paste the lyrics here, or leave it empty"
+                          style={{ width: '100%', resize: 'vertical' }}
+                        />
+                      </div>
+                      <div className="btn-row">
+                        <button className="btn primary" disabled={!!progress || !lyricStem || !lyricSongObj} onClick={() => void transcribeLyrics()}>
+                          {lyricStem && lyricSongObj
+                            ? `Transcribe “${lyricStem.name}” of ${lyricSongObj.title} and write lyric clips`
+                            : 'Choose a song with audio tracks'}
+                        </button>
+                        <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="The standalone Lyrics Studio page, for its own workflow">
+                          Open Lyrics Studio instead
+                        </button>
+                      </div>
+                      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                        Listens to that track inside the song, on this Mac, and writes the words as timed clips on an
+                        “ADD THIS LYRICS +LYRICS” track in a copy of the set named “… (lyrics).als” — the copy holds only
+                        that track. Lyrics Studio is started here if it is not running
+                        {lyricsUp ? ' (it is running now)' : ''}. Save the set in Live first, so it is read as it stands.
+                      </div>
+                    </>
                   )}
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    Save and close the set in Live first. Lyrics Studio never touches the set itself:
-                    it writes a copy beside it, named “… Lyrics.als”, for you to open in Live.
-                  </div>
                 </>
               )}
 
@@ -1026,7 +1208,6 @@ export default function SetToolsView() {
           {error && <div className="notice error">{error}</div>}
 
           {tool === 'slates' && <SlatesPanel />}
-          {tool === 'lyrics' && <LyricClipsPanel />}
         </div>
       </div>
     </>
