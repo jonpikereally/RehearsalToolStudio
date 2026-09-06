@@ -2352,6 +2352,22 @@ group('writing a chord track');
     modded.clips.map((c) => c.text).join(' ') === '[1] [4] [1] [4]', modded.clips.map((c) => c.text).join(' '));
   const modRoman = chordClipsFor(mod, {}, undefined, 'roman');
   check('in numerals too', modRoman.clips.map((c) => c.text).join(' ') === '[I] [IV] [I] [IV]', modRoman.clips.map((c) => c.text).join(' '));
+
+  // One track, three kinds: each chord is read for what it is.
+  const mixedXml = modulating
+    .replace("${clip(0, 'C')}${clip(8, 'F')}${clip(16, 'A')}${clip(24, 'D')}".replace(/\$\{[^}]*\}/g, (m) => m), '')
+    .replace(/<Events>\s*<MidiClip Id="1"[\s\S]*?<\/Events>\s*<\/ArrangerAutomation>/, `<Events>${clip(0, 'C')}${clip(8, '4')}${clip(16, 'V')}${clip(24, '[4]')}</Events></ArrangerAutomation>`)
+    .replace(`${clip(0, '**Riser** / Key: C / 120 BPM')}${clip(16, 'Key change: A')}`, clip(0, 'Key: C'));
+  const mixed = parseAlsXml(mixedXml);
+  check('the fixture mixes kinds on one track', mixed.songs[0].lanes.find((l) => l.kind === 'chords')?.items.map((i) => i.text).join(' ') === 'C 4 V 4',
+    mixed.songs[0].lanes.find((l) => l.kind === 'chords')?.items.map((i) => i.text).join(' '));
+  const toNumbers = chordClipsFor(mixed, {}, undefined, 'numbers');
+  check('a mixed track comes out as one kind, each chord read for what it is',
+    toNumbers.clips.map((c) => c.text).join(' ') === '[1] [4] [5] [4]' && toNumbers.alreadyHad.length === 0, toNumbers.clips.map((c) => c.text).join(' '));
+  const toNames = chordClipsFor(mixed, {}, undefined, 'names');
+  check('to names as well', toNames.clips.map((c) => c.text).join(' ') === '[C] [F] [G] [F]', toNames.clips.map((c) => c.text).join(' '));
+  const kinds = chordNotationsIn(mixed);
+  check('and the set says the song mixes kinds and has none throughout', kinds.mixed === 1 && kinds.have.names === 0 && kinds.have.numbers === 0, JSON.stringify(kinds));
   check('each clip runs to the next chord, a bar at most, so none overlap',
     clips.every((c, i) => c.bars === Math.max(0.25, Math.min(1, (clips[i + 1]?.bar ?? c.bar + 1) - c.bar))), JSON.stringify(clips.map((c) => [c.bar, c.bars])));
   check('and the track says what to do with it', trackName === 'ADD THIS Nash Chords +LYRICS', trackName);

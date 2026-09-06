@@ -1,6 +1,6 @@
 import type { AlsProject } from './alsParser';
 import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
-import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, keyAt, laneNotation, parseKey, type ChordNotation } from './nashville.ts';
+import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, keyAt, laneNotation, notationOf, parseKey, type ChordNotation } from './nashville.ts';
 import type { ChartLane } from '../types';
 
 /**
@@ -84,7 +84,15 @@ export function chordClipsFor(
 
     let added: { name: string; items: { bar: number; text: string }[] } | undefined;
     if (target) {
-      if (lanes.some((l) => laneNotation(l) === target)) {
+      /*
+       * Chord by chord, not lane by lane. A track written mostly in numbers
+       * with a few names left in it — or one song in numerals among songs
+       * in names — is judged by each chord: what is already the chosen kind
+       * stays, the rest is converted, and the song counts as done only when
+       * every chord of some lane is already that kind.
+       */
+      const bare = (text: string) => text.trim().replace(/^\[|\]$/g, '');
+      if (lanes.some((l) => l.items.every((i) => !bare(i.text) || notationOf([{ text: bare(i.text) }]) === target))) {
         alreadyHad.push(song.title);
         continue;
       }
@@ -100,7 +108,7 @@ export function chordClipsFor(
         name: NOTATION_LANE[target],
         items: source.items.map((item) => ({
           bar: item.bar,
-          text: convertChord(item.text.replace(/^\[|\]$/g, ''), target, keyFor(item.bar)) ?? item.text,
+          text: convertChord(bare(item.text), target, keyFor(item.bar)) ?? item.text,
         })),
       };
     } else {
@@ -154,10 +162,11 @@ export function chordClipsFor(
 export function chordNotationsIn(
   project: AlsProject,
   only?: string[],
-): { withChords: number; have: Record<ChordNotation, number> } {
+): { withChords: number; have: Record<ChordNotation, number>; mixed: number } {
   const wanted = only?.length ? new Set(only) : null;
   const have: Record<ChordNotation, number> = { names: 0, numbers: 0, roman: 0 };
   let withChords = 0;
+  let mixed = 0;
   const seen = new Set<string>();
   for (const song of project.songs) {
     if ((wanted && !wanted.has(song.title)) || seen.has(song.title)) continue;
@@ -165,10 +174,21 @@ export function chordNotationsIn(
     const lanes = (song.lanes ?? []).filter((l) => l.kind === 'chords' && l.items.length);
     if (!lanes.length) continue;
     withChords++;
-    const kinds = new Set(lanes.map((l) => laneNotation(l)));
-    for (const k of kinds) have[k]++;
+    // A song has a kind when some lane of it is that kind throughout; a
+    // lane that mixes kinds is counted as mixed, and as having none.
+    const done = new Set<ChordNotation>();
+    let mixes = false;
+    for (const lane of lanes) {
+      const kinds = new Set(
+        lane.items.map((i) => i.text.trim().replace(/^\[|\]$/g, '')).filter(Boolean).map((t) => notationOf([{ text: t }])),
+      );
+      if (kinds.size === 1) done.add([...kinds][0]);
+      else if (kinds.size > 1) mixes = true;
+    }
+    for (const k of done) have[k]++;
+    if (mixes) mixed++;
   }
-  return { withChords, have };
+  return { withChords, have, mixed };
 }
 
 /** Put those clips into the set as a new MIDI track. */

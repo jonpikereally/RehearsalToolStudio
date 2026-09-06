@@ -808,7 +808,7 @@ export default function SetToolsView() {
                     </label>
                     <div className="controls flush" style={{ gap: 8 }}>
                       {(() => {
-                        const seen = project ? chordNotationsIn(project, [...selected]) : { withChords: 0, have: { names: 0, numbers: 0, roman: 0 } };
+                        const seen = project ? chordNotationsIn(project, [...selected]) : { withChords: 0, have: { names: 0, numbers: 0, roman: 0 }, mixed: 0 };
                         return (['names', 'numbers', 'roman'] as ChordNotation[]).map((kind) => {
                           const has = seen.have[kind];
                           const note =
@@ -837,7 +837,12 @@ export default function SetToolsView() {
                   </div>
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
                     Classical names say what to play; Nashville numbers and Roman numerals say what a chord does,
-                    and survive a change of key. Written as a +LYRICS track in a copy of the set.
+                    and survive a change of key. Each chord is read for what it is, so a track that mixes kinds — or
+                    a set whose songs are written differently — comes out as one kind.
+                    {project && chordNotationsIn(project, [...selected]).mixed > 0
+                      ? ` ${chordNotationsIn(project, [...selected]).mixed} of the chosen songs mix kinds on one track.`
+                      : ''}{' '}
+                    Written as a +LYRICS track in a copy of the set.
                   </div>
                 </>
               )}
