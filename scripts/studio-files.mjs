@@ -47,7 +47,7 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
@@ -232,6 +232,24 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
   const modified = (st) => Math.round(st.mtimeMs);
   const rev = (st) => `${modified(st)}-${st.size}`;
+  const there = async (p) => !!(await stat(p).catch(() => null));
+
+  /** Where a prepare's previous files are kept, inside the set's folder; listings never look there. */
+  const UNDO = '.undo';
+  const MANIFEST = 'set.json';
+  /** A prepared set's folder — `Sets/<name>` inside a granted folder — and nothing else. */
+  const preparedSetPath = (dir, set) => {
+    if (typeof set !== 'string' || !/^Sets\/[^/]+$/i.test(set) || /(^|\/)\.\.?(\/|$)/.test(set)) {
+      throw new Refusal(400, 'not a prepared set');
+    }
+    return inside(dir, set);
+  };
+  const songName = (name) => {
+    if (typeof name !== 'string' || !name || name.includes('/') || name.startsWith('.')) {
+      throw new Refusal(400, 'not a song folder');
+    }
+    return name;
+  };
 
   const ops = {
     async pick({ kind = 'folder', slot, prompt, extensions, startIn: suggested }) {
@@ -314,6 +332,63 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       if (!(await stat(full).catch(() => null))) throw new Refusal(404, `${path} is not there`);
       await new Promise((done, fail) => execFile('open', ['-R', full], (err) => (err ? fail(err) : done())));
       return { ok: true };
+    },
+
+    /*
+     * Undoing a prepare. Before a run writes a song's folder again, the
+     * folder is moved aside into the set's `.undo`, where a listing never
+     * looks, so the band's app never sees it; the manifest is copied there
+     * as the run begins. A run stopped halfway, or regretted, is then put
+     * back: the run's folders removed, the kept ones moved home, and the
+     * manifest as it was. One level, cleared as the next run begins — and
+     * only inside a prepared set, Sets/<name>, is any of this allowed.
+     */
+    async 'undo-begin'({ dir, set }) {
+      const full = preparedSetPath(dir, set);
+      if (!(await stat(full).catch(() => null))?.isDirectory()) throw new Refusal(404, `${set} is not there`);
+      await rm(join(full, UNDO), { recursive: true, force: true });
+      await mkdir(join(full, UNDO), { recursive: true });
+      if (await there(join(full, MANIFEST))) await copyFile(join(full, MANIFEST), join(full, UNDO, MANIFEST));
+      return { ok: true };
+    },
+
+    async 'undo-keep'({ dir, set, song }) {
+      const full = preparedSetPath(dir, set);
+      const name = songName(song);
+      const current = join(full, name);
+      if (!(await there(current))) return { kept: false };
+      const aside = join(full, UNDO, name);
+      await mkdir(join(full, UNDO), { recursive: true });
+      await rm(aside, { recursive: true, force: true });
+      await rename(current, aside);
+      return { kept: true };
+    },
+
+    async 'undo-restore'({ dir, set, songs }) {
+      const full = preparedSetPath(dir, set);
+      if (!Array.isArray(songs)) throw new Refusal(400, 'songs is required');
+      if (!(await there(join(full, UNDO)))) throw new Refusal(409, 'nothing to undo');
+      let restored = 0;
+      let removed = 0;
+      for (const entry of songs) {
+        const name = songName(entry?.folder);
+        const current = join(full, name);
+        const aside = join(full, UNDO, name);
+        if (await there(aside)) {
+          await rm(current, { recursive: true, force: true });
+          await rename(aside, current);
+          restored++;
+        } else if (entry.kept === false && (await there(current))) {
+          // Written by the run into a folder that was not there before.
+          await rm(current, { recursive: true, force: true });
+          removed++;
+        }
+      }
+      const kept = join(full, UNDO, MANIFEST);
+      if (await there(kept)) await copyFile(kept, join(full, MANIFEST));
+      else await rm(join(full, MANIFEST), { force: true });
+      await rm(join(full, UNDO), { recursive: true, force: true });
+      return { restored, removed };
     },
 
     async stored({ slot }) {

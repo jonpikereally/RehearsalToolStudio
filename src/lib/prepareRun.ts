@@ -25,6 +25,54 @@ import { updatePrepared } from './updatePrepared';
  * the words of the ones that didn't, and publish the library.
  */
 
+/** Every song's audio key as it stands now, by title and by folder name. */
+export interface AudioKeys {
+  byTitle: Record<string, string>;
+  /** Keyed by song folder name, lower-cased, as manifests name songs. */
+  byFolder: Record<string, string>;
+}
+
+/**
+ * The keys themselves: the set, a stat per file, and nothing read. Asked
+ * for before a folder is even chosen, since the keys are also how a set's
+ * folder is recognised among the band's when its name has changed.
+ */
+export async function audioKeysFor(project: AlsProject, setPath: string): Promise<AudioKeys> {
+  const revs = new Map<string, string | null>();
+  const paths = new Set<string>();
+  for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
+    if (!clip.disabled) paths.add(resolveStemPath(setPath, clip.path));
+  }
+  // A stat apiece, a dozen at a time; a missing file is a fact, not a failure.
+  const list = [...paths];
+  for (let i = 0; i < list.length; i += 12) {
+    await Promise.all(
+      list.slice(i, i + 12).map(async (path) => {
+        try {
+          const st = await statFile(path);
+          revs.set(path.toLowerCase(), `${st.modified}-${st.size}`);
+        } catch {
+          revs.set(path.toLowerCase(), null);
+        }
+      }),
+    );
+  }
+  const inputs = {
+    fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
+    bitrate: DEFAULT_BITRATE,
+    sampleRate: 48000,
+  };
+  const byTitle: Record<string, string> = {};
+  const byFolder: Record<string, string> = {};
+  for (const song of project.songs) {
+    if (byTitle[song.title]) continue;
+    const key = audioKeyFor(song, project, inputs);
+    byTitle[song.title] = key;
+    byFolder[songFolderName(song, project).toLowerCase()] = key;
+  }
+  return { byTitle, byFolder };
+}
+
 export interface Standing {
   /** Where each song stands against the manifest, by title. */
   standing: Map<string, AudioStanding>;
@@ -56,6 +104,7 @@ export async function standingFor(
   setPath: string,
   band: local.FolderHandle,
   folderName: string,
+  known?: AudioKeys,
 ): Promise<Standing> {
   let manifest: PreparedManifest | null = null;
   try {
@@ -64,41 +113,15 @@ export async function standingFor(
   } catch {
     manifest = null; // never prepared under this name: every song is new
   }
-  const revs = new Map<string, string | null>();
-  const paths = new Set<string>();
-  for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
-    if (!clip.disabled) paths.add(resolveStemPath(setPath, clip.path));
-  }
-  // A stat apiece, a dozen at a time; a missing file is a fact, not a failure.
-  const list = [...paths];
-  for (let i = 0; i < list.length; i += 12) {
-    await Promise.all(
-      list.slice(i, i + 12).map(async (path) => {
-        try {
-          const st = await statFile(path);
-          revs.set(path.toLowerCase(), `${st.modified}-${st.size}`);
-        } catch {
-          revs.set(path.toLowerCase(), null);
-        }
-      }),
-    );
-  }
-  const inputs = {
-    fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
-    bitrate: DEFAULT_BITRATE,
-    sampleRate: 48000,
-  };
-  const keys: Record<string, string> = {};
+  const keys = known ?? (await audioKeysFor(project, setPath));
   const standing = new Map<string, AudioStanding>();
   for (const song of project.songs) {
-    if (keys[song.title]) continue;
-    const key = audioKeyFor(song, project, inputs);
-    keys[song.title] = key;
+    if (standing.has(song.title)) continue;
     const folder = songFolderName(song, project).toLowerCase();
     const entry = manifest?.songs.find((e) => e.folder.toLowerCase() === folder);
-    standing.set(song.title, audioStanding(key, entry?.audioKey, !!entry));
+    standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
   }
-  return { standing, keys, lastPrepared: manifest?.preparedAt ?? null, manifest };
+  return { standing, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
 }
 
 export interface RunOptions {
@@ -115,6 +138,12 @@ export interface RunOptions {
   /** The running order by title; the arrangement's without. */
   songOrder?: string[];
   cacheBudgetGB: number;
+  /**
+   * Filled as the run moves song folders aside, one entry per song written,
+   * for undoPrepare. The caller's own array, so a run that is stopped — and
+   * throws — still leaves the list of what it touched.
+   */
+  aside?: local.Aside[];
   signal?: AbortSignal;
   onProgress?: (p: PrepareProgress) => void;
 }
@@ -159,6 +188,9 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
 
     let result: PrepareResult | null = null;
     if (selected.size) {
+      // What is about to be written over is kept, so the run can be undone.
+      const aside = o.aside;
+      if (aside) await local.undoBegin(band, setFolder);
       const ctx = new AudioContext();
       try {
         result = await prepareSet({
@@ -188,6 +220,11 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
             return { bytes: got.bytes, size: got.size };
           },
           writeFile,
+          beforeSong: aside
+            ? async (name) => {
+                aside.push({ folder: name, kept: await local.undoKeep(band, setFolder, name) });
+              }
+            : undefined,
           decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
           // What everything is rendered at, so the lead-in is measured there too.
           sampleRate: ctx.sampleRate,
@@ -260,4 +297,19 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
     releaseAwake();
     markPrepareRunning(false);
   }
+}
+
+/**
+ * Put a prepare's songs back as they were before it — a run stopped halfway,
+ * or one that should not have happened — and republish the library so the
+ * band sees the folder as it is again.
+ */
+export async function undoPrepare(
+  band: local.FolderHandle,
+  folderName: string,
+  aside: local.Aside[],
+): Promise<{ restored: number; removed: number; published: PublishResult }> {
+  const put = await local.undoRestore(band, `${SETS_FOLDER}/${folderName}`, aside);
+  const published = await publishLibrary(band);
+  return { ...put, published };
 }

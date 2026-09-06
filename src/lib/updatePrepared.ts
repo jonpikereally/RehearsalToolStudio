@@ -49,7 +49,12 @@ export interface PreparedSetAt {
  * to the folder's name covers a set prepared before the manifest carried one.
  * Newest wins where several match, which is the one everyone is playing.
  */
-export function setFor(candidates: PreparedSetAt[], alsPath: string): PreparedSetAt | null {
+export function setFor(
+  candidates: PreparedSetAt[],
+  alsPath: string,
+  /** The set's audio keys as they are now, by song folder name lower-cased. */
+  keys?: Record<string, string>,
+): PreparedSetAt | null {
   const key = (path: string) => path.replace(/^\/+/, '').toLowerCase();
   const newestFirst = [...candidates].sort((a, b) =>
     (b.manifest.preparedAt ?? '').localeCompare(a.manifest.preparedAt ?? ''),
@@ -57,6 +62,26 @@ export function setFor(candidates: PreparedSetAt[], alsPath: string): PreparedSe
 
   const fromSet = newestFirst.filter((c) => c.manifest.fromSet && key(c.manifest.fromSet) === key(alsPath));
   if (fromSet.length) return fromSet[0];
+
+  /*
+   * By content next: the folder whose entries carry the most of the set's
+   * audio keys as they stand. A set renamed on disk, or a folder renamed in
+   * Dropbox, is still the same songs and the same files — and a folder that
+   * merely shares the name, prepared from some other set, is not: the songs
+   * in it would all be written again for nothing.
+   */
+  if (keys) {
+    let best: { at: PreparedSetAt; score: number } | null = null;
+    for (const c of newestFirst) {
+      let score = 0;
+      for (const entry of c.manifest.songs) {
+        const now = keys[entry.folder.toLowerCase()];
+        if (now && entry.audioKey === now) score++;
+      }
+      if (score > 0 && (!best || score > best.score)) best = { at: c, score };
+    }
+    if (best) return best.at;
+  }
 
   const base = alsPath.split('/').pop()?.replace(/\.als$/i, '') ?? '';
   if (!base) return null;

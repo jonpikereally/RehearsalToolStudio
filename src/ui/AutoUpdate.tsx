@@ -3,7 +3,8 @@ import { useStore } from '../lib/store';
 import { parseAls } from '../lib/alsParser';
 import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
-import { runPrepare, standingFor, titlesOf, type RunOutcome } from '../lib/prepareRun';
+import { audioKeysFor, runPrepare, standingFor, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
+import type { Aside } from '../lib/localSource';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 import { runningOrderTitles } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
@@ -29,7 +30,8 @@ type Phase =
   | { kind: 'running'; at: number; stage: string; progress: PrepareProgress | null }
   | { kind: 'done'; at: number; outcome: RunOutcome; selected: string[] }
   | { kind: 'unprepared'; at: number }
-  | { kind: 'error'; at: number; message: string };
+  | { kind: 'error'; at: number; message: string }
+  | { kind: 'undone'; at: number; restored: number; removed: number; songs: number };
 
 const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -40,6 +42,8 @@ export default function AutoUpdate() {
   /** The save being acted on, so a newer one is not answered twice and an older run's news is dropped. */
   const acting = useRef<number | null>(null);
   const stopper = useRef<AbortController | null>(null);
+  /** What the last run moved aside, and where, so it can be put back. */
+  const aside = useRef<{ folder: string; songs: Aside[] } | null>(null);
   const libraryRef = useRef(library);
   libraryRef.current = library;
 
@@ -70,15 +74,19 @@ export default function AutoUpdate() {
         if (current()) setPhase({ kind: 'running', at, stage: 'Reading the set…', progress: null });
         const { bytes } = await readBytes(currentSet);
         const project = await parseAls(bytes);
-        // The folder this set already has in the band's folder, whatever it is called now.
-        const folderName = await preparedNameFor(band, currentSet);
         if (current()) setPhase({ kind: 'running', at, stage: 'Looking at what changed…', progress: null });
-        const found = await standingFor(project, currentSet, band, folderName);
+        // The folder this set already has in the band's folder, whatever
+        // either is called now: known by the songs in it.
+        const keys = await audioKeysFor(project, currentSet);
+        const folderName = await preparedNameFor(band, currentSet, keys.byFolder);
+        const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
           if (current()) setPhase({ kind: 'unprepared', at });
           return;
         }
         const selected = titlesOf(project).filter((t) => found.standing.get(t)?.state !== 'unchanged');
+        const touched: Aside[] = [];
+        aside.current = { folder: folderName, songs: touched };
         if (current()) setPhase({ kind: 'running', at, stage: selected.length ? '' : 'Refreshing words and sections…', progress: null });
         const outcome = await runPrepare({
           project,
@@ -91,6 +99,7 @@ export default function AutoUpdate() {
           // The order as the scan just found it, AbleSet's log included.
           songOrder: runningOrderTitles(libraryRef.current, currentSet) ?? undefined,
           cacheBudgetGB: settings.cacheBudgetGB,
+          aside: touched,
           signal: controller.signal,
           onProgress: (p) => current() && setPhase({ kind: 'running', at, stage: '', progress: p }),
         });
@@ -118,6 +127,24 @@ export default function AutoUpdate() {
     setPhase(null);
     dismissSetSaved();
   };
+
+  /** Put back what the last run wrote over, and remove what it added. */
+  const undo = async () => {
+    const last = aside.current;
+    if (!last || !phase) return;
+    const at = phase.at;
+    setPhase({ kind: 'running', at, stage: 'Putting the songs back as they were…', progress: null });
+    try {
+      const band = await publishFolder();
+      if (!band) throw new Error("The band's folder is not to hand.");
+      const put = await undoPrepare(band, last.folder, last.songs);
+      aside.current = null;
+      setPhase({ kind: 'undone', at, restored: put.restored, removed: put.removed, songs: put.published.songs });
+    } catch (err) {
+      setPhase({ kind: 'error', at, message: `Could not undo: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  };
+  const undoable = !!aside.current?.songs.length && (phase?.kind === 'done' || phase?.kind === 'error');
 
   if (!phase || !currentSet) return null;
 
@@ -184,7 +211,20 @@ export default function AutoUpdate() {
               <strong>The update after the save at {clock(phase.at)} didn't finish.</strong> {phase.message}
             </>
           )}
+          {phase.kind === 'undone' && (
+            <>
+              <strong>Undone.</strong> {phase.restored} song{phase.restored === 1 ? '' : 's'} put back as{' '}
+              {phase.restored === 1 ? 'it was' : 'they were'}
+              {phase.removed ? `, ${phase.removed} the run had added removed` : ''}. The band sees {phase.songs} song
+              {phase.songs === 1 ? '' : 's'}.
+            </>
+          )}
         </span>
+        {undoable && (
+          <button className="btn" onClick={() => void undo()} title="Put the songs this run wrote back as they were before it">
+            Undo this update
+          </button>
+        )}
         {phase.kind === 'saved' && (
           <>
             <button className="btn primary" onClick={() => setDialog(true)}>

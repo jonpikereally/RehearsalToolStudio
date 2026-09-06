@@ -139,6 +139,12 @@ export interface PrepareOptions {
    */
   readSlice?: (path: string, start: number, end: number) => Promise<{ bytes: ArrayBuffer; size: number }>;
   writeFile: (path: string, data: Blob) => Promise<string>;
+  /**
+   * Called with a song's folder name just before its first file is written,
+   * so whatever the folder held can be moved aside and put back if the run
+   * is stopped or regretted. A song that writes nothing is never announced.
+   */
+  beforeSong?: (folderName: string) => Promise<void>;
   decode: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
   /**
    * Transpose and stretch a decoded file, for a clip Live plays shifted or
@@ -839,6 +845,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           onProgress: (r) => report('encoding', r),
         });
 
+        if (!wroteAny) await opts.beforeSong?.(songFolderName(song, project));
         report('writing', 1);
         await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
         const info = partInfoFor(song.title, part.name, part.reference);

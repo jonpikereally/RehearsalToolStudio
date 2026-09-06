@@ -22,6 +22,8 @@ export interface LocatedSet {
 export async function locatePrepared(
   folder: local.FolderHandle,
   alsPath: string,
+  /** The set's audio keys now, by song folder name, to recognise it by content. */
+  keys?: Record<string, string>,
 ): Promise<LocatedSet | { error: string }> {
   const files = await local.listFiles(folder, '');
 
@@ -40,7 +42,7 @@ export async function locatePrepared(
     }
   }
 
-  const found = setFor(candidates, alsPath);
+  const found = setFor(candidates, alsPath, keys);
   if (!found) {
     return {
       error: candidates.length
@@ -77,10 +79,14 @@ export async function locatePrepared(
  * only when nothing was ever prepared. Found once, it is remembered, so the
  * one-song dialog lands in the same folder.
  */
-export async function preparedNameFor(folder: local.FolderHandle, alsPath: string): Promise<string> {
+export async function preparedNameFor(
+  folder: local.FolderHandle,
+  alsPath: string,
+  keys?: Record<string, string>,
+): Promise<string> {
   const remembered = rememberedSetName(alsPath);
   if (remembered) return remembered;
-  const found = await locatePrepared(folder, alsPath);
+  const found = await locatePrepared(folder, alsPath, keys);
   if (!('error' in found)) {
     const name = found.setFolder.split('/').pop();
     if (name) {

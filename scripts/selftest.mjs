@@ -3212,6 +3212,37 @@ group('the file API');
   check('as is a path that is not there', (await call('open', { path: join(songs, 'nowhere') })).status === 404);
   check('and a slot that is not one', (await call('open', { path: songs, slot: 'attic' })).status === 400);
 
+  // Undoing a prepare: what a run writes over is kept aside, and put back.
+  {
+    const fsp = await import('node:fs/promises');
+    const has = async (p) => !!(await fsp.stat(p).catch(() => null));
+    const set = join(songs, 'Sets', 'Fri');
+    await fsp.mkdir(join(set, 'Yellow'), { recursive: true });
+    await fsp.writeFile(join(set, 'Yellow', 'a.mp3'), 'old drums');
+    await fsp.writeFile(join(set, 'set.json'), '{"old":true}');
+    check('undo is refused outside a prepared set', (await call('undo-begin', { dir: songs, set: 'Band' })).status === 400);
+    check('and for a set that is not there', (await call('undo-begin', { dir: songs, set: 'Sets/Nope' })).status === 404);
+    check('nothing to undo before a run begins', (await call('undo-restore', { dir: songs, set: 'Sets/Fri', songs: [] })).status === 409);
+    check('a run begins by keeping the manifest', (await ask('undo-begin', { dir: songs, set: 'Sets/Fri' })).ok === true
+      && (await fsp.readFile(join(set, '.undo', 'set.json'), 'utf8')) === '{"old":true}');
+    check('a song folder is moved aside before it is written', (await ask('undo-keep', { dir: songs, set: 'Sets/Fri', song: 'Yellow' })).kept === true
+      && !(await has(join(set, 'Yellow'))) && (await has(join(set, '.undo', 'Yellow', 'a.mp3'))));
+    check('a song that had no folder is said so', (await ask('undo-keep', { dir: songs, set: 'Sets/Fri', song: 'New' })).kept === false);
+    check('a song name that climbs is refused', (await call('undo-keep', { dir: songs, set: 'Sets/Fri', song: '../x' })).status === 400);
+    // The run writes: Yellow again, New for the first time, and the manifest.
+    await fsp.mkdir(join(set, 'Yellow'), { recursive: true });
+    await fsp.writeFile(join(set, 'Yellow', 'b.mp3'), 'new drums');
+    await fsp.mkdir(join(set, 'New'), { recursive: true });
+    await fsp.writeFile(join(set, 'New', 'c.mp3'), 'new song');
+    await fsp.writeFile(join(set, 'set.json'), '{"old":false}');
+    check('the kept folder is hidden from listings', !(await ask('list', { dir: songs })).files.some((f) => f.path.includes('.undo')));
+    const put = await ask('undo-restore', { dir: songs, set: 'Sets/Fri', songs: [{ folder: 'Yellow', kept: true }, { folder: 'New', kept: false }] });
+    check('undo puts the kept song back and removes the added one', put.restored === 1 && put.removed === 1, JSON.stringify(put));
+    check('with its old files and not the new', (await has(join(set, 'Yellow', 'a.mp3'))) && !(await has(join(set, 'Yellow', 'b.mp3'))) && !(await has(join(set, 'New'))));
+    check('and the manifest as it was', (await fsp.readFile(join(set, 'set.json'), 'utf8')) === '{"old":true}');
+    check('leaving nothing aside', !(await has(join(set, '.undo'))));
+  }
+
   // A dialog opened inside a remembered folder, named by slot rather than path.
   answer = songs;
   await ask('pick', { kind: 'folder', startIn: { slot: 'songs', sub: 'Band' } });
@@ -3787,6 +3818,27 @@ group('updating a prepared set without re-rendering');
   check('a manifest with no fromSet is matched by the folder name instead',
     setFor([at('Rehearsal Tool/Sets/Sunday 2026-03-01', undefined, '2026-03-01T00:00:00.000Z')], '/x/Sunday.als')
       ?.folder.endsWith('Sunday 2026-03-01') === true);
+
+  // By content: a renamed set is the same songs, a folder sharing its name is not.
+  const keyed = (folder, songs, preparedAt) => ({
+    folder,
+    manifest: {
+      preparedBy: 'rehearsaltool', preparedAt, paddingSec: 0, fromSet: 'Old.als',
+      songs: songs.map(([f, k]) => ({ folder: f, audioKey: k })),
+    },
+  });
+  const byContent = [
+    keyed('Sets/Renamed', [['Song A', '1.a'], ['Song B', '1.x']], '2026-02-01T00:00:00.000Z'),
+    keyed('Sets/Other', [['Song A', '1.a'], ['Song B', '1.b']], '2026-01-01T00:00:00.000Z'),
+  ];
+  check('a set is found by the songs it holds before the folder named for it',
+    setFor(byContent, '/x/Renamed.als', { 'song a': '1.a', 'song b': '1.b' })?.folder === 'Sets/Other');
+  check('and by its name when nothing matches by content',
+    setFor(byContent, '/x/Renamed.als', { 'song a': '9.9' })?.folder === 'Sets/Renamed');
+  check('what it was prepared from still comes first',
+    setFor([...byContent, { ...keyed('Sets/Origin', [], '2025-01-01T00:00:00.000Z'),
+      manifest: { ...keyed('Sets/Origin', [], '2025-01-01T00:00:00.000Z').manifest, fromSet: '/x/Renamed.als' } }],
+      '/x/Renamed.als', { 'song a': '1.a', 'song b': '1.b' })?.folder === 'Sets/Origin');
 }
 
 /* ----------------------------- reference stems ---------------------------- */

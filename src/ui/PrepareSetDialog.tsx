@@ -4,7 +4,8 @@ import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
-import { runPrepare, standingFor, titlesOf } from '../lib/prepareRun';
+import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
+import type { Aside } from '../lib/localSource';
 import { readBytes } from '../lib/source';
 import * as local from '../lib/localSource';
 import type { PublishResult } from '../lib/publish';
@@ -66,6 +67,9 @@ export default function PrepareSetDialog({
   const [lastPrepared, setLastPrepared] = useState<string | null>(null);
   /** Words and sections refreshed for the songs left alone, once the run is done. */
   const [refreshed, setRefreshed] = useState<{ count: number; error?: string } | null>(null);
+  /** What the last run moved aside, and into which folder it ran, so it can be undone. */
+  const aside = useRef<{ folder: string; songs: Aside[] } | null>(null);
+  const [undone, setUndone] = useState<string | null>(null);
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
@@ -185,11 +189,14 @@ export default function PrepareSetDialog({
     setResult(null);
     setPublished(null);
     setRefreshed(null);
+    setUndone(null);
     try {
       const full = project ?? (await parseAls((await readBytes(setPath)).bytes));
       // A blank field means today's name, the same as never having typed one.
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       rememberSetName(setPath, folderName === defaultSetName(setPath) ? '' : folderName);
+      const touched: Aside[] = [];
+      aside.current = { folder: folderName, songs: touched };
       const out = await runPrepare({
         project: full,
         setPath,
@@ -200,6 +207,7 @@ export default function PrepareSetDialog({
         keys,
         songOrder,
         cacheBudgetGB: settings.cacheBudgetGB,
+        aside: touched,
         signal: running.current.signal,
         onProgress: setProgress,
       });
@@ -218,6 +226,33 @@ export default function PrepareSetDialog({
       setProgress(null);
     }
   };
+
+  /** Put back what the last run wrote over, and remove what it added. */
+  const undo = async () => {
+    const last = aside.current;
+    if (!last?.songs.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const folder = await publishFolder();
+      if (!folder) throw new Error("The band's folder is not to hand.");
+      const put = await undoPrepare(folder, last.folder, last.songs);
+      aside.current = null;
+      setResult(null);
+      setRefreshed(null);
+      setPublished(put.published);
+      setUndone(
+        `Undone: ${put.restored} song${put.restored === 1 ? '' : 's'} put back as ${put.restored === 1 ? 'it was' : 'they were'}` +
+          (put.removed ? `, ${put.removed} the run had added removed` : '') +
+          '.',
+      );
+    } catch (err) {
+      setError(`Could not undo: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const undoable = !busy && !!aside.current?.songs.length;
 
   const start = async () => {
     try {
@@ -394,6 +429,11 @@ export default function PrepareSetDialog({
       )}
 
       {error && <div className="notice error">{error}</div>}
+      {undone && (
+        <div className="notice done" role="status">
+          {undone}
+        </div>
+      )}
 
       {result && (
         <div className="notice done" role="status">
@@ -466,9 +506,19 @@ export default function PrepareSetDialog({
             >
               Prepare again
             </button>
+            {undoable && (
+              <button className="btn" onClick={() => void undo()} title="Put the songs this run wrote back as they were before it">
+                Undo this prepare
+              </button>
+            )}
           </>
         ) : (
           <>
+            {undoable && error && (
+              <button className="btn" onClick={() => void undo()} title="Put the songs this run wrote back as they were before it">
+                Undo this prepare
+              </button>
+            )}
             <button
               className="btn primary"
               onClick={() => void start()}

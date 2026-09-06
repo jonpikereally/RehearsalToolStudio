@@ -239,6 +239,33 @@ export async function reveal(folder: FolderHandle, root: string, path: string): 
   await call('reveal', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/* ---------------------------------- undo ---------------------------------- */
+
+/** A song folder a prepare moved aside, or found nothing to move. */
+export interface Aside {
+  folder: string;
+  kept: boolean;
+}
+
+/** A prepare is starting into `set` (`Sets/<name>`): clear its undo, keep its manifest. */
+export async function undoBegin(folder: FolderHandle, set: string): Promise<void> {
+  await call('undo-begin', { dir: open(folder).dir, set });
+}
+
+/** Move a song's folder aside before it is written again; false when there was none. */
+export async function undoKeep(folder: FolderHandle, set: string, song: string): Promise<boolean> {
+  return (await call<{ kept: boolean }>('undo-keep', { dir: open(folder).dir, set, song })).kept;
+}
+
+/** Put a prepare's songs back as they were, and the manifest with them. */
+export async function undoRestore(
+  folder: FolderHandle,
+  set: string,
+  songs: Aside[],
+): Promise<{ restored: number; removed: number }> {
+  return call('undo-restore', { dir: open(folder).dir, set, songs });
+}
+
 export async function exists(folder: FolderHandle, root: string, path: string): Promise<boolean> {
   return (await call<{ exists: boolean }>('exists', { dir: open(folder).dir, path: below(root, path) })).exists;
 }
