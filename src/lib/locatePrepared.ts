@@ -1,7 +1,8 @@
 import * as local from './localSource';
+import type { FileEntry } from './files';
 import { isManifestName, setFolderOf, type PreparedManifest } from './preparedSet';
 import { isPreparedSet } from './prints';
-import { setFor, type PreparedSetAt } from './updatePrepared';
+import { contentScore, setFor, type PreparedSetAt } from './updatePrepared';
 import { defaultSetName, rememberSetName, rememberedSetName } from './setName';
 
 /**
@@ -19,14 +20,9 @@ export interface LocatedSet {
   presentFolders: string[];
 }
 
-export async function locatePrepared(
-  folder: local.FolderHandle,
-  alsPath: string,
-  /** The set's audio keys now, by song folder name, to recognise it by content. */
-  keys?: Record<string, string>,
-): Promise<LocatedSet | { error: string }> {
+/** Every prepared set in the band's folder, with its manifest. */
+export async function preparedCandidates(folder: local.FolderHandle): Promise<{ files: FileEntry[]; candidates: PreparedSetAt[] }> {
   const files = await local.listFiles(folder, '');
-
   const candidates: PreparedSetAt[] = [];
   for (const file of files) {
     // Any Sets folder, wherever it sits: the old wrapper's and the new root's alike.
@@ -41,7 +37,16 @@ export async function locatePrepared(
       // A manifest that will not parse is not the set being looked for.
     }
   }
+  return { files, candidates };
+}
 
+export async function locatePrepared(
+  folder: local.FolderHandle,
+  alsPath: string,
+  /** The set's audio keys now, by song folder name, to recognise it by content. */
+  keys?: Record<string, string>,
+): Promise<LocatedSet | { error: string }> {
+  const { files, candidates } = await preparedCandidates(folder);
   const found = setFor(candidates, alsPath, keys);
   if (!found) {
     return {
@@ -85,14 +90,26 @@ export async function preparedNameFor(
   keys?: Record<string, string>,
 ): Promise<string> {
   const remembered = rememberedSetName(alsPath);
-  if (remembered) return remembered;
-  const found = await locatePrepared(folder, alsPath, keys);
-  if (!('error' in found)) {
-    const name = found.setFolder.split('/').pop();
-    if (name) {
-      rememberSetName(alsPath, name);
-      return name;
-    }
+  /*
+   * A remembered name is trusted — unless the folder it names holds none
+   * of this set's songs while another folder holds some. That is a memory
+   * pointing at the wrong folder (a renamed one, prepared from some other
+   * set), and following it would write every song again for nothing.
+   */
+  if (remembered && !keys) return remembered;
+  const { candidates } = await preparedCandidates(folder);
+  if (remembered && keys) {
+    const own = candidates.find((c) => c.folder.split('/').pop()?.toLowerCase() === remembered.toLowerCase());
+    if (!own) return remembered; // not prepared yet under that name: the name stands
+    if (contentScore(own.manifest, keys) > 0) return remembered;
+    const better = candidates.find((c) => contentScore(c.manifest, keys) > 0);
+    if (!better) return remembered;
   }
-  return defaultSetName(alsPath);
+  const found = setFor(candidates, alsPath, keys);
+  const name = found?.folder.split('/').pop();
+  if (name) {
+    rememberSetName(alsPath, name);
+    return name;
+  }
+  return remembered ?? defaultSetName(alsPath);
 }

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import * as local from '../lib/localSource';
 import { locatePrepared } from '../lib/locatePrepared';
+import { parseAls } from '../lib/alsParser';
+import { readBytes } from '../lib/source';
+import { audioKeysFor } from '../lib/prepareRun';
 import { MANIFEST_NAME } from '../lib/preparedSet';
 import { SETS_FOLDER } from '../lib/prints';
 import { rememberSetName, rememberedSetName } from '../lib/setName';
@@ -43,7 +46,9 @@ export default function PreparedFolderSettings() {
       // The band's folder as already granted; never a dialog from an effect.
       const band = await publishFolder();
       if (!band || !live) return;
-      const found = await locatePrepared(band, currentSet);
+      const project = await parseAls((await readBytes(currentSet)).bytes);
+      const keys = await audioKeysFor(project, currentSet);
+      const found = await locatePrepared(band, currentSet, keys.byFolder);
       if (!live) return;
       if ('error' in found) return;
       setName(found.setFolder.split('/').pop() ?? null);

@@ -49,6 +49,16 @@ export interface PreparedSetAt {
  * to the folder's name covers a set prepared before the manifest carried one.
  * Newest wins where several match, which is the one everyone is playing.
  */
+/** How many of a manifest's songs are the set's own, by their audio keys as they stand. */
+export function contentScore(manifest: PreparedManifest, keys: Record<string, string>): number {
+  let score = 0;
+  for (const entry of manifest.songs) {
+    const now = keys[entry.folder.toLowerCase()];
+    if (now && entry.audioKey === now) score++;
+  }
+  return score;
+}
+
 export function setFor(
   candidates: PreparedSetAt[],
   alsPath: string,
@@ -73,11 +83,7 @@ export function setFor(
   if (keys) {
     let best: { at: PreparedSetAt; score: number } | null = null;
     for (const c of newestFirst) {
-      let score = 0;
-      for (const entry of c.manifest.songs) {
-        const now = keys[entry.folder.toLowerCase()];
-        if (now && entry.audioKey === now) score++;
-      }
+      const score = contentScore(c.manifest, keys);
       if (score > 0 && (!best || score > best.score)) best = { at: c, score };
     }
     if (best) return best.at;

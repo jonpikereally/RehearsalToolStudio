@@ -9,6 +9,7 @@ import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 import { runningOrderTitles } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
+import { navigate } from '../lib/router';
 
 /**
  * Keeping the prepared set current with the set as Live saves it.
@@ -30,6 +31,7 @@ type Phase =
   | { kind: 'running'; at: number; stage: string; progress: PrepareProgress | null }
   | { kind: 'done'; at: number; outcome: RunOutcome; selected: string[] }
   | { kind: 'unprepared'; at: number }
+  | { kind: 'wholeSet'; at: number; folder: string; count: number }
   | { kind: 'error'; at: number; message: string }
   | { kind: 'undone'; at: number; restored: number; removed: number; songs: number };
 
@@ -84,7 +86,17 @@ export default function AutoUpdate() {
           if (current()) setPhase({ kind: 'unprepared', at });
           return;
         }
-        const selected = titlesOf(project).filter((t) => found.standing.get(t)?.state !== 'unchanged');
+        const titles = titlesOf(project);
+        const selected = titles.filter((t) => found.standing.get(t)?.state !== 'unchanged');
+        /*
+         * Every song changed is not a save, it is a wrong folder or a
+         * studio that renders differently now — and a full render is an
+         * hour nobody asked for. Said, and left to a person.
+         */
+        if (selected.length === titles.length && titles.length > 1) {
+          if (current()) setPhase({ kind: 'wholeSet', at, folder: folderName, count: titles.length });
+          return;
+        }
         const touched: Aside[] = [];
         aside.current = { folder: folderName, songs: touched };
         if (current()) setPhase({ kind: 'running', at, stage: selected.length ? '' : 'Refreshing words and sections…', progress: null });
@@ -200,6 +212,14 @@ export default function AutoUpdate() {
               )}
             </>
           )}
+          {phase.kind === 'wholeSet' && (
+            <>
+              <strong>{setName}</strong> was saved at {clock(phase.at)}, but every one of its {phase.count} songs would be
+              written again against “{phase.folder}” — none of them match what is there. Either that is not this set's
+              folder, or the studio renders differently now. Not done on its own: locate the right folder in Settings, or
+              prepare the whole set by hand.
+            </>
+          )}
           {phase.kind === 'unprepared' && (
             <>
               <strong>{setName}</strong> was saved at {clock(phase.at)}, but it hasn't been prepared under the name “
@@ -239,6 +259,16 @@ export default function AutoUpdate() {
           <button className="btn primary" onClick={() => setDialog(true)}>
             Prepare it now
           </button>
+        )}
+        {phase.kind === 'wholeSet' && (
+          <>
+            <button className="btn primary" onClick={() => navigate('/settings')}>
+              Locate the folder
+            </button>
+            <button className="btn" onClick={() => setDialog(true)}>
+              Prepare by hand
+            </button>
+          </>
         )}
         {running ? (
           <button className="btn danger" onClick={() => stopper.current?.abort()} title="Stop. What is already written stays.">
