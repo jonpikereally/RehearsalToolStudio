@@ -1,6 +1,6 @@
 import * as local from './localSource.ts';
 import { RIG_FILES_FOLDER, parseMemberRig } from './rigFiles.ts';
-import { isManifestName, setFolderOf } from './preparedSet.ts';
+import { folderBaseOf, isManifestName, setFolderOf, type PreparedPart } from './preparedSet.ts';
 import { isPreparedSet } from './prints.ts';
 
 /**
@@ -109,6 +109,58 @@ export const setOfRig = (path: string): string => setFolderOf(path.slice(0, path
 /** Whether a part label is one this member keeps on a fader of their own. */
 export function keepsPart(member: MemberMix, label: string): boolean {
   return member.keeps.some((keep) => same(keep, label));
+}
+
+/**
+ * What a member's submix should fold in, read off a song as it was prepared.
+ *
+ * The same rule the render follows, over the manifest's own parts rather than
+ * the set's tracks: everything but what they keep, the record, and the click
+ * and cues, which are patterns striking samples. Empty when there would be
+ * fewer than two parts in it, which is not worth a file.
+ */
+export function expectedSubmixOf(parts: PreparedPart[], member: MemberMix): string[] {
+  if (member.off) return [];
+  const folded = parts.filter(
+    (part) => !part.hidden && !part.record && part.kind !== 'sampler'
+      && !keepsPart(member, part.name) && !keepsPart(member, part.label),
+  );
+  return folded.length < 2 ? [] : folded.map((part) => part.name);
+}
+
+/** Where one prepared song stands for one member. */
+export type SubmixState = 'ready' | 'missing' | 'stale' | 'spare';
+
+export function submixState(parts: PreparedPart[], member: MemberMix): SubmixState {
+  const want = expectedSubmixOf(parts, member);
+  const has = parts.find((part) => part.submixFor && same(part.submixFor, member.member));
+  if (!want.length) return has ? 'spare' : 'ready';
+  if (!has) return 'missing';
+  const wrote = (has.submixOf ?? []).map((n) => clean(n).toLowerCase()).sort().join(',');
+  return wrote === want.map((n) => clean(n).toLowerCase()).sort().join(',') ? 'ready' : 'stale';
+}
+
+/**
+ * Which prepared songs are behind the band as it now stands: one written for
+ * nobody, one written from a list that has changed, one never written at all.
+ * A song prepared before parts were listed says nothing and is left alone.
+ */
+export function submixesBehind(
+  songs: { title?: string; folder: string; parts?: PreparedPart[] }[],
+  members: MemberMix[],
+): { title: string; who: string[] }[] {
+  const out: { title: string; who: string[] }[] = [];
+  for (const song of songs) {
+    if (!song.parts?.length) continue;
+    const who = members
+      .filter((member) => {
+        const state = submixState(song.parts!, member);
+        return state === 'missing' || state === 'stale' || state === 'spare';
+      })
+      .map((m) => m.member);
+    if (who.length) out.push({ title: song.title ?? folderBaseOf(song.folder), who });
+  }
+  return out;
 }
 
 /** `Fix You [submix alex].mp3` — the label a member's submix carries. */

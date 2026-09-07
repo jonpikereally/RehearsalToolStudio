@@ -1904,6 +1904,30 @@ group('a member\'s submix');
       && keyWith([alex]) !== keyWith([{ member: 'Alex', keeps: ['click', 'cues'] }]),
     [keyWith([]), keyWith([alex])].join(' | '));
 
+  // What a save has to work out: which prepared songs are behind the band.
+  const { submixState, submixesBehind, expectedSubmixOf } = await import('../src/lib/members.ts');
+  const prepared = [
+    { label: 'drums', name: 'drums' },
+    { label: 'bass', name: 'bass' },
+    { label: 'gtr', name: 'gtr' },
+    { label: 'ref song', name: 'song', reference: true, record: true, role: 'mix' },
+    { label: 'click', name: 'click', kind: 'sampler' },
+  ];
+  check('what a member\'s submix should hold is read off the prepared song',
+    expectedSubmixOf(prepared, alex).join() === 'drums,bass', expectedSubmixOf(prepared, alex).join());
+  check('a song with no submix for them is missing one', submixState(prepared, alex) === 'missing');
+  check('one written from the same list is ready',
+    submixState([...prepared, { label: 'submix alex', name: 'submix alex', hidden: true, submixFor: 'Alex', submixOf: ['bass', 'drums'] }], alex) === 'ready');
+  check('one written from a different list is stale',
+    submixState([...prepared, { label: 'submix alex', name: 'submix alex', hidden: true, submixFor: 'Alex', submixOf: ['drums'] }], alex) === 'stale');
+  check('and one nobody needs any more is spare',
+    submixState([...prepared, { label: 'submix sam', name: 'submix sam', hidden: true, submixFor: 'Sam', submixOf: ['drums', 'bass'] }],
+      { member: 'Sam', keeps: ['drums', 'bass', 'gtr'] }) === 'spare');
+  check('and the songs behind are named with who they are behind for',
+    JSON.stringify(submixesBehind([{ folder: 'One (2026-09-06)', title: 'One', parts: prepared }, { folder: 'Two (2026-09-06)', title: 'Two' }], [alex]))
+      === JSON.stringify([{ title: 'One', who: ['Alex'] }]),
+    JSON.stringify(submixesBehind([{ folder: 'One (2026-09-06)', title: 'One', parts: prepared }], [alex])));
+
   check('a member list read back keeps one entry per person',
     parseMembers({ members: [{ member: ' Alex ', keeps: ['click'] }, { member: 'alex', keeps: [] }, { member: '', keeps: [] }] })
       .map((m) => m.member).join() === 'Alex');
