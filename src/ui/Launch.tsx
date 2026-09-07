@@ -128,14 +128,19 @@ export default function Launch() {
   const recentAls = remembered.current.session ?? recentSet?.session ?? null;
 
   /*
-   * Both sides told to take what they had last: fill them in, and open them
-   * when this window was met on the way in rather than asked for. In the Mac
-   * app the studio does that for itself and never opens this window at all.
+   * What each side opened last is chosen as soon as it is known, not merely
+   * offered: a window saying "opened last" on both sides and "not chosen"
+   * along the bottom is a window arguing with itself, and Open is the whole
+   * point of it. Choosing something else is a click either way.
+   *
+   * Told to take them without asking, and met on the way in rather than asked
+   * for, it opens them too — in the Mac app the studio does that for itself
+   * and this window never comes up at all.
    */
   useEffect(() => {
     if (auto.current || sets === null || opening) return;
-    if (always.output && recentSet && !output) setOutput(recentSet);
-    if (always.session && recentAls && !session) setSession(recentAls);
+    if (recentSet && !output) setOutput(recentSet);
+    if (recentAls && !session) setSession(recentAls);
     if (ask || ownWindow || !always.output || !always.session || !recentSet || !recentAls) return;
     auto.current = true;
     void openBoth(recentSet, recentAls);

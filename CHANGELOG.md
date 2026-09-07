@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Choose what the chooser is offering, and let it fit a small window**
+
+It came up saying "opened last" on both sides and "not chosen" along the bottom, with Open greyed out — a window arguing with itself about the thing it exists to do. What each side opened last is now chosen as soon as it is known, and choosing something else is the click it always was.
+
 **Let a member keep parts by a word, not one label at a time**
 
 A set spells one instrument several ways — gtr, guitar, guitar pop, ref gtr — and ticking them off one at a time says what a guitarist wants in this set only: the next set, and the song added next week, arrive with the guitar summed into the thing they play along to. So a member can keep by word as well as by name, and one word covers every spelling, now and later.

@@ -2403,7 +2403,8 @@ input[type='range'] {
   display: grid;
   gap: 12px;
   padding: 12px 16px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* Two columns where they fit; one under the other in a narrow window. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
 }
 
@@ -2495,11 +2496,16 @@ input[type='range'] {
   padding: 2px 2px 0;
 }
 
-/* A menu and a button, or a field and a button: one line of controls. */
+/*
+ * A menu and a button, or a field and a button. Wraps rather than running out
+ * of the card: the window is the person's to resize, and it is a small window
+ * to begin with.
+ */
 .launch-row {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .launch-row > select,
