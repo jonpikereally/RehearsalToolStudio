@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Do it in the page when the app is too old to have the window**
+
+The Changes button asked the app for a window and the app, built before that window existed, dropped the message without a word — so the button did nothing at all. The app is rebuilt by hand, so it can always be older than the page the server is showing it; the page can't assume it understands.
+
 **Point the set tools with their head, and drop the lone .als**
 
 "Open a single .als…" opened a set from anywhere with none of its audio to hand, from when the studio was pointed at a folder of sets and a file off another machine had nowhere to belong. The Open window does that now — any session, any folder — so the button and the mode behind it go, and with them every branch that asked whether the set had a folder.

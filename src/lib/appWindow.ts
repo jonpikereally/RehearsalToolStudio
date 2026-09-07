@@ -44,14 +44,45 @@ export function askApp(message: Record<string, unknown>): boolean {
   }
 }
 
+/*
+ * What this build of the app can do.
+ *
+ * A message the app does not understand is dropped in silence — the page
+ * asked for a window and nothing came, with nothing to say about it — and
+ * the app on disk is rebuilt by hand, so it can be older than the page it is
+ * showing. So the app says on load which windows it has, and anything it has
+ * not claimed is done in the page instead. An app that says nothing at all
+ * is one from before it could say, and is treated as having none.
+ */
+let known: Set<string> | null = null;
+const waiting: ((panels: Set<string>) => void)[] = [];
+
+window.addEventListener('studio:app', (e) => {
+  const said = (e as CustomEvent<{ panels?: string[] }>).detail?.panels;
+  known = new Set(Array.isArray(said) ? said : []);
+  for (const resolve of waiting.splice(0)) resolve(known);
+});
+
+/** Wait for the app to say what it can do, or give up and take the page's way. */
+export function whenAppKnown(ms = 400): Promise<Set<string>> {
+  if (known) return Promise.resolve(known);
+  if (!inMacApp()) return Promise.resolve(new Set());
+  return new Promise((resolve) => {
+    waiting.push(resolve);
+    window.setTimeout(() => resolve(known ?? new Set()), ms);
+  });
+}
+
+const hasPanel = (name: string): boolean => !!known?.has(name);
+
 /** Put the chooser window up, or bring it forward if it is already there. */
-export const showChooser = (): boolean => askApp({ chooser: true });
+export const showChooser = (): boolean => hasPanel('chooser') && askApp({ chooser: true });
 
 /** The same, with the new set folder already asked for. */
-export const showNewSet = (): boolean => askApp({ chooser: true, making: true });
+export const showNewSet = (): boolean => hasPanel('chooser') && askApp({ chooser: true, making: true });
 
 /** The window of what the studio has done, save by save. */
-export const showChanges = (): boolean => askApp({ panel: 'changes' });
+export const showChanges = (): boolean => hasPanel('changes') && askApp({ panel: 'changes' });
 
 /**
  * What the chooser chose, for the main window to open: the set folder whole,

@@ -289,9 +289,14 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "studio", let body = message.body as? [String: Any] else { return }
-        // The page is up and listening: anything dropped before now can go to it.
+        // The page is up and listening: anything dropped before now can go to
+        // it, and it is told what this app can do — the page on the server can
+        // be newer than the app on disk, which is rebuilt by hand, and a page
+        // asking for a window this app has never heard of should know to put
+        // it up itself rather than ask into silence.
         if body["ready"] as? Bool == true {
             pageReady = true
+            tell(message.webView, "studio:app", ["panels": ["chooser", "changes"], "menu": true])
             open([])
         }
         // The chooser: put it up, take what it chose, or take its way past itself.

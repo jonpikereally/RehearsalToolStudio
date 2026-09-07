@@ -12,7 +12,7 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { panelWindow, showChanges, showChooser } from './lib/appWindow';
+import { panelWindow, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
@@ -146,7 +146,10 @@ function useOpenGate(
     const always = alwaysOpen();
     const set = recentOutput();
     const als = recentSession() ?? set?.session ?? null;
-    const chooser = () => setInWindow(showChooser());
+    // Whether the chooser is a window of its own is the app's to say, and it
+    // says so as the page loads — so this waits for the answer rather than
+    // asking before it has come and drawing the chooser here for nothing.
+    const chooser = () => void whenAppKnown().then(() => setInWindow(showChooser()));
     if (asked || !always.output || !always.session || !set || !als) {
       chooser();
       return;
