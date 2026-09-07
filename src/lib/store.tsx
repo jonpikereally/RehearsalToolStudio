@@ -202,7 +202,10 @@ interface StoreValue {
   /** The band's folder, which the studio publishes into. Chosen separately. */
   publishFolderName: string | null;
   /** A folder a set's samples live in outside the project, read only. */
-  resourcesFolderName: string | null;
+  /** The folders a set's samples may live in outside its project, in order. */
+  resourceFolders: local.ResourceFolder[];
+  /** Allow another one. Must come from a click. */
+  forgetResourceFolder: (dir: string) => Promise<void>;
   pickResourcesFolder: (startIn?: string) => Promise<void>;
   pickPublishFolder: () => Promise<local.FolderHandle>;
   publishFolder: () => Promise<local.FolderHandle | null>;
@@ -279,7 +282,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [localStatus, setLocalStatus] = useState<LocalStatus>('off');
   const [localFolderName, setLocalFolderName] = useState<string | null>(null);
   const [publishFolderName, setPublishFolderName] = useState<string | null>(null);
-  const [resourcesFolderName, setResourcesFolderName] = useState<string | null>(null);
+  const [resourceFolders, setResourceFolders] = useState<local.ResourceFolder[]>([]);
   const [currentSet, setCurrentSet] = useState<string | null>(() => {
     try {
       return sessionStorage.getItem(SS_SET);
@@ -413,7 +416,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void local.storedFolder('publish').then((f) => setPublishFolderName(f?.name ?? null));
-    void local.storedFolder('resources').then((f) => setResourcesFolderName(f?.name ?? null));
+    void local.resourceFolders().then(setResourceFolders).catch(() => undefined);
   }, []);
 
   /* ------------------------------ local persist ----------------------------- */
@@ -1006,9 +1009,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return picked.handle;
   }, []);
 
+  /** Allow another folder samples may be read from; the others stay allowed. */
   const pickResourcesFolder = useCallback(async (startIn?: string) => {
-    const picked = await local.pickFolder('resources', { startIn });
-    setResourcesFolderName(picked.name);
+    await local.pickFolder('resources', { startIn });
+    setResourceFolders(await local.resourceFolders());
+  }, []);
+
+  const forgetResourceFolder = useCallback(async (dir: string) => {
+    setResourceFolders(await local.forgetResourceFolder(dir));
   }, []);
 
   const publishFolder = useCallback(async () => {
@@ -1050,7 +1058,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       publishFolderName,
       pickPublishFolder,
       publishFolder,
-      resourcesFolderName,
+      resourceFolders,
+      forgetResourceFolder,
       pickResourcesFolder,
       dismissScanResult: () => setLastScan(null),
     }),
@@ -1058,7 +1067,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
       rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
-      publishFolderName, pickPublishFolder, publishFolder, resourcesFolderName, pickResourcesFolder,
+      publishFolderName, pickPublishFolder, publishFolder, resourceFolders, forgetResourceFolder, pickResourcesFolder,
     ],
   );
 

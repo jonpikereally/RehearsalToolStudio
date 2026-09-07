@@ -29,10 +29,10 @@ export interface SongAudio {
  * their account. Null until known.
  */
 export function useMissingAudio(song: Song): SongAudio | null {
-  const { resourcesFolderName, localStatus } = useStore();
+  const { resourceFolders, localStatus } = useStore();
   const key = [
     song.id,
-    resourcesFolderName ?? '',
+    resourceFolders.map((f) => f.dir).join('|'),
     localStatus,
     ...song.variants.map((v) => v.clips?.map((c) => c.path).join('|') ?? v.path),
   ].join('\n');

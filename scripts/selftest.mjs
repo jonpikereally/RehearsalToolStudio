@@ -4570,6 +4570,22 @@ group('running order from AbleSet');
   check('the last order AbleSet sent itself is the one taken', live?.at === '2026-09-05T21:18:24Z' && live.setlistName === 'Tour 2', JSON.stringify(live));
   check('sorted by its order field, names carried', live.entries.map((e) => e.lastKnownName).join(',') === 'Fix You,Yellow');
   check('a log with no such line has none', liveSetlistFromLog('{"a":1}\nnope') === null);
+
+  // Asked of AbleSet itself, the answer can be wrapped in anything: the cues
+  // are found by being cues, so a change to its shape falls back to the log
+  // rather than breaking.
+  const { cuesIn } = await import('./studio-files.mjs');
+  const cues = [
+    { id: 'a', time: 52, lastKnownName: 'One', order: 1 },
+    { id: 'b', time: 4, lastKnownName: 'Two', order: 0 },
+  ];
+  const names = (doc) => cuesIn(doc)?.entries.map((e) => e.lastKnownName).join();
+  check('cues are read in order, however the answer is wrapped',
+    names(cues) === 'Two,One' && names({ setlist: { name: 'X', songs: cues } }) === 'Two,One'
+      && names({ data: { cues } }) === 'Two,One' && cuesIn({ setlist: { name: 'X', songs: cues } })?.setlistName === 'X',
+    [names(cues), names({ setlist: { name: 'X', songs: cues } }), names({ data: { cues } })].join(' | '));
+  check('and something that is not a setlist is not read as one',
+    cuesIn({ settings: { volume: 1 } }) === null && cuesIn([{ name: 'no time here' }]) === null);
 }
 
 /* ------------------------------ song info clips ------------------------------ */

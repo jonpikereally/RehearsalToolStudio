@@ -168,6 +168,25 @@ export async function forgetFolder(slot: FolderSlot = 'songs'): Promise<void> {
   await call('forget', { slot });
 }
 
+/** A folder a set's samples may be read from, outside its own project. */
+export interface ResourceFolder {
+  /** Its path, which is also how it is forgotten. */
+  dir: string;
+  name: string;
+}
+
+/** Every one of them, in the order they were allowed. */
+export async function resourceFolders(): Promise<ResourceFolder[]> {
+  const { folders } = await call<{ folders: ResourceFolder[] }>('resources', {});
+  return folders;
+}
+
+/** Take one away: samples in it stop being readable at once. */
+export async function forgetResourceFolder(dir: string): Promise<ResourceFolder[]> {
+  const { folders } = await call<{ folders: ResourceFolder[] }>('forget-resource', { dir });
+  return folders;
+}
+
 /**
  * A folder or a set the Mac app was handed — dropped on the window or on the
  * Dock icon. Its folder (the set's own, for a set) becomes the songs folder,
@@ -263,6 +282,8 @@ export interface AbleSetLive {
   /** The set AbleSet has open, and whether it is this set's project. */
   projectFile?: string | null;
   applies?: boolean;
+  /** Asked of AbleSet while it runs, or read back from what it wrote down. */
+  from?: 'ableset' | 'log';
   entries?: { time: number; lastKnownName: string }[];
 }
 

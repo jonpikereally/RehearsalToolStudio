@@ -77,6 +77,62 @@ export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)
  * not, and this reads it back. A log is not a promise, so the line is
  * dated and the caller decides whether it is newer than what was saved.
  */
+/**
+ * The order AbleSet has right now, asked of AbleSet itself.
+ *
+ * Its own server answers on this machine while it is running, and what it
+ * says is the truth — where the log is only a record of the requests it
+ * happened to write down, and a setlist reordered on screen does not always
+ * make one. Read liberally: any array of cues with a time and a name, in
+ * whatever the answer is wrapped in, so a change to AbleSet's shape leaves
+ * the log to fall back on rather than breaking this.
+ */
+export async function liveSetlistFromApi(ports = [3000, 3001]) {
+  for (const port of ports) {
+    let doc;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/setlist`, {
+        signal: AbortSignal.timeout(700),
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      doc = await res.json();
+    } catch {
+      continue; // not there, or not answering: the log will do
+    }
+    const found = cuesIn(doc);
+    if (found?.entries.length) return { at: new Date().toISOString(), ...found };
+  }
+  return null;
+}
+
+/** The first array of cues anywhere in a document, with the name beside it. */
+export function cuesIn(doc, name = '', depth = 0) {
+  if (!doc || typeof doc !== 'object' || depth > 4) return null;
+  const named = typeof doc.name === 'string' ? doc.name : typeof doc.setlistName === 'string' ? doc.setlistName : name;
+  const asCues = (list) => {
+    const entries = list
+      .filter((m) => m && typeof m === 'object' && typeof m.time === 'number')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((m) => ({
+        time: m.time,
+        lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : typeof m.name === 'string' ? m.name : '',
+      }));
+    return entries.length ? { setlistName: named, entries } : null;
+  };
+  if (Array.isArray(doc)) return asCues(doc) ?? doc.reduce((found, item) => found ?? cuesIn(item, named, depth + 1), null);
+  for (const key of ['songs', 'cues', 'items', 'entries', 'metaMap', 'setlist', 'data', 'value']) {
+    const child = doc[key];
+    if (Array.isArray(child)) {
+      const cues = asCues(child);
+      if (cues) return cues;
+    }
+    const deeper = child && typeof child === 'object' ? cuesIn(child, named, depth + 1) : null;
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
 export function liveSetlistFromLog(text) {
   let found = null;
   for (const line of text.split('\n')) {
@@ -182,10 +238,23 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   /** Single files picked on their own, readable but not their neighbours. */
   const files = new Set();
 
+  /**
+   * The folders a set's samples may live in outside its project, in the order
+   * they were allowed. A set can name samples in several places — a shared
+   * click library, last year's session, a folder of one-shots — so this is a
+   * list, not a slot. `slots.resources` stays as the last one allowed, which
+   * is where the picker opens.
+   */
+  let resourceDirs = [];
+
   const loaded = readFile(stateFile, 'utf8')
     .then((text) => {
-      slots = JSON.parse(text).slots ?? {};
-      for (const dir of Object.values(slots)) roots.add(resolve(dir));
+      const saved = JSON.parse(text);
+      slots = saved.slots ?? {};
+      resourceDirs = Array.isArray(saved.resources) ? saved.resources.filter((d) => typeof d === 'string') : [];
+      // A folder allowed before this was a list is still allowed.
+      if (slots.resources && !resourceDirs.includes(slots.resources)) resourceDirs.unshift(slots.resources);
+      for (const dir of [...Object.values(slots), ...resourceDirs]) roots.add(resolve(dir));
     })
     .catch(() => {
       /* nothing remembered yet, which is the first run */
@@ -193,7 +262,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
   const save = async () => {
     await mkdir(dirname(stateFile), { recursive: true });
-    await writeFile(stateFile, JSON.stringify({ slots }, null, 2) + '\n');
+    await writeFile(stateFile, JSON.stringify({ slots, resources: resourceDirs }, null, 2) + '\n');
   };
 
   /** A folder the user has picked, or a subfolder of one. */
@@ -290,6 +359,8 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       roots.add(resolve(chosen));
       if (slot) {
         slots[slot] = chosen;
+        // Samples can be in several places, so allowing one adds to the list.
+        if (slot === 'resources' && !resourceDirs.includes(chosen)) resourceDirs.push(chosen);
         await save();
       }
       return { dir: chosen, name: basename(chosen) };
@@ -455,8 +526,38 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
     async forget({ slot }) {
       if (!SLOTS.has(slot)) throw new Refusal(400, 'no such slot');
       delete slots[slot];
+      if (slot === 'resources') resourceDirs = [];
       await save();
       return {};
+    },
+
+    /** Every folder samples may be read from, in the order they were allowed. */
+    async resources() {
+      const out = [];
+      for (const dir of resourceDirs) {
+        if ((await stat(dir).catch(() => null))?.isDirectory()) out.push({ dir, name: basename(dir) });
+      }
+      return { folders: out };
+    },
+
+    /** Take one away: it stops being readable now, not at the next launch. */
+    async 'forget-resource'({ dir }) {
+      if (typeof dir !== 'string' || !dir) throw new Refusal(400, 'dir is required');
+      const gone = resolve(dir);
+      resourceDirs = resourceDirs.filter((d) => resolve(d) !== gone);
+      if (slots.resources && resolve(slots.resources) === gone) {
+        slots.resources = resourceDirs[resourceDirs.length - 1];
+        if (!slots.resources) delete slots.resources;
+      }
+      /*
+       * It stops being readable now, not at the next launch — but only it:
+       * rebuilding the whole set of granted folders would take away the ones
+       * granted by a set dropped on the window, which nothing here asked to
+       * forget.
+       */
+      if (!Object.values(slots).some((kept) => resolve(kept) === gone)) roots.delete(gone);
+      await save();
+      return { folders: resourceDirs.map((d) => ({ dir: d, name: basename(d) })) };
     },
 
     /**
@@ -518,6 +619,13 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           /* not here */
         }
       }
+      const applies = !!projectFile && dirname(resolve(projectFile)) === dirname(full);
+      // AbleSet itself first, while it is running: what it says is now.
+      const live = await liveSetlistFromApi();
+      if (live) return { found: true, ...live, from: 'ableset', projectFile, applies };
+
+      // Otherwise the newest order it happened to write down, across launches.
+      let best = null;
       for (const name of ['ableset', 'AbleSet']) {
         const logs = join(support, name, 'logs');
         let names;
@@ -528,14 +636,15 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         }
         const dated = await Promise.all(names.map(async (n) => ({ n, st: await stat(join(logs, n)).catch(() => null) })));
         dated.sort((a, b) => (b.st?.mtimeMs ?? 0) - (a.st?.mtimeMs ?? 0));
-        // The newest few launches: a setlist changed today is in today's log.
+        // The newest few launches: a setlist changed today is in today's log,
+        // but a launch that has written none leaves the last one standing.
         for (const { n } of dated.slice(0, 5)) {
           const found = liveSetlistFromLog(await readFile(join(logs, n), 'utf8').catch(() => ''));
           if (!found) continue;
-          const applies = !!projectFile && dirname(resolve(projectFile)) === dirname(full);
-          return { found: true, ...found, projectFile, applies };
+          if (!best || Date.parse(found.at ?? 0) > Date.parse(best.at ?? 0)) best = found;
         }
       }
+      if (best) return { found: true, ...best, from: 'log', projectFile, applies };
       return { found: false, projectFile };
     },
 

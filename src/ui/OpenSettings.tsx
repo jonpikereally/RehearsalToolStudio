@@ -21,7 +21,7 @@ export default function OpenSettings() {
   const {
     outputSet, chooseOutput, chooseSet, sessionPath, localFolderName, localStatus,
     rescan, scanning, scanProgress, publishFolder, pickPublishFolder,
-    resourcesFolderName, pickResourcesFolder,
+    resourceFolders, pickResourcesFolder, forgetResourceFolder,
   } = useStore();
   const [always, setAlways] = useState(alwaysOpen);
   const [busy, setBusy] = useState(false);
@@ -136,15 +136,37 @@ export default function OpenSettings() {
         </label>
       </div>
 
-      <div className="field">
+      {/*
+        Samples can be in more than one place — a click library, last year's
+        session, a folder of one-shots — so this is a list rather than one
+        folder, and allowing another leaves the rest allowed.
+      */}
+      <div className="field stacked">
         <label>
           Samples elsewhere
-          <span className="hint">A folder a set's click or cue samples live in outside the project. Read only, never written.</span>
+          <span className="hint">
+            Folders a set's click or cue samples live in outside the project. Read only, never written.
+          </span>
         </label>
+        {resourceFolders.map((folder) => (
+          <div key={folder.dir} className="btn-row">
+            <span className="code" title={folder.dir}>
+              {folder.name}
+            </span>
+            <button
+              className="btn"
+              onClick={() => void run(() => forgetResourceFolder(folder.dir))}
+              disabled={busy}
+              title={`Stop reading samples from ${folder.dir}`}
+            >
+              Forget
+            </button>
+          </div>
+        ))}
         <div className="btn-row">
-          <span className="code">{resourcesFolderName ?? 'none allowed'}</span>
+          {!resourceFolders.length && <span className="code">none allowed</span>}
           <button className="btn" onClick={() => void run(() => pickResourcesFolder())} disabled={busy}>
-            {resourcesFolderName ? 'Change' : 'Allow a folder'}
+            {resourceFolders.length ? 'Allow another folder…' : 'Allow a folder…'}
           </button>
         </div>
       </div>

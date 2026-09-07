@@ -126,11 +126,21 @@ export async function liveRunningOrder(
   }
   if (!live.found || !live.applies || !live.entries?.length) return null;
   const at = live.at ? Date.parse(live.at) : NaN;
-  if (savedAt !== null && !Number.isNaN(at) && at <= savedAt) return null;
+  /*
+   * Asked of AbleSet itself, this is the order on its screen right now, and
+   * it wins over any saved setlist however old the file. Read back out of
+   * its log it is only what AbleSet last wrote down — which a reorder does
+   * not always make it do — so a setlist saved since is the better answer.
+   */
+  const asked = live.from === 'ableset';
+  if (!asked && savedAt !== null && !Number.isNaN(at) && at <= savedAt) return null;
   const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName }));
-  const when = Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const when = asked || Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const setlist = live.setlistName ? ` (setlist “${live.setlistName}”)` : '';
   return {
     titles: orderFromAbleSet(project, entries),
-    note: `Running order as AbleSet has it now${when}, not yet saved${live.setlistName ? ` (setlist “${live.setlistName}”)` : ''}.`,
+    note: asked
+      ? `Running order as AbleSet has it open right now${setlist}, saved or not.`
+      : `Running order as AbleSet last wrote it down${when}, not yet saved${setlist}.`,
   };
 }

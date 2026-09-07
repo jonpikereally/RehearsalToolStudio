@@ -161,7 +161,7 @@ function useOpenGate(
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourcesFolderName, library, openDropped, openSession, watching } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourceFolders, library, openDropped, openSession, watching } = useStore();
   const drop = useDropped(openDropped);
   /*
    * Back to the chooser. In the Mac app it is a window in front of what is
@@ -465,7 +465,7 @@ export default function App() {
           // samples readable, and the song is opened again to pick them up.
           <div style={{ display: section === 'song' ? 'contents' : 'none' }}>
             <PlayerView
-              key={resourcesFolderName ?? ''}
+              key={resourceFolders.map((f) => f.dir).join('|')}
               songId={playing.songId}
               setlistId={playing.setlistId}
               shown={section === 'song'}
