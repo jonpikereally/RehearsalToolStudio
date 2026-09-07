@@ -177,12 +177,27 @@ export default function App() {
   }, [chooseSet, chooseOutput]);
   useOpenMenu(reopen);
 
-  /* What the chooser window chose, and its way past itself. */
+  /*
+   * What the chooser window chose, and its way past itself. The chooser has
+   * closed by the time this runs, so this window says what is happening —
+   * and says so when it doesn't work, rather than sitting there.
+   */
+  const [taking, setTaking] = useState<string | null>(null);
+  const [takeError, setTakeError] = useState<string | null>(null);
   const takeChosen = useCallback(
     async (alsPath: string, into: OutputSet) => {
       setToolsAlone(false);
-      chooseOutput(into);
-      await openSession(alsPath, into);
+      setTakeError(null);
+      setTaking(alsPath.split('/').pop() ?? alsPath);
+      try {
+        chooseOutput(into);
+        await openSession(alsPath, into);
+      } catch (err) {
+        setTakeError(`${alsPath.split('/').pop()} could not be opened: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      } finally {
+        setTaking(null);
+      }
     },
     [chooseOutput, openSession],
   );
@@ -247,22 +262,27 @@ export default function App() {
      * happening and how to get that window back rather than asking again
      * itself. In a browser there is no other window, so it asks here.
      */
-    body = gate.opening ? (
-      <div className="launch-busy">
-        <h2>Opening what was open last</h2>
-        <p>Reading the session and everything it names…</p>
-      </div>
-    ) : gate.inWindow ? (
-      <div className="launch-busy">
-        <h2>Choosing what to open</h2>
-        <p>The Open window is in front. Choose an Ableton session and the folder it fills.</p>
-        <button className="btn primary" onClick={() => showChooser()}>
-          Show the Open window
-        </button>
-      </div>
-    ) : (
-      <Launch />
-    );
+    body =
+      taking || gate.opening ? (
+        <div className="launch-busy">
+          <h2>Opening {taking ?? 'what was open last'}</h2>
+          <p>Reading the session and everything it names…</p>
+        </div>
+      ) : gate.inWindow ? (
+        <div className="launch-busy">
+          <h2>Choosing what to open</h2>
+          {takeError ? (
+            <div className="notice error">{takeError}</div>
+          ) : (
+            <p>The Open window is in front. Choose an Ableton session and the folder it fills.</p>
+          )}
+          <button className="btn primary" onClick={() => showChooser()}>
+            Show the Open window
+          </button>
+        </div>
+      ) : (
+        <Launch />
+      );
   } else if (section === 'setlists') {
     body = <SetlistsView />;
   } else if (section === 'setlist' && (route.query.get('id') ?? route.path[1])) {

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Hand the chooser's whole choice over, and say so while it opens**
+
+The chooser window closed on Open and the studio behind it sat where it was: the window sent the folder flattened into the message, and the studio was looking for the folder itself, so it dropped every choice on the floor. The set folder now travels whole, and the window that receives it says which session it is reading — and says what went wrong if it can't, rather than showing the same waiting screen for ever.
+
 **Read a key change written as a move, and say it on the song's info clip**
 
 A set that marks its modulation "KEY CHANGE +2" was saying nothing about it: key marks were only read when they named a key outright, and the info clip only ever carried the key the song opens in. A move is now read as a move — +2, up 2, -1, down 3 semitones — and worked out against the key in force where it sits, so Love Story reads "Key: C → D from bar 101". The chord tools count in the new key from that bar for the same reason.

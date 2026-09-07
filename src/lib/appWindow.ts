@@ -37,10 +37,13 @@ export function askApp(message: Record<string, unknown>): boolean {
 /** Put the chooser window up, or bring it forward if it is already there. */
 export const showChooser = (): boolean => askApp({ chooser: true });
 
-/** What the chooser chose, for the main window to open. */
+/**
+ * What the chooser chose, for the main window to open: the set folder whole,
+ * as it was listed, and the session that fills it. Sent through the app, so
+ * it must be plain data — an object and a string, nothing else.
+ */
 export interface Chosen {
-  folder: string;
-  name: string;
+  set: { folder: string; name: string; songs: number; preparedAt?: string; session?: string };
   session: string;
 }
 

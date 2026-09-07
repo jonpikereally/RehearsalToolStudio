@@ -106,7 +106,8 @@ export default function Launch() {
     async (set: OutputSet, alsPath: string) => {
       setOpening(nameOf(alsPath));
       setInError(null);
-      if (ownWindow && chooserChose({ folder: set.folder, name: set.name, session: alsPath })) return;
+      // Its own window hands the pair to the studio behind and stops there.
+      if (ownWindow && chooserChose({ set: { ...set }, session: alsPath })) return;
       try {
         chooseOutput(set);
         await openSession(alsPath, set);
