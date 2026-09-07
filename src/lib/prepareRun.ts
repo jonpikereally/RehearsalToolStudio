@@ -13,6 +13,7 @@ import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
 import { absolutePath, readBytes, statFile } from './source';
 import { updatePrepared, wordsChanged } from './updatePrepared';
+import { readMembers, type MemberMix } from './members.ts';
 
 /**
  * A prepare, from the set as it stands to the band's folder — the run itself,
@@ -37,7 +38,7 @@ export interface AudioKeys {
  * for before a folder is even chosen, since the keys are also how a set's
  * folder is recognised among the band's when its name has changed.
  */
-export async function audioKeysFor(project: AlsProject, setPath: string): Promise<AudioKeys> {
+export async function audioKeysFor(project: AlsProject, setPath: string, members: MemberMix[] = []): Promise<AudioKeys> {
   const revs = new Map<string, string | null>();
   const paths = new Set<string>();
   for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
@@ -61,6 +62,7 @@ export async function audioKeysFor(project: AlsProject, setPath: string): Promis
     fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
     bitrate: DEFAULT_BITRATE,
     sampleRate: 48000,
+    members,
   };
   const byTitle: Record<string, string> = {};
   const byName: Record<string, string> = {};
@@ -71,6 +73,11 @@ export async function audioKeysFor(project: AlsProject, setPath: string): Promis
     byName[songFolderBase(song).toLowerCase()] = key;
   }
   return { byTitle, byName };
+}
+
+/** The band as the folder has them; an unreadable list is no members at all. */
+export async function bandMembers(band: local.FolderHandle): Promise<MemberMix[]> {
+  return readMembers(band).catch(() => []);
 }
 
 export interface Standing {
@@ -115,7 +122,9 @@ export async function standingFor(
   } catch {
     manifest = null; // never prepared under this name: every song is new
   }
-  const keys = known ?? (await audioKeysFor(project, setPath));
+  // The band's own submixes are part of what a song is written as, so a
+  // member added or a list changed makes the songs stale like anything else.
+  const keys = known ?? (await audioKeysFor(project, setPath, await bandMembers(band)));
   const standing = new Map<string, AudioStanding>();
   const words = new Set<string>();
   for (const song of project.songs) {
@@ -156,6 +165,8 @@ export interface RunOptions {
    * throws — still leaves the list of what it touched.
    */
   aside?: local.Aside[];
+  /** The band's submixes; read from the folder when not given. */
+  members?: MemberMix[];
   signal?: AbortSignal;
   onProgress?: (p: PrepareProgress) => void;
 }
@@ -227,6 +238,8 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           // structure comes with it.
           root: '',
           setName: folderName,
+          // One submix per member per song, of everything they don't keep.
+          members: o.members ?? (await bandMembers(band)),
           resolvePath: (relative) => resolveStemPath(setPath, relative),
           readFile: async (path) => (await readBytes(path)).bytes,
           readSlice: async (path, start, end) => {

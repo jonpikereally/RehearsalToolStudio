@@ -150,6 +150,21 @@ export interface PreparedPart {
    * fader beside the band's drums. Always a `mix` and always `reference`.
    */
   record?: boolean;
+  /**
+   * Not a fader of its own: a part the player is to drop unless it knows what
+   * to do with it. A member's submix is written hidden, so a player that has
+   * never heard of submixes ignores the file rather than playing it over the
+   * parts it already stands for.
+   */
+  hidden?: boolean;
+  /**
+   * A submix's contract with the website. `submixFor` is the member it is
+   * for, matched the way a rig file's `member` is — trimmed, case ignored —
+   * and `submixOf` is the parts it stands for, by their own `name` fields, so
+   * one fader can go up in place of four and say which four.
+   */
+  submixFor?: string;
+  submixOf?: string[];
   /*
    * What an audio part was made from — the studio's facts about the stem,
    * for whoever wonders why a part sounds as it does. All optional; a part

@@ -13,6 +13,7 @@ import * as local from './localSource';
 import { normalisePath } from './paths.ts';
 import { setToolsAlone } from './toolsAlone';
 import { prepareRunning } from './prepareState';
+import { isSubmixFile } from './members.ts';
 import { rememberSession, type OutputSet } from './locatePrepared.ts';
 import { rememberRecentOutput, rememberRecentSession } from './recent.ts';
 import { note } from './saveLog.ts';
@@ -649,7 +650,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // them would be slow and would import every song several times over.
       // Prints the app made are attached to their songs afterwards, not scanned
       // as songs of their own.
-      const usable = files.filter((f) => !isProjectScaffolding(f.path) && !isPrint(f.path));
+      /*
+       * A member's submix is a sum of parts that are themselves in the folder,
+       * so reading one as a stem would give a song every part twice over, the
+       * second time all at once. It is written for the phones, not for here.
+       */
+      const usable = files.filter((f) => !isProjectScaffolding(f.path) && !isPrint(f.path) && !isSubmixFile(f.name));
       const prints = findPrints(files);
       // Facts a prepared set's folder names have no room for.
       const manifests = files.filter((f) => isPreparedSet(f.path) && isManifestName(f.name));

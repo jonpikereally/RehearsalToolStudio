@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseAls } from './alsParser';
 import { preparedNameFor } from './locatePrepared.ts';
-import { audioKeysFor, standingFor, titlesOf } from './prepareRun.ts';
+import { audioKeysFor, bandMembers, standingFor, titlesOf } from './prepareRun.ts';
 import { readBytes } from './source';
 import { useStore } from './store';
 
@@ -52,7 +52,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
           return;
         }
         const project = await parseAls((await readBytes(setPath)).bytes);
-        const keys = await audioKeysFor(project, setPath);
+        const keys = await audioKeysFor(project, setPath, await bandMembers(band));
         const folder = outputSet?.name ?? (await preparedNameFor(band, setPath, keys.byName));
         const standing = await standingFor(project, setPath, band, folder, keys);
         if (!live) return;

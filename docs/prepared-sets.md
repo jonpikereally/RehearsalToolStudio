@@ -122,7 +122,42 @@ length of the song, and is meant to be played alongside the others.
   bounce (`Full Mix`) is a `mix` too, but not the record.
 - **A combined part** is several tracks summed into one, under a name typed
   in the Studio, `[band]` by default. It is pulled down as a whole if the sum
-  would clip, and left alone otherwise.
+  would clip, and left alone otherwise. How far it was pulled down is written
+  as `gainDb` on its entry.
+- **A member's submix** is a combined part chosen for one person rather than
+  typed: `<Title> [submix <member>].mp3`, everything that member does not keep
+  on a fader of their own, summed at unity. It is a part like any other —
+  same lead-in, same 192 kbps, same rate — and is declared with three fields
+  on its `parts` entry:
+
+  ```json
+  {
+    "label": "submix alex",
+    "name": "submix alex",
+    "file": "Cruel Summer [submix alex].mp3",
+    "role": "stem",
+    "hidden": true,
+    "submixFor": "Alex",
+    "submixOf": ["drums", "bass", "keys", "ref vox"]
+  }
+  ```
+
+  - **`hidden: true` is required**, and is what makes it safe to write before
+    anything reads it: a player that drops hidden parts ignores the file
+    rather than playing it on top of the parts inside it.
+  - **`submixOf`** names the parts it stands for, by their own `name` fields —
+    `"drums"`, not the file name — so one fader can go up in place of four.
+  - **`submixFor`** is the member, matched the way a rig file's `member` is:
+    trimmed, case ignored. A player whose user matches loads that part plus
+    every part not named in `submixOf`, and nothing else; anyone else, and any
+    song with no submix, loads every part as before.
+
+  The record itself is never in a submix, nor are the click and cues, which
+  are sampler parts and not audio to sum. A submix that would stand for fewer
+  than two parts is not written: that is a part under a worse name. Who the
+  band are, and what each of them keeps separate, is `members.json` at the
+  root of the band's folder — the Studio's own file, and the only thing that
+  has to be set for any of this to happen.
 - **The click and cues are sampler parts, not files.** A click is a short
   sample struck on every beat and a cue track a handful of spoken files
   along the song; rendering either into a song-length MP3 made megabytes of

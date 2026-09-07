@@ -1,5 +1,6 @@
 import type { AlsProject, AlsSong } from './alsParser';
-import { partsFor, type SongPlan } from './prepare.ts';
+import { partsFor, submixPartsFor, type SongPlan } from './prepare.ts';
+import type { MemberMix } from './members.ts';
 
 /**
  * A song's audio, as a key: everything that decides what its parts sound
@@ -28,6 +29,13 @@ export interface AudioKeyInputs {
   bitrate: number;
   sampleRate: number;
   plan?: SongPlan;
+  /**
+   * The band's submixes. A member added, or one of them keeping a different
+   * part separate, changes what is written for this song — so it changes the
+   * key, and the song is rendered again rather than left with a submix that
+   * no longer describes anybody.
+   */
+  members?: MemberMix[];
 }
 
 /** 64 bits of FNV-1a as sixteen hex digits: enough to notice a change with. */
@@ -101,7 +109,10 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
     files: files.join('\n'),
     arrangement: `${tempo}\n${arrangement.join('\n')}`,
     mix: mix.join('\n'),
-    settings: `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`,
+    settings: [
+      `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`,
+      ...submixPartsFor(song, parts, inputs.members ?? []).map((p) => `${p.name} of ${p.submix?.of.join(', ')}`),
+    ].join('\n'),
   };
 }
 

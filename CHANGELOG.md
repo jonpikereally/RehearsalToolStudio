@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Write each member the one part they need beside the ones they play**
+
+A phone holding eight parts per song holds and decodes eight files, when the person carrying it plays one of them and wants the rest as a single thing to play along to. So the studio writes that single thing: one submix per member per song — everything they are not keeping on a fader of their own, summed here from the multitrack at the same 192 kbps the stems are written at, rather than on every phone from stems already compressed once.
+
 **Do it in the page when the app is too old to have the window**
 
 The Changes button asked the app for a window and the app, built before that window existed, dropped the message without a word — so the button did nothing at all. The app is rebuilt by hand, so it can always be older than the page the server is showing it; the page can't assume it understands.

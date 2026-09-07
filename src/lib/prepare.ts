@@ -8,6 +8,7 @@ import { songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
+import { keepsPart, submixLabel, type MemberMix } from './members.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
@@ -106,6 +107,12 @@ export interface PrepareOptions {
    * every track as its own part, which is the whole-set default.
    */
   plan?: Record<string, SongPlan>;
+  /**
+   * The band, and what each of them keeps on a fader of their own. Each gets
+   * one submix per song of everything else — see submixPartsFor. None given,
+   * none written, which is every set prepared before this existed.
+   */
+  members?: MemberMix[];
   /**
    * The manifest already in the destination, when there is one.
    *
@@ -219,6 +226,8 @@ export interface PlannedPart {
   reference: boolean;
   /** True for a sum of several tracks, which is pulled down if it clips. */
   combined: boolean;
+  /** Set on a member's submix: whose it is, and which parts it stands for. */
+  submix?: { for: string; of: string[] };
 }
 
 /** The parts a song will be written as, given its plan — or all of it without one. */
@@ -237,6 +246,43 @@ export function partsFor(song: AlsSong, plan?: SongPlan): PlannedPart[] {
     const stems = group.stems.map(find).filter((s): s is AlsSong['stems'][number] => !!s);
     if (!stems.length || !group.name.trim()) continue;
     out.push({ name: group.name.trim(), stems, reference: false, combined: true });
+  }
+  return out;
+}
+
+/**
+ * One submix per member: everything they are not keeping on a fader of their
+ * own, summed into a single part.
+ *
+ * Planned as an ordinary combined part, so it is rendered by the same path as
+ * any other — the same clips, the same shifts, the same lead-in, the same
+ * pull-down when a sum would clip. Nothing else would do: a submix a few
+ * milliseconds out from the click is worse than no submix at all.
+ *
+ * Left unwritten when it would stand for fewer than two parts, which is a
+ * part under a worse name, and the record itself is never in one: it is what
+ * the band play against, not one of the things they play.
+ */
+export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: MemberMix[]): PlannedPart[] {
+  const out: PlannedPart[] = [];
+  const named = parts
+    .filter((part) => !part.submix)
+    .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference) }));
+  for (const member of members) {
+    if (member.off || !member.member.trim()) continue;
+    const folded = named.filter(({ part, info }) => !info.record && !keepsPart(member, info.label) && !keepsPart(member, info.name)
+      // A click or a cue track is a pattern striking samples, not audio to
+      // sum: kilobytes on the phone either way, and nothing to fold in.
+      && !(part.stems.length === 1 && isSetStem(part.stems[0])));
+    if (folded.length < 2) continue;
+    const stems = folded.flatMap(({ part }) => part.stems);
+    out.push({
+      name: submixLabel(member.member),
+      stems,
+      reference: false,
+      combined: true,
+      submix: { for: member.member.trim(), of: folded.map(({ info }) => info.name) },
+    });
   }
   return out;
 }
@@ -312,6 +358,13 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
   const gain = part.combined ? 1 : (part.stems[0]?.gain ?? 1);
   return {
     file: partFileName(song.title, part.name, part.reference),
+    /*
+     * A submix is declared hidden, and says whose it is and what it stands
+     * for. Hidden is what makes it safe to write before anything reads it:
+     * every player drops hidden parts, so one that doesn't understand submixes
+     * ignores the file rather than playing it on top of the parts inside it.
+     */
+    ...(part.submix ? { role: 'stem' as const, hidden: true, submixFor: part.submix.for, submixOf: part.submix.of } : {}),
     sources: part.stems.map((s) => s.name),
     ...(part.stems.some((s) => s.frozen) ? { frozen: true } : {}),
     ...(shifted
@@ -663,7 +716,9 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     /** How many of this song's parts were written as patterns, not files. */
     let samplerHere = 0;
 
-    const parts = partsFor(song, opts.plan?.[song.title]);
+    const own = partsFor(song, opts.plan?.[song.title]);
+    // A member's submix is one more part to write, and is written like one.
+    const parts = [...own, ...submixPartsFor(song, own, opts.members ?? [])];
 
     /*
      * Every clip of this song that Live plays transposed or at another speed,
@@ -875,10 +930,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
          * has nowhere to put it. A combined part that clips is pulled down
          * as a whole — quieter, but faithful — and left alone otherwise.
          */
+        let pulledDb = 0;
         if (part.combined) {
           const peak = peakOf(flat);
           if (peak > 1) {
             const gain = 0.99 / peak;
+            pulledDb = Math.round(20 * Math.log10(gain) * 10) / 10;
             for (let c = 0; c < flat.numberOfChannels; c++) {
               const data = flat.getChannelData(c);
               for (let i = 0; i < data.length; i++) data[i] *= gain;
@@ -898,7 +955,14 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         }
         report('writing', 1);
         await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
-        const info = { ...partInfoFor(song.title, part.name, part.reference), ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate) };
+        const info = {
+          ...partInfoFor(song.title, part.name, part.reference),
+          ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate),
+          // How far a sum had to come down to fit: said, because a submix a
+          // decibel under the parts it stands for is a submix somebody will
+          // otherwise wonder about.
+          ...(pulledDb ? { gainDb: pulledDb } : {}),
+        };
         wroteParts.push(info);
         if (info.record) records.push({ song: song.title, part: info.label });
         partsWritten++;

@@ -1849,6 +1849,66 @@ group('preparing a set');
 
 /* ---------------------- what a folder name can't carry --------------------- */
 
+/* ------------------------------ submixes ---------------------------------- */
+
+group('a member\'s submix');
+{
+  const { submixPartsFor, partsFor, partInfoFor, partFileName } = await import('../src/lib/prepare.ts');
+  const { DEFAULT_KEEPS, isSubmixFile, keepsPart, parseMembers, submixLabel } = await import('../src/lib/members.ts');
+
+  const stem = (name, over = {}) => ({
+    name, reference: false, gain: 1, pan: 0, muted: false, soloed: false, frozen: false, sends: [], devices: [],
+    clips: [{ path: `${name}.wav`, startBar: 1, endBar: 33, sourceStartSec: 0, fadeInSec: 0, fadeOutSec: 0, disabled: false, gain: 1, semitones: 0, speed: 1 }],
+    ...over,
+  });
+  const song = {
+    title: 'Cruel Summer', raw: '', startBar: 1, endBar: 65, bpm: 120, key: 'G', durationText: null, tags: [], flags: [],
+    endsAtStop: true, slateBars: [], sections: [], chords: [], lyrics: [], lanes: [], tempoChanges: [], rigMarks: [],
+    timeSigNum: 4, timeSigDen: 4, notes: '',
+    stems: [stem('CLICK'), stem('DRUMS'), stem('BASS'), stem('KEYS'), stem('GTR'), stem('REF VOX', { reference: true }), stem('REF SONG', { reference: true })],
+  };
+  const parts = partsFor(song);
+  const of = (member) => submixPartsFor(song, parts, [member]);
+
+  const alex = { member: 'Alex', keeps: [...DEFAULT_KEEPS, 'gtr'] };
+  const [mix] = of(alex);
+  check('the submix folds in everything the member does not keep',
+    mix.submix.of.join(', ') === 'drums, bass, keys, vox', mix.submix.of.join(', '));
+  check('and never the record itself', !mix.submix.of.some((n) => /song/i.test(n)), mix.submix.of.join());
+  check('the click is left out: it is a pattern, not audio to sum',
+    !mix.stems.some((s) => /click/i.test(s.name)), mix.stems.map((s) => s.name).join());
+  check('it is named for the member, and written as a part like any other',
+    mix.name === submixLabel('Alex') && mix.combined && !mix.reference
+      && partFileName(song.title, mix.name) === 'Cruel Summer [submix alex].mp3',
+    partFileName(song.title, mix.name));
+  check('and it is declared hidden, saying whose it is and what it stands for',
+    partInfoFor(song.title, mix.name, false).role === undefined, JSON.stringify(partInfoFor(song.title, mix.name, false)));
+
+  check('a member who keeps nearly everything gets no submix of one part',
+    of({ member: 'Sam', keeps: ['click', 'cues', 'drums', 'bass', 'keys', 'gtr'] }).length === 0);
+  check('and one who is switched off gets none either',
+    of({ member: 'Sam', keeps: DEFAULT_KEEPS, off: true }).length === 0);
+  check('two members get two submixes, each with its own list',
+    submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: [...DEFAULT_KEEPS, 'keys'] }]).map((p) => p.name).join() ===
+      'submix alex,submix casey');
+
+  check('a submix is not read back as a stem',
+    isSubmixFile('Cruel Summer [submix alex].mp3') && !isSubmixFile('Cruel Summer [drums].mp3'));
+  check('keeps are matched however they are written', keepsPart({ member: 'x', keeps: ['Ref Vox'] }, 'ref vox'));
+  const { audioKeyFor } = await import('../src/lib/audioKey.ts');
+  const inputs = { fileRev: () => 'r1', bitrate: 192, sampleRate: 48000 };
+  const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [song] };
+  const keyWith = (members) => audioKeyFor(song, project, { ...inputs, members });
+  check('a song is stale when the band\'s submixes change, and not otherwise',
+    keyWith([]) !== keyWith([alex]) && keyWith([alex]) === keyWith([{ ...alex }])
+      && keyWith([alex]) !== keyWith([{ member: 'Alex', keeps: ['click', 'cues'] }]),
+    [keyWith([]), keyWith([alex])].join(' | '));
+
+  check('a member list read back keeps one entry per person',
+    parseMembers({ members: [{ member: ' Alex ', keeps: ['click'] }, { member: 'alex', keeps: [] }, { member: '', keeps: [] }] })
+      .map((m) => m.member).join() === 'Alex');
+}
+
 group('prepared set manifest');
 {
   const { applyManifest, isManifestName, setFolderOf } = await import('../src/lib/preparedSet.ts');

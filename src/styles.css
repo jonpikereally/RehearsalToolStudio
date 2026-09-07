@@ -2639,6 +2639,51 @@ input[type='range'] {
   overflow-y: auto;
 }
 
+/* ------------------------------ the band ---------------------------------- */
+
+.member {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  background: var(--bg-raised);
+}
+
+.member-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.member-head strong {
+  font-size: 15px;
+}
+
+.member-head .switch-row {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.member-head .switch-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+/* The parts they keep on their own faders; everything else is summed. */
+.member-keeps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.member-keeps .control-label {
+  margin-right: 4px;
+}
+
 /* --------------------------- the changes window --------------------------- */
 
 .changes {
