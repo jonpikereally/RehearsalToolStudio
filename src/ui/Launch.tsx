@@ -5,23 +5,24 @@ import { setToolsAlone } from '../lib/toolsAlone';
 import * as local from '../lib/localSource';
 import type { FolderSessions } from '../lib/localSource';
 import { createOutputSet, outputSets, type OutputSet } from '../lib/locatePrepared';
-import { recentOutput, recentSession, takeAsk } from '../lib/recent';
+import { alwaysOpen, recentOutput, recentSession, setAlwaysOpen, takeAsk } from '../lib/recent';
+import { chooserChose, chooserWantsTools, isChooserWindow } from '../lib/appWindow';
 import { SETS_FOLDER } from '../lib/prints';
 import { safeSetName } from '../lib/setName';
 
 /**
- * The window a launch opens with: what goes out, and what comes in.
+ * The window a launch opens with: what comes in, and where it goes out.
  *
- * The studio works between two places — a set folder in the band's Dropbox
- * that the phones read, and the Ableton session that fills it — and until it
- * knows both it can't say whether they are in step. So both are chosen here,
- * side by side, before the four tabs appear: the folder on the left, the
- * session on the right, and the pair opened together.
+ * The studio works between two places — an Ableton session, and a set folder
+ * in the band's Dropbox that the phones read — and until it knows both it
+ * can't say whether they are in step. So both are chosen here, side by side,
+ * and opened together.
  *
  * The usual answer to both is “the same as last time”, so each side offers
- * what it opened last as its first button, and can be told to take it without
- * asking. Told that on both sides, this window is skipped entirely — File ▸
- * Open (⌘N) brings it back, and always asks when it is asked for.
+ * what it opened last first, and can be told to take it without asking. In
+ * the Mac app this is a small window of its own in front of the studio: what
+ * it chooses is handed back to the window behind, and closing it changes
+ * nothing.
  */
 
 const asPath = (dir: string, name: string) => `${dir}/${name}`;
@@ -31,9 +32,18 @@ const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 /** Copies the studio's own tools wrote: sessions to open, not sets of yours. */
 const isStudioCopy = (name: string) => /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i.test(name);
 
+/** The one thing a side offers first, and what is on it once something is chosen. */
+function Pick({ on, title, note, onClick }: { on: boolean; title: string; note: string; onClick: () => void }) {
+  return (
+    <button className={on ? 'launch-pick on' : 'launch-pick'} onClick={onClick}>
+      <span className="launch-pick-title">{title}</span>
+      <span className="launch-pick-sub">{note}</span>
+    </button>
+  );
+}
+
 export default function Launch() {
-  const { settings, saveSettings, publishFolderName, publishFolder, pickPublishFolder, chooseOutput, openSession, sessionPath } =
-    useStore();
+  const { publishFolderName, publishFolder, pickPublishFolder, chooseOutput, openSession, sessionPath } = useStore();
 
   /* What is chosen so far, on each side. Nothing is opened until both are. */
   const [output, setOutput] = useState<OutputSet | null>(null);
@@ -41,7 +51,7 @@ export default function Launch() {
 
   const [sets, setSets] = useState<OutputSet[] | null>(null);
   const [folder, setFolder] = useState<FolderSessions | null>(null);
-  const [listing, setListing] = useState(false);
+  const [always, setAlways] = useState(alwaysOpen);
   const [outError, setOutError] = useState<string | null>(null);
   const [inError, setInError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -49,25 +59,19 @@ export default function Launch() {
   const [making, setMaking] = useState(false);
   const [newName, setNewName] = useState('');
 
-  /* Asked for from the menu, this window always asks, whatever the settings say. */
+  /* Asked for on purpose, this window asks, whatever the switches say. */
   const [ask] = useState(takeAsk);
   const auto = useRef(false);
+  const ownWindow = isChooserWindow();
 
-  const remembered = useRef<{ output: OutputSet | null; session: string | null }>({
-    output: recentOutput(),
-    session: recentSession(),
-  });
+  const remembered = useRef({ output: recentOutput(), session: recentSession() });
 
-  /** The set folders in the band's folder, and which of them was last worked in. */
+  /** The set folders in the band's folder, newest first. */
   const loadSets = useCallback(async () => {
     setOutError(null);
     try {
       const band = await publishFolder();
-      if (!band) {
-        setSets([]);
-        return;
-      }
-      setSets(await outputSets(band));
+      setSets(band ? await outputSets(band) : []);
     } catch (err) {
       setOutError(err instanceof Error ? err.message : String(err));
       setSets([]);
@@ -79,40 +83,31 @@ export default function Launch() {
   }, [loadSets, publishFolderName]);
 
   /** The sessions sitting beside one: the folder's other saves and sets. */
-  const loadFolder = useCallback(async (dir: string) => {
-    setListing(true);
-    try {
-      const found = await local.sessionsIn(dir);
-      setFolder({ ...found, files: found.files.filter((f) => !isStudioCopy(f.name)) });
-      return found;
-    } finally {
-      setListing(false);
-    }
+  const loadFolder = useCallback(async (found: FolderSessions | null) => {
+    if (found) setFolder({ ...found, files: found.files.filter((f) => !isStudioCopy(f.name)) });
   }, []);
 
-  /* The folder to offer sessions from: the one in hand, else the last opened. */
   useEffect(() => {
     const start = session ?? sessionPath ?? remembered.current.session;
     if (!start) {
-      void local
-        .sessionsInStored('songs')
-        .then((found) => found && setFolder({ ...found, files: found.files.filter((f) => !isStudioCopy(f.name)) }))
-        .catch(() => undefined);
+      void local.sessionsInStored('songs').then(loadFolder).catch(() => undefined);
       return;
     }
     if (folder && dirOf(start) === folder.dir) return;
-    void loadFolder(dirOf(start)).catch(() => undefined);
+    void local.sessionsIn(dirOf(start)).then(loadFolder).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, sessionPath, loadFolder]);
 
-  /** Open the pair: the folder is set first, and handed to the session too. */
+  /**
+   * Open the pair. In its own window that means handing them to the studio
+   * behind, which is the one holding the set; on its own it opens them here.
+   */
   const openBoth = useCallback(
     async (set: OutputSet, alsPath: string) => {
       setOpening(nameOf(alsPath));
       setInError(null);
+      if (ownWindow && chooserChose({ folder: set.folder, name: set.name, session: alsPath })) return;
       try {
-        // Remembered by the open itself, once it has worked: a folder that
-        // could not be opened is not the folder to offer first next time.
         chooseOutput(set);
         await openSession(alsPath, set);
       } catch (err) {
@@ -120,32 +115,29 @@ export default function Launch() {
         setOpening(null);
       }
     },
-    [chooseOutput, openSession],
+    [chooseOutput, openSession, ownWindow],
   );
 
-  /*
-   * Both sides told to take what they had last, and both still there: open
-   * them and let the studio come up where it left off. Once per window, and
-   * never when this window was asked for on purpose.
-   */
+  /* What each side offers first: what it opened last, else the likeliest. */
   const recentSet = remembered.current.output
     ? (sets?.find((s) => s.folder === remembered.current.output!.folder) ?? remembered.current.output)
     : (sets?.[0] ?? null);
   const recentAls = remembered.current.session ?? recentSet?.session ?? null;
 
+  /*
+   * Both sides told to take what they had last: fill them in, and open them
+   * when this window was met on the way in rather than asked for. In the Mac
+   * app the studio does that for itself and never opens this window at all.
+   */
   useEffect(() => {
-    if (ask || auto.current || sets === null || opening) return;
-    if (!settings.alwaysRecentOutput && !settings.alwaysRecentSession) return;
-    const set = settings.alwaysRecentOutput ? recentSet : null;
-    const als = settings.alwaysRecentSession ? recentAls : null;
-    if (set && !output) setOutput(set);
-    if (als && !session) setSession(als);
-    if (settings.alwaysRecentOutput && settings.alwaysRecentSession && set && als) {
-      auto.current = true;
-      void openBoth(set, als);
-    }
+    if (auto.current || sets === null || opening) return;
+    if (always.output && recentSet && !output) setOutput(recentSet);
+    if (always.session && recentAls && !session) setSession(recentAls);
+    if (ask || ownWindow || !always.output || !always.session || !recentSet || !recentAls) return;
+    auto.current = true;
+    void openBoth(recentSet, recentAls);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ask, sets, settings.alwaysRecentOutput, settings.alwaysRecentSession, recentSet, recentAls, opening]);
+  }, [ask, sets, always, recentSet, recentAls, opening]);
 
   /** Choosing a folder offers the session it remembers, when none is chosen yet. */
   const takeOutput = (set: OutputSet) => {
@@ -162,9 +154,8 @@ export default function Launch() {
         description: 'the Ableton session the prepared files are made from',
         extensions: ['als'],
       });
-      const path = asPath(picked.dir, picked.name);
-      setSession(path);
-      await loadFolder(picked.dir).catch(() => undefined);
+      setSession(asPath(picked.dir, picked.name));
+      await local.sessionsIn(picked.dir).then(loadFolder).catch(() => undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/abort/i.test(message)) setInError(message);
@@ -177,7 +168,6 @@ export default function Launch() {
     try {
       const band = (await publishFolder()) ?? (await pickPublishFolder());
       const made = await createOutputSet(band, newName, session);
-      setMaking(false);
       setNewName('');
       await loadSets();
       takeOutput(made);
@@ -198,29 +188,27 @@ export default function Launch() {
     }
   };
 
+  const toolsOnly = () => {
+    if (ownWindow && chooserWantsTools()) return;
+    setToolsAlone(true);
+    navigate('/tools');
+  };
+
   const when = (iso?: string) => {
     const d = iso ? new Date(iso) : null;
-    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString([], { day: 'numeric', month: 'short' }) : null;
   };
   const describe = (set: OutputSet) =>
-    [
-      set.songs ? `${set.songs} song${set.songs === 1 ? '' : 's'}` : 'nothing prepared yet',
-      when(set.preparedAt) ? `prepared ${when(set.preparedAt)}` : null,
-    ]
+    [set.songs ? `${set.songs} songs` : 'nothing prepared yet', when(set.preparedAt) ? `prepared ${when(set.preparedAt)}` : null]
       .filter(Boolean)
       .join(' · ');
 
   if (opening) {
     return (
-      <>
-        <div className="topbar">
-          <h1>Opening</h1>
-        </div>
-        <div className="empty">
-          <h2>{output?.name ?? 'The set'}</h2>
-          <p>Reading {opening} and everything it names…</p>
-        </div>
-      </>
+      <div className="launch-busy">
+        <h2>{output?.name ?? 'The set'}</h2>
+        <p>Reading {opening} and everything it names…</p>
+      </div>
     );
   }
 
@@ -228,226 +216,183 @@ export default function Launch() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>
-          Open a set
-          <span className="sub" style={{ display: 'block' }}>
-            where the prepared files go, and the Ableton session they are made from
-          </span>
-        </h1>
-        <button className="icon-btn" onClick={() => void loadSets()} disabled={sets === null} title="Look again">
-          ⟳
-        </button>
-      </div>
-
       <div className="launch">
-        {/* ------------------------------ output ------------------------------ */}
+        {/* ------------------------------ input ------------------------------- */}
         <section className="launch-card">
-          <header>
-            <span className="launch-step">Output</span>
-            <h3>The band’s set folder</h3>
-            <p>The folder in {publishFolderName ? `“${publishFolderName}”` : 'the band’s folder'} the phones read. Everything prepared lands here.</p>
-          </header>
-
-          {outError && <div className="notice error">{outError}</div>}
-
-          {recentSet ? (
-            <button
-              className={output?.folder === recentSet.folder ? 'launch-pick on' : 'launch-pick'}
-              onClick={() => takeOutput(recentSet)}
-            >
-              <span className="launch-pick-title">{recentSet.name}</span>
-              <span className="launch-pick-sub">
-                {remembered.current.output ? 'last opened' : 'most recently prepared'} · {describe(recentSet)}
-              </span>
-            </button>
-          ) : (
-            <div className="notice quiet">{sets === null ? 'Looking in the band’s folder…' : 'No set folders yet — make the first one.'}</div>
-          )}
-
-          {output && output.folder !== recentSet?.folder && (
-            <button className="launch-pick on" onClick={() => takeOutput(output)}>
-              <span className="launch-pick-title">{output.name}</span>
-              <span className="launch-pick-sub">{describe(output)}</span>
-            </button>
-          )}
-
-          <label className="switch-row">
-            <input
-              type="checkbox"
-              checked={settings.alwaysRecentOutput}
-              onChange={(e) => saveSettings({ alwaysRecentOutput: e.target.checked })}
-            />
-            <span>
-              Always open the most recent output folder
-              <span className="hint">Don’t ask for it again — File ▸ Open still brings this window back.</span>
-            </span>
-          </label>
-
-          <div className="btn-row">
-            <button className="btn" onClick={() => { setChoosing((c) => !c); setMaking(false); }} disabled={sets === null}>
-              {choosing ? 'Never mind' : 'Choose another folder…'}
-            </button>
-            <button className="btn" onClick={() => { setMaking((m) => !m); setChoosing(false); if (!newName && session) setNewName(nameOf(session).replace(/\.als$/i, '')); }}>
-              {making ? 'Never mind' : 'New output folder…'}
-            </button>
-          </div>
-
-          {making && (
-            <div className="launch-sub">
-              <div className="field stacked">
-                <label htmlFor="new-set-name">
-                  Call the folder
-                  <span className="hint">
-                    Made under {SETS_FOLDER}/, fed by {session ? nameOf(session) : 'the session chosen on the right'}.
-                  </span>
-                </label>
-                <div className="btn-row">
-                  <input
-                    id="new-set-name"
-                    className="text-input"
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Friday at the Dock"
-                    style={{ minWidth: 200 }}
-                  />
-                  <button className="btn primary" onClick={() => void makeFolder()} disabled={!session || !safeSetName(newName)}>
-                    Make it
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {choosing && (
-            <div className="launch-list">
-              {sets?.length ? (
-                sets.map((set) => (
-                  <button
-                    key={set.folder}
-                    className={output?.folder === set.folder ? 'row on' : 'row'}
-                    onClick={() => takeOutput(set)}
-                  >
-                    <div className="row-main">
-                      <div className="row-title">{set.name}</div>
-                      <div className="row-sub">
-                        {describe(set)}
-                        {set.session ? ` · from ${nameOf(set.session)}` : ' · no session named yet'}
-                      </div>
-                    </div>
-                    <div className="row-right">›</div>
-                  </button>
-                ))
-              ) : (
-                <div className="notice quiet">Nothing under {SETS_FOLDER}/ yet.</div>
-              )}
-            </div>
-          )}
-
-          <button className="linky" onClick={() => void changeBand()}>
-            {publishFolderName ? `Band’s folder: ${publishFolderName} — change…` : 'Choose the band’s folder…'}
-          </button>
-        </section>
-
-        {/* ------------------------------- input ------------------------------ */}
-        <section className="launch-card">
-          <header>
+          <h3>
             <span className="launch-step">Input</span>
-            <h3>The Ableton session</h3>
-            <p>The .als the set is made from. Its own folder is where the stems are read.</p>
-          </header>
-
-          {inError && <div className="notice error">{inError}</div>}
+            Ableton session
+          </h3>
 
           {recentAls ? (
-            <button className={session === recentAls ? 'launch-pick on' : 'launch-pick'} onClick={() => setSession(recentAls)}>
-              <span className="launch-pick-title">{nameOf(recentAls)}</span>
-              <span className="launch-pick-sub">
-                {remembered.current.session === recentAls ? 'last opened' : 'what this folder was prepared from'} · in {nameOf(dirOf(recentAls))}
-              </span>
-            </button>
+            <Pick
+              on={session === recentAls}
+              title={nameOf(recentAls)}
+              note={`${remembered.current.session === recentAls ? 'opened last' : 'what the folder was made from'} · in ${nameOf(dirOf(recentAls))}`}
+              onClick={() => setSession(recentAls)}
+            />
           ) : (
-            <div className="notice quiet">No session opened yet — choose the .als below.</div>
+            <div className="launch-none">No session opened yet.</div>
+          )}
+
+          {session && session !== recentAls && (
+            <Pick on title={nameOf(session)} note={`in ${nameOf(dirOf(session))}`} onClick={() => undefined} />
           )}
 
           <label className="switch-row">
             <input
               type="checkbox"
-              checked={settings.alwaysRecentSession}
-              onChange={(e) => saveSettings({ alwaysRecentSession: e.target.checked })}
+              checked={always.session}
+              onChange={(e) => setAlways(setAlwaysOpen({ session: e.target.checked }))}
             />
-            <span>
-              Always open the most recent Ableton set
-              <span className="hint">With the folder above set the same way, the studio opens straight into the tabs.</span>
-            </span>
+            <span>Always open the most recent</span>
           </label>
 
-          <div className="field stacked">
-            <label htmlFor="launch-session">
-              Sessions in {folder ? `“${folder.name}”` : 'the current folder'}
-              <span className="hint">
-                {listing
-                  ? 'Looking…'
-                  : folder?.files.length
-                    ? 'An older save, or another set kept beside it.'
-                    : 'Nothing to choose from until a folder has been opened.'}
-              </span>
-            </label>
+          <div className="launch-row">
             <select
-              id="launch-session"
               className="jump-select"
+              aria-label={`Sessions in ${folder?.name ?? 'this folder'}`}
               value={session && folder && dirOf(session) === folder.dir ? nameOf(session) : ''}
               onChange={(e) => e.target.value && folder && setSession(asPath(folder.dir, e.target.value))}
               disabled={!folder?.files.length}
             >
-              <option value="">{folder?.files.length ? 'Choose a session…' : 'No sessions in this folder'}</option>
+              <option value="">{folder?.files.length ? `In ${folder.name}…` : 'No other sessions'}</option>
               {folder?.files.map((f) => (
                 <option key={f.name} value={f.name}>
                   {f.name}
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="btn-row">
             <button className="btn" onClick={() => void pickAls()}>
-              Choose a different Ableton folder…
+              Another folder…
             </button>
           </div>
 
-          <button
-            className="linky"
-            onClick={() => {
-              setToolsAlone(true);
-              navigate('/tools');
-            }}
-          >
-            Just use the tools, without the band’s files
-          </button>
+          {inError && <div className="notice error">{inError}</div>}
+        </section>
+
+        {/* ------------------------------ output ------------------------------ */}
+        <section className="launch-card">
+          <h3>
+            <span className="launch-step">Output</span>
+            Set folder
+            {publishFolderName && <span className="launch-where">in {publishFolderName}</span>}
+          </h3>
+
+          {recentSet ? (
+            <Pick
+              on={output?.folder === recentSet.folder}
+              title={recentSet.name}
+              note={`${remembered.current.output ? 'opened last' : 'prepared most recently'} · ${describe(recentSet)}`}
+              onClick={() => takeOutput(recentSet)}
+            />
+          ) : (
+            <div className="launch-none">
+              {sets === null ? 'Looking in the band’s folder…' : 'No set folders yet — make the first one.'}
+            </div>
+          )}
+
+          {output && output.folder !== recentSet?.folder && (
+            <Pick on title={output.name} note={describe(output)} onClick={() => undefined} />
+          )}
+
+          <label className="switch-row">
+            <input
+              type="checkbox"
+              checked={always.output}
+              onChange={(e) => setAlways(setAlwaysOpen({ output: e.target.checked }))}
+            />
+            <span>Always open the most recent</span>
+          </label>
+
+          <div className="launch-row">
+            <button
+              className={choosing ? 'btn on' : 'btn'}
+              onClick={() => {
+                setChoosing((c) => !c);
+                setMaking(false);
+              }}
+              disabled={!sets?.length}
+            >
+              {choosing ? 'Never mind' : 'Another folder…'}
+            </button>
+            <button
+              className={making ? 'btn on' : 'btn'}
+              onClick={() => {
+                setMaking((m) => !m);
+                setChoosing(false);
+                if (!newName && session) setNewName(nameOf(session).replace(/\.als$/i, ''));
+              }}
+            >
+              {making ? 'Never mind' : 'New folder…'}
+            </button>
+          </div>
+
+          {making && (
+            <div className="launch-row">
+              <input
+                className="text-input"
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={`Name it — under ${SETS_FOLDER}/`}
+                aria-label="Name for the new set folder"
+              />
+              <button className="btn primary" onClick={() => void makeFolder()} disabled={!session || !safeSetName(newName)}>
+                Make it
+              </button>
+            </div>
+          )}
+          {making && !session && <div className="launch-none">Choose the session first: the new folder is fed by it.</div>}
+
+          {choosing && (
+            <div className="launch-list">
+              {sets?.map((set) => (
+                <button
+                  key={set.folder}
+                  className={output?.folder === set.folder ? 'row on' : 'row'}
+                  onClick={() => takeOutput(set)}
+                >
+                  <div className="row-main">
+                    <div className="row-title">{set.name}</div>
+                    <div className="row-sub">
+                      {describe(set)}
+                      {set.session ? ` · from ${nameOf(set.session)}` : ' · no session yet'}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {outError && <div className="notice error">{outError}</div>}
         </section>
       </div>
 
       <div className="launch-go">
-        <span>
-          {ready ? (
-            <>
-              <strong>{output!.name}</strong> ← <strong>{nameOf(session!)}</strong>
-            </>
-          ) : output ? (
-            'Now choose the Ableton session it is made from.'
-          ) : session ? (
-            'Now choose the folder the prepared files go into.'
-          ) : (
-            'Choose an output folder and an input session. You can also drop an .als on this window.'
-          )}
-        </span>
+        <div className="launch-pair">
+          <span className="launch-said">
+            <span className="launch-step">Input</span>
+            <strong>{session ? nameOf(session) : 'not chosen'}</strong>
+          </span>
+          <span className="launch-said">
+            <span className="launch-step">Output</span>
+            <strong>{output ? output.name : 'not chosen'}</strong>
+          </span>
+        </div>
         <button className="btn primary" disabled={!ready} onClick={() => ready && void openBoth(output!, session!)}>
           Open
         </button>
       </div>
 
-      <div style={{ height: 24 }} />
+      <div className="launch-aside">
+        <button className="linky" onClick={() => void changeBand()}>
+          {publishFolderName ? `Band’s folder: ${publishFolderName} — change…` : 'Choose the band’s folder…'}
+        </button>
+        <button className="linky" onClick={toolsOnly}>
+          Just use the tools, without the band’s files
+        </button>
+      </div>
     </>
   );
 }

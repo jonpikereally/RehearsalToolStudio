@@ -2368,57 +2368,60 @@ input[type='range'] {
 /* ------------------------- the launch window ------------------------------ */
 
 /*
- * Output and input side by side, because the question is really one question:
- * which folder, filled from which session. Two columns where there is room,
- * one under the other where there isn't.
+ * Input and output side by side, because the question is really one question:
+ * which session, filling which folder. In the Mac app this is a small window
+ * of its own, so everything here is sized for a window that holds two choices
+ * and nothing else.
  */
 .launch {
   display: grid;
-  gap: 14px;
-  padding: 14px 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   align-items: start;
 }
 
 .launch-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.launch-card header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .launch-card h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 650;
 }
 
-.launch-card header p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-dim);
-}
-
-/* Which half of the pair this card is. */
+/* Which half of the pair this is: the same word in the card and in the bar. */
 .launch-step {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--accent);
 }
 
-/* The one thing each side offers first: what it opened last. */
+/* The band's folder, said once, beside the heading it qualifies. */
+.launch-where {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What each side offers first: what it opened last. */
 .launch-pick {
   display: flex;
   flex-direction: column;
@@ -2426,7 +2429,7 @@ input[type='range'] {
   align-items: flex-start;
   text-align: left;
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-raised-2);
@@ -2443,25 +2446,69 @@ input[type='range'] {
 
 .launch-pick-title {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .launch-pick-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing to offer yet, said quietly where the offer would have been. */
+.launch-none {
   font-size: 12.5px;
   color: var(--text-dim);
+  padding: 2px 2px 0;
+}
+
+/* A menu and a button, or a field and a button: one line of controls. */
+.launch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.launch-row > select,
+.launch-row > .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.launch-row > .btn {
+  flex: none;
+}
+
+.launch-card .switch-row {
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.launch-card .switch-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 /* The folders to choose between, folded away until they are asked for. */
 .launch-list {
-  max-height: 260px;
+  max-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 10px;
 }
 
 .launch-list .row {
-  padding: 10px 12px;
-  min-height: 52px;
+  padding: 8px 10px;
+  min-height: 44px;
 }
 
 .launch-list .row:last-child {
@@ -2472,26 +2519,54 @@ input[type='range'] {
   background: var(--accent-dim);
 }
 
-.launch-sub {
+/* What is about to be opened, named on both sides, and the button that does it. */
+.launch-go {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 4px 12px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
 }
 
-.launch-card .switch-row .hint {
-  display: block;
-  font-size: 12px;
-  color: var(--text-faint);
-  margin-top: 2px;
+.launch-pair {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
-.launch-card .field {
-  padding: 0;
+.launch-said {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.launch-said strong {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The two ways out of the pair: another band folder, or no files at all. */
+.launch-aside {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 18px 16px;
 }
 
 /* A choice that is worth offering but not worth a button of its own. */
 .linky {
-  align-self: flex-start;
   padding: 4px 0;
   font-size: 12.5px;
   color: var(--text-dim);
@@ -2504,27 +2579,31 @@ input[type='range'] {
   color: var(--text);
 }
 
-/* What is about to be opened, and the button that does it. */
-.launch-go {
+/* Opening, or waiting on the window that is doing the choosing. */
+.launch-busy {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  margin: 0 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
+  gap: 10px;
+  padding: 48px 24px;
+  text-align: center;
 }
 
-.launch-go span {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
+.launch-busy h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.launch-busy p {
+  margin: 0;
   color: var(--text-dim);
+  font-size: 13.5px;
 }
 
-.launch-go strong {
-  color: var(--text);
+/* The chooser's own window: only the chooser, so it scrolls as one page. */
+.chooser-window .app-body {
+  overflow-y: auto;
 }
 
 /* ---------------------------- first-run choices --------------------------- */

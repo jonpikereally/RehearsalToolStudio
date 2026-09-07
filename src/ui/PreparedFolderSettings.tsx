@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../lib/store';
 import * as local from '../lib/localSource';
 import { SETS_FOLDER } from '../lib/prints';
-import { askForFiles } from '../lib/recent';
+import { alwaysOpen, askForFiles, setAlwaysOpen } from '../lib/recent';
 import { navigate } from '../lib/router';
 import SettingsSection from './SettingsSection';
 
@@ -15,8 +15,8 @@ import SettingsSection from './SettingsSection';
  * going back through the launch screens.
  */
 export default function PreparedFolderSettings() {
-  const { outputSet, chooseOutput, chooseSet, openSession, publishFolder, pickPublishFolder, sessionPath, settings, saveSettings } =
-    useStore();
+  const { outputSet, chooseOutput, chooseSet, openSession, publishFolder, pickPublishFolder, sessionPath } = useStore();
+  const [always, setAlways] = useState(alwaysOpen);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,20 +104,12 @@ export default function PreparedFolderSettings() {
           <span className="hint">With both on, a launch goes straight to the tabs. File ▸ Open (⌘N) always asks.</span>
         </label>
         <label className="switch-row">
-          <input
-            type="checkbox"
-            checked={settings.alwaysRecentOutput}
-            onChange={(e) => saveSettings({ alwaysRecentOutput: e.target.checked })}
-          />
-          <span>Always open the most recent output folder</span>
+          <input type="checkbox" checked={always.session} onChange={(e) => setAlways(setAlwaysOpen({ session: e.target.checked }))} />
+          <span>Always open the most recent Ableton session</span>
         </label>
         <label className="switch-row">
-          <input
-            type="checkbox"
-            checked={settings.alwaysRecentSession}
-            onChange={(e) => saveSettings({ alwaysRecentSession: e.target.checked })}
-          />
-          <span>Always open the most recent Ableton set</span>
+          <input type="checkbox" checked={always.output} onChange={(e) => setAlways(setAlwaysOpen({ output: e.target.checked }))} />
+          <span>Always open the most recent set folder</span>
         </label>
       </div>
     </SettingsSection>

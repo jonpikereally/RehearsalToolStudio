@@ -52,6 +52,47 @@ export function rememberRecentSession(alsPath: string): void {
 }
 
 /**
+ * Whether each side is to take what it had last without asking. Kept on their
+ * own rather than with the settings, because the chooser is its own window:
+ * two windows holding one settings object would write over each other, and
+ * these are read at a launch and set from either window.
+ */
+const LS_ALWAYS_OUTPUT = 'ls.always.output';
+const LS_ALWAYS_SESSION = 'ls.always.session';
+
+export interface AlwaysOpen {
+  output: boolean;
+  session: boolean;
+}
+
+export function alwaysOpen(): AlwaysOpen {
+  try {
+    return {
+      output: localStorage.getItem(LS_ALWAYS_OUTPUT) === '1',
+      session: localStorage.getItem(LS_ALWAYS_SESSION) === '1',
+    };
+  } catch {
+    return { output: false, session: false };
+  }
+}
+
+export function setAlwaysOpen(patch: Partial<AlwaysOpen>): AlwaysOpen {
+  const now = { ...alwaysOpen(), ...patch };
+  try {
+    for (const [key, on] of [
+      [LS_ALWAYS_OUTPUT, now.output],
+      [LS_ALWAYS_SESSION, now.session],
+    ] as const) {
+      if (on) localStorage.setItem(key, '1');
+      else localStorage.removeItem(key);
+    }
+  } catch {
+    /* nothing to remember with; the chooser simply asks every time */
+  }
+  return now;
+}
+
+/**
  * Whether the chooser was asked for on purpose — File ▸ Open — rather than
  * met on the way in. Asked for, it always asks, however the “always open the
  * last one” settings stand: a menu item that opened nothing would be a bug.

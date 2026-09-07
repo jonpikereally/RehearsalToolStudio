@@ -101,9 +101,12 @@ final class StudioWebView: WKWebView {
     }
 }
 
-final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
+final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: StudioWebView!
+    /// The chooser: a small window of its own, in front of the studio.
+    var chooserWindow: NSWindow?
+    var chooserWeb: WKWebView?
     var titleWatch: NSKeyValueObservation?
     /// The build the page was loaded from, to notice when the server has moved on.
     var loadedBuild: String?
@@ -255,6 +258,11 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // The chooser is cheap to load again, and losing it costs nothing.
+        guard webView === web else {
+            webView.reload()
+            return
+        }
         let now = Date()
         let again = contentDiedAt.map { now.timeIntervalSince($0) < 60 } ?? false
         contentDiedAt = now
@@ -285,6 +293,18 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         if body["ready"] as? Bool == true {
             pageReady = true
             open([])
+        }
+        // The chooser: put it up, take what it chose, or take its way past itself.
+        if body["chooser"] as? Bool == true { showChooser() }
+        if let chose = body["chose"] as? [String: Any] {
+            closeChooser()
+            window.makeKeyAndOrderFront(nil)
+            tell("studio:chose", chose)
+        }
+        if body["tools"] as? Bool == true {
+            closeChooser()
+            window.makeKeyAndOrderFront(nil)
+            tell("studio:tools", [:])
         }
         if let wanted = body["awake"] as? Bool {
             if wanted, awake == nil {
@@ -320,9 +340,69 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
                                completionHandler: nil)
     }
 
-    /// File ▸ Open: the page puts its choosing window back up, whatever it is showing.
+    // MARK: - The chooser, in a window of its own.
+
+    /**
+     * A small window in front of the studio for choosing what to open.
+     *
+     * The same page, told by its query which window it is, so there is one
+     * chooser rather than two. It is deliberately smaller than the studio's
+     * window — it holds two choices, not a set — and what it chooses is sent
+     * to the window behind, which is the one that holds the set. Closed
+     * without choosing, nothing has changed.
+     */
+    func showChooser() {
+        if let already = chooserWindow {
+            already.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        guard loadedBuild != nil, let url = URL(string: "http://localhost:5177/?chooser=1") else { return }
+
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "studio")
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        let view = WKWebView(frame: .zero, configuration: config)
+        view.navigationDelegate = self
+        view.uiDelegate = self
+        view.underPageBackgroundColor = ink
+        if #available(macOS 13.3, *) { view.isInspectable = true }
+
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        panel.title = "Open a set"
+        panel.minSize = NSSize(width: 620, height: 460)
+        panel.backgroundColor = ink
+        panel.contentView = view
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
+        // Beside the studio's window rather than over its middle, and where it was last left.
+        if !panel.setFrameUsingName("studio-chooser") { panel.center() }
+        panel.setFrameAutosaveName("studio-chooser")
+
+        chooserWindow = panel
+        chooserWeb = view
+        view.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30))
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func closeChooser() {
+        chooserWindow?.close()
+    }
+
+    /// Let go of the chooser's web view when its window is closed, so the next one is fresh.
+    func windowWillClose(_ note: Notification) {
+        guard (note.object as? NSWindow) === chooserWindow else { return }
+        chooserWeb?.stopLoading()
+        chooserWeb = nil
+        chooserWindow = nil
+    }
+
+    /// File ▸ Open: the chooser, over whatever the studio is showing.
     @objc func openChooser() {
-        tell("studio:menu", ["item": "open"])
+        showChooser()
     }
 
     /// A folder or a set dropped on the Dock icon, or opened with the app from the Finder.

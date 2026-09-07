@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoute, navigate, songUrl } from './lib/router';
 import { closeRun, useRun } from './lib/run';
 import { releaseReady } from './lib/songLoader';
@@ -11,7 +11,9 @@ import SettingsView from './ui/SettingsView';
 import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
-import { askForFiles } from './lib/recent';
+import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
+import { isChooserWindow, showChooser } from './lib/appWindow';
+import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import AutoUpdate from './ui/AutoUpdate';
 
@@ -117,19 +119,90 @@ function useOpenMenu(reopen: () => void) {
   }, [reopen]);
 }
 
+/**
+ * What happens when nothing is open.
+ *
+ * Both sides set to take what they had last, and both still remembered: open
+ * that pair and say nothing. Otherwise the chooser — its own small window in
+ * the Mac app, this page in a browser. Asked for on purpose, it always asks.
+ */
+function useOpenGate(
+  needed: boolean,
+  open: (alsPath: string, into: OutputSet) => Promise<void>,
+): { opening: boolean; inWindow: boolean } {
+  const [opening, setOpening] = useState(false);
+  const [inWindow, setInWindow] = useState(false);
+  const settled = useRef(false);
+  useEffect(() => {
+    if (!needed) {
+      settled.current = false;
+      setInWindow(false);
+      return;
+    }
+    if (settled.current) return;
+    settled.current = true;
+    const asked = takeAsk();
+    const always = alwaysOpen();
+    const set = recentOutput();
+    const als = recentSession() ?? set?.session ?? null;
+    const chooser = () => setInWindow(showChooser());
+    if (asked || !always.output || !always.session || !set || !als) {
+      chooser();
+      return;
+    }
+    setOpening(true);
+    open(als, set)
+      .catch(() => chooser())
+      .finally(() => setOpening(false));
+  }, [needed, open]);
+  return { opening, inWindow };
+}
+
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourcesFolderName, library, openDropped, watching } = useStore();
+  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourcesFolderName, library, openDropped, openSession, watching } = useStore();
   const drop = useDropped(openDropped);
-  /* Back to the choosing window: nothing is closed but the choice itself. */
+  /*
+   * Back to the chooser. In the Mac app it is a window in front of what is
+   * open, so nothing is let go of until something else is chosen; in a
+   * browser there is only this page, so the set is put down to make room.
+   */
   const reopen = useCallback(() => {
     askForFiles();
+    if (showChooser()) return;
     setToolsAlone(false);
     chooseSet(null);
     chooseOutput(null);
     navigate('/');
   }, [chooseSet, chooseOutput]);
   useOpenMenu(reopen);
+
+  /* What the chooser window chose, and its way past itself. */
+  const takeChosen = useCallback(
+    async (alsPath: string, into: OutputSet) => {
+      setToolsAlone(false);
+      chooseOutput(into);
+      await openSession(alsPath, into);
+    },
+    [chooseOutput, openSession],
+  );
+  useEffect(() => {
+    const onChose = (e: Event) => {
+      const detail = (e as CustomEvent<{ set?: OutputSet; session?: string }>).detail;
+      if (!detail?.set || !detail.session) return;
+      void takeChosen(detail.session, detail.set);
+    };
+    const onTools = () => {
+      setToolsAlone(true);
+      navigate('/tools');
+    };
+    window.addEventListener('studio:chose', onChose);
+    window.addEventListener('studio:tools', onTools);
+    return () => {
+      window.removeEventListener('studio:chose', onChose);
+      window.removeEventListener('studio:tools', onTools);
+    };
+  }, [takeChosen]);
   const newerBuild = useNewerBuild();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
@@ -161,13 +234,35 @@ export default function App() {
    * none.
    */
   const aside = section === 'settings' || (section === 'tools' && toolsAlone());
+  const needsChoosing = !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
+  const gate = useOpenGate(needsChoosing, takeChosen);
   let body: JSX.Element | null;
   if (section === 'song' && songId) {
     body = null;
   } else if (!aside && !publishFolderName) {
     body = <Onboarding />;
-  } else if (!aside && (!outputSet || !usingLocalFolder || !currentSet)) {
-    body = <Launch />;
+  } else if (needsChoosing) {
+    /*
+     * The chooser is its own window in the Mac app, so this one says what is
+     * happening and how to get that window back rather than asking again
+     * itself. In a browser there is no other window, so it asks here.
+     */
+    body = gate.opening ? (
+      <div className="launch-busy">
+        <h2>Opening what was open last</h2>
+        <p>Reading the session and everything it names…</p>
+      </div>
+    ) : gate.inWindow ? (
+      <div className="launch-busy">
+        <h2>Choosing what to open</h2>
+        <p>The Open window is in front. Choose an Ableton session and the folder it fills.</p>
+        <button className="btn primary" onClick={() => showChooser()}>
+          Show the Open window
+        </button>
+      </div>
+    ) : (
+      <Launch />
+    );
   } else if (section === 'setlists') {
     body = <SetlistsView />;
   } else if (section === 'setlist' && (route.query.get('id') ?? route.path[1])) {
@@ -190,6 +285,24 @@ export default function App() {
    * where you are — and get back — turns out to matter more, and at the top it
    * is nowhere near the controls you reach for while playing.
    */
+  if (isChooserWindow()) {
+    return (
+      <div className="app chooser-window">
+        <div className="topbar">
+          <h1>
+            Open a set
+            <span className="sub" style={{ display: 'block' }}>
+              an Ableton session, and the folder it fills
+            </span>
+          </h1>
+        </div>
+        <div className="app-body">
+          <Launch />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {newerBuild && (

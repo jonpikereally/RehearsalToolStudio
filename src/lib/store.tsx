@@ -16,6 +16,7 @@ import { prepareRunning } from './prepareState';
 import { rememberSession, type OutputSet } from './locatePrepared.ts';
 import { rememberRecentOutput, rememberRecentSession } from './recent.ts';
 import { navigate } from './router';
+import { isChooserWindow } from './appWindow.ts';
 
 /**
  * Library state, persisted to localStorage for instant startup and written to
@@ -89,14 +90,6 @@ export interface Settings {
    */
   autoUpdate: boolean;
   /**
-   * Open the set folder last worked in without asking for it again, and the
-   * session that fills it. With both on, and both still there, the chooser
-   * is skipped altogether and the studio comes up where it left off; File ▸
-   * Open brings it back whenever it is wanted.
-   */
-  alwaysRecentOutput: boolean;
-  alwaysRecentSession: boolean;
-  /**
    * The output device to play out of, where the browser lets a page choose.
    * Kept with its label as well as its id: ids are opaque, and a device that
    * has gone missing is worth naming rather than showing as a code.
@@ -112,8 +105,6 @@ const DEFAULT_SETTINGS: Settings = {
   keepAwake: true,
   useLocal: false,
   autoUpdate: false,
-  alwaysRecentOutput: false,
-  alwaysRecentSession: false,
   outputDevice: null,
 };
 
@@ -595,7 +586,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * changes — lives only in that file, so starting from whatever the browser
    * happened to be holding is starting from the past.
    */
-  const canReadLibrary = localStatus === 'ready';
+  // The chooser window shows folders and sessions and nothing else: no scan,
+  // no sync, no watch on the set — the window behind it is doing all that.
+  const canReadLibrary = localStatus === 'ready' && !isChooserWindow();
   useEffect(() => {
     if (!canReadLibrary) return;
     void pullNow();
