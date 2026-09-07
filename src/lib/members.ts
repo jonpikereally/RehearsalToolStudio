@@ -155,15 +155,25 @@ export function expectedSubmixOf(parts: PreparedPart[], member: MemberMix): stri
 }
 
 /** Where one prepared song stands for one member. */
-export type SubmixState = 'ready' | 'missing' | 'stale' | 'spare';
+export type SubmixState = 'ready' | 'missing';
 
+/**
+ * Whether the song already holds the submix this member needs. By contents:
+ * a submix is the parts in it, so one written for somebody else who keeps the
+ * same things is this member's submix too.
+ */
 export function submixState(parts: PreparedPart[], member: MemberMix): SubmixState {
   const want = expectedSubmixOf(parts, member);
-  const has = parts.find((part) => part.submixFor && same(part.submixFor, member.member));
-  if (!want.length) return has ? 'spare' : 'ready';
-  if (!has) return 'missing';
-  const wrote = (has.submixOf ?? []).map((n) => clean(n).toLowerCase()).sort().join(',');
-  return wrote === want.map((n) => clean(n).toLowerCase()).sort().join(',') ? 'ready' : 'stale';
+  if (!want.length) return 'ready';
+  return parts.some((part) => part.submixOf && sameParts(part.submixOf, want)) ? 'ready' : 'missing';
+}
+
+/** Submixes in a song that no member's list asks for any more. */
+export function spareSubmixes(parts: PreparedPart[], members: MemberMix[]): string[] {
+  const wanted = members.map((member) => expectedSubmixOf(parts, member)).filter((list) => list.length);
+  return parts
+    .filter((part) => part.submixOf?.length && !wanted.some((want) => sameParts(part.submixOf!, want)))
+    .map((part) => part.name);
 }
 
 /**
@@ -178,13 +188,11 @@ export function submixesBehind(
   const out: { title: string; who: string[] }[] = [];
   for (const song of songs) {
     if (!song.parts?.length) continue;
-    const who = members
-      .filter((member) => {
-        const state = submixState(song.parts!, member);
-        return state === 'missing' || state === 'stale' || state === 'spare';
-      })
-      .map((m) => m.member);
-    if (who.length) out.push({ title: song.title ?? folderBaseOf(song.folder), who });
+    const who = members.filter((member) => submixState(song.parts!, member) === 'missing').map((m) => m.member);
+    // A submix nobody's list asks for any more is behind too: the song is
+    // carrying a file for a band that has moved on.
+    const spare = spareSubmixes(song.parts, members);
+    if (who.length || spare.length) out.push({ title: song.title ?? folderBaseOf(song.folder), who });
   }
   return out;
 }
@@ -200,8 +208,48 @@ export function submixesBehind(
  */
 export const SUBMIX_FOLDER = 'submixes';
 
-/** `Fix You [submix alex].mp3` — the label a member's submix carries. */
-export const submixLabel = (member: string): string => `submix ${clean(member).toLowerCase()}`;
+/**
+ * What a submix is called: the parts inside it, not the person it was worked
+ * out for.
+ *
+ * `Fix You [submix drums+bass+keys].mp3`. A submix is a sum of parts and
+ * nothing else — two members who keep the same things want the same file, and
+ * a file named for one of them is a file the other has to be told about. Named
+ * for its contents it is worth having to anybody who wants that combination,
+ * and the same combination is the same file however many people it is for.
+ *
+ * A long list is cut short and marked with a few letters of its own hash, so
+ * a song with a dozen parts still gets a name a file system and a person can
+ * both hold, and two different lists can never come out alike.
+ */
+const LABEL_ROOM = 52;
+
+export function submixLabel(parts: string[]): string {
+  const names = parts.map((p) => clean(p).toLowerCase());
+  const full = names.join('+');
+  if (full.length <= LABEL_ROOM) return `submix ${full}`;
+  let short = '';
+  for (const name of names) {
+    if (short.length + name.length + 1 > LABEL_ROOM - 6) break;
+    short += (short ? '+' : '') + name;
+  }
+  return `submix ${short || `${names.length} parts`}+${digest(full)}`;
+}
+
+/** Four letters that stand for a list, so two lists never share a name. */
+function digest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).slice(0, 4).padStart(4, '0');
+}
+
+/** Whether two lists of part names are the same list, in any order. */
+export const sameParts = (a: string[], b: string[]): boolean =>
+  a.length === b.length
+  && [...a].map((n) => clean(n).toLowerCase()).sort().join('|') === [...b].map((n) => clean(n).toLowerCase()).sort().join('|');
 
 /** Whether a file name is a submix rather than a stem, wherever it is read. */
 export const isSubmixFile = (name: string): boolean => /\[\s*submix\b[^\]]*\]/i.test(name);

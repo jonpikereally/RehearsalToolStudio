@@ -163,7 +163,8 @@ export interface PreparedPart {
    * and `submixOf` is the parts it stands for, by their own `name` fields, so
    * one fader can go up in place of four and say which four.
    */
-  submixFor?: string;
+  /** Written as a list; a set prepared before this carries one name. */
+  submixFor?: string[] | string;
   submixOf?: string[];
   /*
    * What an audio part was made from — the studio's facts about the stem,
@@ -458,7 +459,8 @@ function submixFacts(song: Song, parts: PreparedPart[]): void {
     const variant = song.variants.find((v) => v.path?.toLowerCase().endsWith(ends));
     if (!variant) continue;
     variant.hidden = true;
-    variant.submixFor = part.submixFor;
+    // A set prepared before a submix could serve several carries one name.
+    variant.submixFor = Array.isArray(part.submixFor) ? part.submixFor : [part.submixFor];
     if (part.submixOf?.length) variant.submixOf = part.submixOf;
     if (part.name) variant.name = part.name;
   }

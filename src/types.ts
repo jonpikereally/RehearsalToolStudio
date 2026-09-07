@@ -69,11 +69,13 @@ export interface Variant {
    */
   hidden?: boolean;
   /**
-   * A member's submix: whose it is, and the parts it stands for by their own
-   * names. A player whose user matches `submixFor` puts this fader up in
-   * place of those, and loads nothing else — see docs/prepared-sets.md.
+   * A submix: the parts it stands for, by their own names, and the members it
+   * was worked out for. A player whose user is named in `submixFor` puts this
+   * fader up in place of those parts and loads nothing else; the file itself
+   * is named for what is in it, so one serves everybody who keeps the same
+   * things — see docs/prepared-sets.md.
    */
-  submixFor?: string;
+  submixFor?: string[];
   submixOf?: string[];
   /** Manual ordering within the song. */
   order?: number;

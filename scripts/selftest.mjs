@@ -1892,12 +1892,21 @@ group('a member\'s submix');
   check('and never the record itself', !mix.submix.of.some((n) => /song/i.test(n)), mix.submix.of.join());
   check('the click is left out: it is a pattern, not audio to sum',
     !mix.stems.some((s) => /click/i.test(s.name)), mix.stems.map((s) => s.name).join());
-  check('it is named for the member, and written as a part like any other',
-    mix.name === submixLabel('Alex') && mix.combined && !mix.reference
-      && partFileName(song.title, mix.name) === 'Cruel Summer [submix alex].mp3',
+  check('it is named for what is in it, not for whose it is',
+    mix.name === 'submix drums+bass+keys+vox' && mix.submix.for.join() === 'Alex' && mix.combined && !mix.reference
+      && partFileName(song.title, mix.name) === 'Cruel Summer [submix drums+bass+keys+vox].mp3',
     partFileName(song.title, mix.name));
   check('and it sits in the song\'s submixes folder, which is what the manifest says',
     SUBMIX_FOLDER === 'submixes' && isSubmixFile(`${SUBMIX_FOLDER}/${partFileName(song.title, mix.name)}`));
+  check('two members who keep the same things share one file, named once',
+    submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }]).length === 1
+      && submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }])[0].submix.for.join() === 'Alex,Casey',
+    JSON.stringify(submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }]).map((p) => [p.name, p.submix.for])));
+  check('and a long list is cut short and marked, so two lists never share a name',
+    submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'percussion']).length < 62
+      && submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'percussion'])
+        !== submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'organ']),
+    submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'percussion']));
   check('and it is declared hidden, saying whose it is and what it stands for',
     partInfoFor(song.title, mix.name, false).role === undefined, JSON.stringify(partInfoFor(song.title, mix.name, false)));
 
@@ -1905,9 +1914,10 @@ group('a member\'s submix');
     of({ member: 'Sam', keeps: ['click', 'cues', 'drums', 'bass', 'keys', 'gtr'] }).length === 0);
   check('and one who is switched off gets none either',
     of({ member: 'Sam', keeps: DEFAULT_KEEPS, off: true }).length === 0);
-  check('two members get two submixes, each with its own list',
-    submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: [...DEFAULT_KEEPS, 'keys'] }]).map((p) => p.name).join() ===
-      'submix alex,submix casey');
+  check('two members who keep different things get one submix each',
+    submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['keys'] }]).map((p) => p.name).join() ===
+      'submix drums+bass+keys+vox,submix drums+bass+gtr+vox',
+    submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['keys'] }]).map((p) => p.name).join());
 
   // A submix sits in a folder inside its song's, which is a folder of parts,
   // not a song: read as one, a set came out with a "submixes" song per song.
@@ -1936,7 +1946,7 @@ group('a member\'s submix');
     [keyWith([]), keyWith([alex])].join(' | '));
 
   // What a save has to work out: which prepared songs are behind the band.
-  const { submixState, submixesBehind, expectedSubmixOf } = await import('../src/lib/members.ts');
+  const { submixState, submixesBehind, spareSubmixes, expectedSubmixOf } = await import('../src/lib/members.ts');
   const prepared = [
     { label: 'drums', name: 'drums' },
     { label: 'bass', name: 'bass' },
@@ -1946,18 +1956,20 @@ group('a member\'s submix');
   ];
   check('what a member\'s submix should hold is read off the prepared song',
     expectedSubmixOf(prepared, alex).join() === 'drums,bass', expectedSubmixOf(prepared, alex).join());
+  const submixPart = (of, ...forWhom) => ({ label: `submix ${of.join('+')}`, name: `submix ${of.join('+')}`, hidden: true, submixFor: forWhom, submixOf: of });
   check('a song with no submix for them is missing one', submixState(prepared, alex) === 'missing');
-  check('one written from the same list is ready',
-    submixState([...prepared, { label: 'submix alex', name: 'submix alex', hidden: true, submixFor: 'Alex', submixOf: ['bass', 'drums'] }], alex) === 'ready');
-  check('one written from a different list is stale',
-    submixState([...prepared, { label: 'submix alex', name: 'submix alex', hidden: true, submixFor: 'Alex', submixOf: ['drums'] }], alex) === 'stale');
-  check('and one nobody needs any more is spare',
-    submixState([...prepared, { label: 'submix sam', name: 'submix sam', hidden: true, submixFor: 'Sam', submixOf: ['drums', 'bass'] }],
-      { member: 'Sam', keeps: ['drums', 'bass', 'gtr'] }) === 'spare');
+  check('one holding the same parts is theirs, whoever it was worked out for',
+    submixState([...prepared, submixPart(['bass', 'drums'], 'Sam')], alex) === 'ready');
+  check('one holding different parts is not',
+    submixState([...prepared, submixPart(['drums'], 'Alex')], alex) === 'missing');
+  check('and one no list asks for any more is spare',
+    spareSubmixes([...prepared, submixPart(['drums', 'bass'], 'Sam')], [{ member: 'Sam', keeps: ['drums', 'bass', 'gtr'] }]).length === 1);
   check('and the songs behind are named with who they are behind for',
     JSON.stringify(submixesBehind([{ folder: 'One (2026-09-06)', title: 'One', parts: prepared }, { folder: 'Two (2026-09-06)', title: 'Two' }], [alex]))
       === JSON.stringify([{ title: 'One', who: ['Alex'] }]),
     JSON.stringify(submixesBehind([{ folder: 'One (2026-09-06)', title: 'One', parts: prepared }], [alex])));
+  check('a song that already holds it is not behind',
+    submixesBehind([{ folder: 'One (2026-09-06)', title: 'One', parts: [...prepared, submixPart(['drums', 'bass'], 'Alex')] }], [alex]).length === 0);
 
   check('a member list read back keeps one entry per person',
     parseMembers({ members: [{ member: ' Alex ', keeps: ['click'] }, { member: 'alex', keeps: [] }, { member: '', keeps: [] }] })

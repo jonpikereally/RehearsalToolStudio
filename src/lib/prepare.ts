@@ -226,8 +226,8 @@ export interface PlannedPart {
   reference: boolean;
   /** True for a sum of several tracks, which is pulled down if it clips. */
   combined: boolean;
-  /** Set on a member's submix: whose it is, and which parts it stands for. */
-  submix?: { for: string; of: string[] };
+  /** Set on a submix: the parts it stands for, and the members it serves. */
+  submix?: { for: string[]; of: string[] };
 }
 
 /** The parts a song will be written as, given its plan — or all of it without one. */
@@ -264,7 +264,13 @@ export function partsFor(song: AlsSong, plan?: SongPlan): PlannedPart[] {
  * the band play against, not one of the things they play.
  */
 export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: MemberMix[]): PlannedPart[] {
-  const out: PlannedPart[] = [];
+  /*
+   * One file per list of parts, not one per member: two people who keep the
+   * same things want the same sum, and rendering it twice under two names
+   * costs the band two downloads for one thing. The members it serves ride
+   * along on the entry, in the order they were listed.
+   */
+  const byList = new Map<string, PlannedPart>();
   const named = parts
     .filter((part) => !part.submix)
     .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference) }));
@@ -287,16 +293,22 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
       && !isClickOrCue(info.name) && !isClickOrCue(info.label)
       && !(part.stems.length === 1 && isSetStem(part.stems[0])));
     if (folded.length < 2) continue;
-    const stems = folded.flatMap(({ part }) => part.stems);
-    out.push({
-      name: submixLabel(member.member),
-      stems,
+    const of = folded.map(({ info }) => info.name);
+    const key = of.map((n) => n.toLowerCase()).join('|');
+    const already = byList.get(key);
+    if (already) {
+      already.submix!.for.push(member.member.trim());
+      continue;
+    }
+    byList.set(key, {
+      name: submixLabel(of),
+      stems: folded.flatMap(({ part }) => part.stems),
       reference: false,
       combined: true,
-      submix: { for: member.member.trim(), of: folded.map(({ info }) => info.name) },
+      submix: { for: [member.member.trim()], of },
     });
   }
-  return out;
+  return [...byList.values()];
 }
 
 /**

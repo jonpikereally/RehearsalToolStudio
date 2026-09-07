@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Name a submix for what is in it, and write one file for everybody who wants it**
+
+A submix is a sum of parts and nothing else, so naming it after the person it was worked out for said the wrong thing about it: two members who keep the same things want the same sum, and a file called "submix robin" is one nobody else can be told to use. It is named for its contents now — "Cruel Summer [submix drums+bass+other+piano].mp3" — and a list of parts is written once however many people it serves, with their names on the entry rather than on the file. A list too long for a name is cut short and marked with four letters of its own hash, so two lists can never come out alike.
+
 **Read a submixes folder as its song's, and tell the band whose submix it is**
 
 Filing submixes in a folder of their own broke two things at once, and both only showed in the band's own library. The scan read each submixes/ folder as a song, so a set of nineteen songs published as thirty-eight, half of them called "submixes". And the library's variants never carried what makes a submix one — hidden, submixFor, submixOf are in the manifest, and the publish dropped them — so the band's app would have played a member's submix as an ordinary fader, on top of the very parts inside it.

@@ -124,10 +124,14 @@ length of the song, and is meant to be played alongside the others.
   in the Studio, `[band]` by default. It is pulled down as a whole if the sum
   would clip, and left alone otherwise. How far it was pulled down is written
   as `gainDb` on its entry.
-- **A member's submix** is a combined part chosen for one person rather than
-  typed: `submixes/<Title> [submix <member>].mp3` inside the song's folder,
+- **A submix** is a combined part chosen for a member rather than typed, and
+  named for what is in it rather than for them:
+  `submixes/<Title> [submix drums+bass+keys].mp3` inside the song's folder,
   everything that member does not keep on a fader of their own, summed at
-  unity. It is a part like any other — same lead-in, same 192 kbps, same rate
+  unity. Named that way, one file serves everybody who keeps the same things
+  — it is written once and downloaded once — and a long list is cut short
+  with four letters of its own hash on the end, so two lists never share a
+  name. It is a part like any other — same lead-in, same 192 kbps, same rate
   — and the only one that does not sit in the song folder itself: a song
   folder of eight stems and four submixes is one nobody can read at a glance.
   Its `file` carries the path from the song folder, `submixes/…`, where every
@@ -136,12 +140,12 @@ length of the song, and is meant to be played alongside the others.
 
   ```json
   {
-    "label": "submix alex",
-    "name": "submix alex",
-    "file": "submixes/Cruel Summer [submix alex].mp3",
+    "label": "submix drums+bass+keys+ref vox",
+    "name": "submix drums+bass+keys+ref vox",
+    "file": "submixes/Cruel Summer [submix drums+bass+keys+ref vox].mp3",
     "role": "stem",
     "hidden": true,
-    "submixFor": "Alex",
+    "submixFor": ["Alex", "Casey"],
     "submixOf": ["drums", "bass", "keys", "ref vox"]
   }
   ```
@@ -151,10 +155,12 @@ length of the song, and is meant to be played alongside the others.
     rather than playing it on top of the parts inside it.
   - **`submixOf`** names the parts it stands for, by their own `name` fields —
     `"drums"`, not the file name — so one fader can go up in place of four.
-  - **`submixFor`** is the member, matched the way a rig file's `member` is:
-    trimmed, case ignored. A player whose user matches loads that part plus
-    every part not named in `submixOf`, and nothing else; anyone else, and any
-    song with no submix, loads every part as before.
+  - **`submixFor`** is the members it was worked out for — a list, since one
+    submix serves everybody who keeps the same things — each matched the way a
+    rig file's `member` is: trimmed, case ignored. A player whose user is
+    named loads that part plus every part not in `submixOf`, and nothing else;
+    anyone else, and any song with no submix, loads every part as before. A
+    set prepared before this carries a single name rather than a list.
 
   The band's library carries the same three on the variant, beside its path,
   so a player reading `.rehearsal-tool.json` needs no manifest of its own. A

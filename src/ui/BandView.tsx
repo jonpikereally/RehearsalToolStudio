@@ -136,7 +136,16 @@ export default function BandView() {
         <div key={member.member} className="member">
           <div className="member-head">
             <strong>{member.member}</strong>
-            <span className="code">{submixLabel(member.member)}</span>
+            {/*
+              What their submix would be called, from the parts of the set
+              that is open: it is named for what is in it, so two members who
+              keep the same things share one file — and see the same name here.
+            */}
+            {!!labels.length && !member.off && (
+              <span className="code" title="The file their submix is written as, named for what is in it">
+                {submixLabel(labels.filter((label) => !keepsPart(member, label)))}
+              </span>
+            )}
             <label className="switch-row" style={{ marginLeft: 'auto' }}>
               <input
                 type="checkbox"
