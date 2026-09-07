@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Find AbleSet where it actually answers, and read the names it gives**
+
+AbleSet serves on port 80, not the 3000 that was guessed at, and its answer carries each song's locator name under the cue rather than as a lastKnownName. Both now read, and checked against the running app: the order it hands back is the one on AbleSet's screen, a reorder included, and the scan says so — "as AbleSet has it open right now".
+
 **Ask AbleSet for the order it has, and allow samples in more than one folder**
 
 The running order was read out of AbleSet's log, which turns out to hold it only sometimes: today's log has one setCueMeta line, written when AbleSet loaded the setlist, and none for the reorder made afterwards — so a setlist changed on screen and then saved was invisible. AbleSet's own server is asked first now, while it is running, and what it says is the order on its screen whatever any saved setlist says. The log stays as the fallback, and is read across the last few launches rather than stopping at the newest one that happens to have a line. The scan says which it used.

@@ -87,7 +87,7 @@ export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)
  * whatever the answer is wrapped in, so a change to AbleSet's shape leaves
  * the log to fall back on rather than breaking this.
  */
-export async function liveSetlistFromApi(ports = [3000, 3001]) {
+export async function liveSetlistFromApi(ports = [80, 3000, 3001]) {
   for (const port of ports) {
     let doc;
     try {
@@ -116,7 +116,11 @@ export function cuesIn(doc, name = '', depth = 0) {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((m) => ({
         time: m.time,
-        lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : typeof m.name === 'string' ? m.name : '',
+        // AbleSet's own answer carries the locator's name under the cue, and
+        // a tidied one beside it; its log carries `lastKnownName`. The raw
+        // name is the one the set's locators actually have.
+        lastKnownName:
+          [m.lastKnownName, m.cue?.name, m.meta?.raw, m.meta?.name, m.name].find((n) => typeof n === 'string' && n) ?? '',
       }));
     return entries.length ? { setlistName: named, entries } : null;
   };

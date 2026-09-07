@@ -4586,6 +4586,19 @@ group('running order from AbleSet');
     [names(cues), names({ setlist: { name: 'X', songs: cues } }), names({ data: { cues } })].join(' | '));
   check('and something that is not a setlist is not read as one',
     cuesIn({ settings: { volume: 1 } }) === null && cuesIn([{ name: 'no time here' }]) === null);
+  // AbleSet's own answer: the locator's name is under the cue, a tidied one
+  // beside it, and the array is already in the order it is played.
+  const asAbleSet = {
+    setlistName: 'Friday',
+    songs: [
+      { type: 'cue', id: '4868', time: 4868, cue: { name: 'Love Story' }, meta: { raw: 'Love Story', name: 'Love Story' } },
+      { type: 'cue', id: '256', time: 256, cue: { name: '22 {F}' }, meta: { raw: '22 {F}', name: '22' } },
+    ],
+  };
+  check('AbleSet\'s own answer is read, locator names and all',
+    names(asAbleSet) === 'Love Story,22 {F}' && cuesIn(asAbleSet)?.setlistName === 'Friday'
+      && cuesIn(asAbleSet)?.entries[1].time === 256,
+    names(asAbleSet));
 }
 
 /* ------------------------------ song info clips ------------------------------ */
