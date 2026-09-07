@@ -8,7 +8,7 @@ import { songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
-import { keepsPart, submixLabel, type MemberMix } from './members.ts';
+import { isClickOrCue, keepsPart, submixLabel, type MemberMix } from './members.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
@@ -271,8 +271,14 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
   for (const member of members) {
     if (member.off || !member.member.trim()) continue;
     const folded = named.filter(({ part, info }) => !info.record && !keepsPart(member, info.label) && !keepsPart(member, info.name)
-      // A click or a cue track is a pattern striking samples, not audio to
-      // sum: kilobytes on the phone either way, and nothing to fold in.
+      /*
+       * Never the click or the cues. They are the set's own timekeeping
+       * rather than something to play along to, and one summed into a member's
+       * submix is a click they can never turn down. Usually they are patterns
+       * striking samples and could not be summed anyway; a set that renders
+       * them as audio is what this is for.
+       */
+      && !isClickOrCue(info.name) && !isClickOrCue(info.label)
       && !(part.stems.length === 1 && isSetStem(part.stems[0])));
     if (folded.length < 2) continue;
     const stems = folded.flatMap(({ part }) => part.stems);

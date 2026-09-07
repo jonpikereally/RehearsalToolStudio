@@ -34,13 +34,25 @@ export interface MemberMix {
 }
 
 /**
- * What a member keeps when nobody has said: the click and the cues, which are
- * a phone's own metronome and nothing to play along to. What they play is
- * theirs to add — the studio would have to guess an instrument from a name,
- * and a wrong guess sums the guitarist's guitar into the thing they play
- * along to, which is worse than asking.
+ * The click and the cues are never in a submix, whoever it is for.
+ *
+ * They are the set's own timekeeping, not something to play along to, and a
+ * click summed into the thing a member plays against is a click they can
+ * never turn down. Usually they are sampler parts and could not be summed
+ * anyway; a set that renders them as audio is the case this is for.
  */
-export const DEFAULT_KEEPS = ['click', 'cues'];
+const CLICK_OR_CUE = /^(?:the\s+)?(?:click|clicks|cue|cues|click\s*track|cue\s*track|count[\s-]*ins?)(?:\s*\d+)?$/i;
+
+export const isClickOrCue = (name: string): boolean => CLICK_OR_CUE.test(clean(name));
+
+/**
+ * What a member keeps when nobody has said: nothing beyond the click and the
+ * cues, which are kept out whatever anybody says. What they play is theirs to
+ * add — the studio would have to guess an instrument from a name, and a wrong
+ * guess sums the guitarist's guitar into the thing they play along to, which
+ * is worse than asking.
+ */
+export const DEFAULT_KEEPS: string[] = [];
 
 const clean = (text: string) => text.trim().replace(/\s+/g, ' ');
 const same = (a: string, b: string) => clean(a).toLowerCase() === clean(b).toLowerCase();
@@ -53,7 +65,9 @@ export function parseMember(raw: unknown): MemberMix | null {
   const list = Array.isArray(keeps) ? keeps.filter((k): k is string => typeof k === 'string' && !!k.trim()) : DEFAULT_KEEPS;
   return {
     member: clean(member),
-    keeps: [...new Set(list.map(clean))],
+    // The click and the cues are never in a submix, so keeping them is not a
+    // choice anybody has to make, and a list saying so is a list to tidy.
+    keeps: [...new Set(list.map(clean))].filter((keep) => !isClickOrCue(keep)),
     ...(off === true ? { off: true } : {}),
   };
 }
@@ -123,6 +137,7 @@ export function expectedSubmixOf(parts: PreparedPart[], member: MemberMix): stri
   if (member.off) return [];
   const folded = parts.filter(
     (part) => !part.hidden && !part.record && part.kind !== 'sampler'
+      && !isClickOrCue(part.name) && !isClickOrCue(part.label)
       && !keepsPart(member, part.name) && !keepsPart(member, part.label),
   );
   return folded.length < 2 ? [] : folded.map((part) => part.name);

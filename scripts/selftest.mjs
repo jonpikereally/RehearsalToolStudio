@@ -1871,6 +1871,13 @@ group('a member\'s submix');
   const of = (member) => submixPartsFor(song, parts, [member]);
 
   const alex = { member: 'Alex', keeps: [...DEFAULT_KEEPS, 'gtr'] };
+  check('the click and the cues are never in a submix, whoever asks',
+    submixPartsFor(song, partsFor({ ...song, stems: [...song.stems, { ...song.stems[0], name: 'CLICK TRACK' }] }), [{ member: 'Casey', keeps: [] }])[0]
+      .submix.of.every((n) => !/click|cue/i.test(n)),
+    submixPartsFor(song, partsFor({ ...song, stems: [...song.stems, { ...song.stems[0], name: 'CLICK TRACK' }] }), [{ member: 'Casey', keeps: [] }])[0].submix.of.join());
+  check('and a list that keeps them is tidied: it is not a choice',
+    parseMembers([{ member: 'Casey', keeps: ['click', 'Cues', 'gtr'] }])[0].keeps.join() === 'gtr',
+    parseMembers([{ member: 'Casey', keeps: ['click', 'Cues', 'gtr'] }])[0].keeps.join());
   const [mix] = of(alex);
   check('the submix folds in everything the member does not keep',
     mix.submix.of.join(', ') === 'drums, bass, keys, vox', mix.submix.of.join(', '));

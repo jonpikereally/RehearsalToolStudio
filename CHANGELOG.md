@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Never sum the click or the cues into anybody's submix**
+
+They are the set's own timekeeping, not something to play along to, and one summed into a member's submix is a click they can never turn down. It held already for the usual case — a click is a pattern striking samples, which cannot be summed — but a set that renders its click as audio would have had it folded in for anyone who hadn't thought to keep it out.
+
 **Hold the band until it is saved, then say which songs are behind**
 
 Ticking a part wrote the file there and then, which is the wrong moment: what is written for the band only becomes true when the songs are prepared again, and that is hours of rendering. So the panel holds the changes, says nothing is written yet, and saves when it is told to — with a way to put it back.
