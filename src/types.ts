@@ -62,8 +62,19 @@ export interface Variant {
    * only one — a frozen track's file is not a stem anybody exported.
    */
   frozen?: boolean;
-  /** Hidden from the variant switcher without deleting it. */
+  /**
+   * Hidden from the variant switcher without deleting it. A member's submix
+   * is written hidden, so a player that has never heard of submixes ignores
+   * the file rather than playing it over the parts it stands for.
+   */
   hidden?: boolean;
+  /**
+   * A member's submix: whose it is, and the parts it stands for by their own
+   * names. A player whose user matches `submixFor` puts this fader up in
+   * place of those, and loads nothing else — see docs/prepared-sets.md.
+   */
+  submixFor?: string;
+  submixOf?: string[];
   /** Manual ordering within the song. */
   order?: number;
   /**

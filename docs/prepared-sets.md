@@ -156,6 +156,11 @@ length of the song, and is meant to be played alongside the others.
     every part not named in `submixOf`, and nothing else; anyone else, and any
     song with no submix, loads every part as before.
 
+  The band's library carries the same three on the variant, beside its path,
+  so a player reading `.rehearsal-tool.json` needs no manifest of its own. A
+  `submixes/` folder is a folder of one song's parts, never a song: anything
+  scanning the band's folder has to read it as belonging to the folder above.
+
   A whole song is never in a submix — the record the band play against, or
   their own full bounce — since one summed in puts everything in it twice.
   Neither is the click or the cues, whoever the submix is for and whether

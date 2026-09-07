@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Read a submixes folder as its song's, and tell the band whose submix it is**
+
+Filing submixes in a folder of their own broke two things at once, and both only showed in the band's own library. The scan read each submixes/ folder as a song, so a set of nineteen songs published as thirty-eight, half of them called "submixes". And the library's variants never carried what makes a submix one — hidden, submixFor, submixOf are in the manifest, and the publish dropped them — so the band's app would have played a member's submix as an ordinary fader, on top of the very parts inside it.
+
 **Put a song's submixes in a folder of their own**
 
 A song folder of eight stems and four submixes is a folder nobody can read at a glance: the parts the band play are lost among the things the studio summed for them. So each song's submixes go under submixes/ inside it, and their manifest entries carry the path from the song folder — `submixes/Cruel Summer [submix alex].mp3` — where every other part's file is a bare name.

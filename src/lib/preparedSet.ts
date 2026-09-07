@@ -437,9 +437,31 @@ export function applyManifest(
     if (info.patchClips?.length) song.patchClips = info.patchClips;
     if (info.markers?.length) song.markers = markersFrom(info.markers, song.markers);
     if (info.parts?.some((p) => p.kind === 'sampler')) samplerVariants(song, info.parts);
+    if (info.parts?.some((p) => p.submixFor)) submixFacts(song, info.parts);
     song.tempoUnset = false;
   }
   return { applied };
+}
+
+/**
+ * What the scan cannot know about a submix: that it is one.
+ *
+ * The file itself is found by the scan like any other part — its own name,
+ * its own revision — but only the manifest says whose it is and which parts
+ * it stands for, and that it is to be hidden from anybody it isn't for.
+ * Matched by the file the entry names, from the song's folder.
+ */
+function submixFacts(song: Song, parts: PreparedPart[]): void {
+  for (const part of parts) {
+    if (!part.submixFor || !part.file) continue;
+    const ends = `/${part.file.toLowerCase()}`;
+    const variant = song.variants.find((v) => v.path?.toLowerCase().endsWith(ends));
+    if (!variant) continue;
+    variant.hidden = true;
+    variant.submixFor = part.submixFor;
+    if (part.submixOf?.length) variant.submixOf = part.submixOf;
+    if (part.name) variant.name = part.name;
+  }
 }
 
 /**

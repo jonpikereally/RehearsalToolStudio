@@ -126,6 +126,19 @@ function parentPath(path: string): string {
   return i <= 0 ? '' : path.slice(0, i);
 }
 
+/**
+ * The folder whose song a file belongs to.
+ *
+ * Its own folder, except for a submix: those sit in a `submixes/` folder
+ * inside the song's, and that folder holds parts of a song rather than a song
+ * of its own. Read as one, a set came out with a song called "submixes" for
+ * every song it had.
+ */
+function songFolderOf(path: string): string {
+  const folder = parentPath(path);
+  return /(^|\/)submixes$/i.test(folder) ? parentPath(folder) : folder;
+}
+
 function baseName(path: string): string {
   const i = path.lastIndexOf('/');
   return i < 0 ? path : path.slice(i + 1);
@@ -489,7 +502,7 @@ export function mergeScan(
   const groupMeta = new Map<string, { folderPath: string; base: string }>();
 
   for (const file of audio) {
-    const folderPath = parentPath(file.path);
+    const folderPath = songFolderOf(file.path);
     // The base name is what groups a song's files together, so it must be read
     // with every tag stripped — `Song [guitar]` and `Song - vocal` are one song.
     const { base } = parseFileName(stripExt(file.name));

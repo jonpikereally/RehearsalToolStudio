@@ -1909,6 +1909,20 @@ group('a member\'s submix');
     submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: [...DEFAULT_KEEPS, 'keys'] }]).map((p) => p.name).join() ===
       'submix alex,submix casey');
 
+  // A submix sits in a folder inside its song's, which is a folder of parts,
+  // not a song: read as one, a set came out with a "submixes" song per song.
+  const { mergeScan: scanFiles } = await import('../src/lib/scan.ts');
+  const file = (path) => ({ path, name: path.split('/').pop(), rev: 'r1', size: 10, modified: 1 });
+  const scanned = scanFiles(emptyLibrary(''), [
+    file('/Sets/S/Fix You (2026-09-06)/Fix You [bass].mp3'),
+    file('/Sets/S/Fix You (2026-09-06)/Fix You [drums].mp3'),
+    file('/Sets/S/Fix You (2026-09-06)/submixes/Fix You [submix alex].mp3'),
+  ], '').library.songs;
+  check('a submix belongs to its song, not to a song of its own',
+    scanned.length === 1 && scanned[0].title === 'Fix You'
+      && scanned[0].variants.map((v) => v.name).sort().join() === 'bass,drums,submix alex',
+    scanned.map((s) => `${s.title}: ${s.variants.map((v) => v.name).join('|')}`).join(' ~ '));
+
   check('a submix is not read back as a stem',
     isSubmixFile('Cruel Summer [submix alex].mp3') && !isSubmixFile('Cruel Summer [drums].mp3'));
   check('keeps are matched however they are written', keepsPart({ member: 'x', keeps: ['Ref Vox'] }, 'ref vox'));
