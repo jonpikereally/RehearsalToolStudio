@@ -8,7 +8,7 @@ import { songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
-import { isClickOrCue, keepsPart, submixLabel, type MemberMix } from './members.ts';
+import { isClickOrCue, isWholeSong, keepsPart, submixLabel, type MemberMix } from './members.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
@@ -270,7 +270,13 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
     .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference) }));
   for (const member of members) {
     if (member.off || !member.member.trim()) continue;
-    const folded = named.filter(({ part, info }) => !info.record && !keepsPart(member, info.label) && !keepsPart(member, info.name)
+    const folded = named.filter(({ part, info }) =>
+      /*
+       * Never a whole song: the record the band play against, or their own
+       * full bounce. One summed into a submix puts everything in it twice.
+       */
+      !info.record && info.role !== 'mix' && !isWholeSong(info.name) && !isWholeSong(info.label)
+      && !keepsPart(member, info.label) && !keepsPart(member, info.name)
       /*
        * Never the click or the cues. They are the set's own timekeeping
        * rather than something to play along to, and one summed into a member's

@@ -46,6 +46,16 @@ const CLICK_OR_CUE = /^(?:the\s+)?(?:click|clicks|cue|cues|click\s*track|cue\s*t
 export const isClickOrCue = (name: string): boolean => CLICK_OR_CUE.test(clean(name));
 
 /**
+ * A whole song rather than a part of one: the record the band play against,
+ * or their own full bounce. Never in a submix, whoever it is for — summing a
+ * whole song into a submix puts everything in it twice — and so never a part
+ * anybody has to decide about.
+ */
+const WHOLE_SONG = /^(?:the\s+)?(?:ref(?:erence)?\s+)?(?:song|master|record|original|full(?:\s*mix)?|mix)$/i;
+
+export const isWholeSong = (name: string): boolean => WHOLE_SONG.test(clean(name));
+
+/**
  * What a member keeps when nobody has said: nothing beyond the click and the
  * cues, which are kept out whatever anybody says. What they play is theirs to
  * add — the studio would have to guess an instrument from a name, and a wrong
@@ -67,7 +77,7 @@ export function parseMember(raw: unknown): MemberMix | null {
     member: clean(member),
     // The click and the cues are never in a submix, so keeping them is not a
     // choice anybody has to make, and a list saying so is a list to tidy.
-    keeps: [...new Set(list.map(clean))].filter((keep) => !isClickOrCue(keep)),
+    keeps: [...new Set(list.map(clean))].filter((keep) => !isClickOrCue(keep) && !isWholeSong(keep)),
     ...(off === true ? { off: true } : {}),
   };
 }
@@ -136,8 +146,9 @@ export function keepsPart(member: MemberMix, label: string): boolean {
 export function expectedSubmixOf(parts: PreparedPart[], member: MemberMix): string[] {
   if (member.off) return [];
   const folded = parts.filter(
-    (part) => !part.hidden && !part.record && part.kind !== 'sampler'
+    (part) => !part.hidden && !part.record && part.role !== 'mix' && part.kind !== 'sampler'
       && !isClickOrCue(part.name) && !isClickOrCue(part.label)
+      && !isWholeSong(part.name) && !isWholeSong(part.label)
       && !keepsPart(member, part.name) && !keepsPart(member, part.label),
   );
   return folded.length < 2 ? [] : folded.map((part) => part.name);

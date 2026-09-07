@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Keep whole songs out of submixes, and out of the choosing**
+
+The record was already left out of every submix, but it was still offered as a part to keep — a choice that changed nothing, which is worse than no choice at all. It is gone from the chips now, along with the click and the cues, and so is a full mix: a whole song summed into a submix puts everything in it twice, whether it is the record the band play against or their own bounce.
+
 **Give the band a tab of its own**
 
 Who the set is prepared for is not a setting: it decides how every song is written, and it is work of the same kind as the songs and the tools. So it comes out of Settings and becomes a tab — the band, their submixes, and what each of them keeps on a fader of their own, with the head saying who they are and how many submixes a song carries.

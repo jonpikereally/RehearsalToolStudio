@@ -152,10 +152,13 @@ length of the song, and is meant to be played alongside the others.
     every part not named in `submixOf`, and nothing else; anyone else, and any
     song with no submix, loads every part as before.
 
-  The record itself is never in a submix, and neither is the click or the
-  cues — whoever the submix is for, and whether they are sampler parts or
-  rendered audio: they are the set's own timekeeping, and one summed into a
-  submix is a click nobody can turn down. A submix that would stand for fewer
+  A whole song is never in a submix — the record the band play against, or
+  their own full bounce — since one summed in puts everything in it twice.
+  Neither is the click or the cues, whoever the submix is for and whether
+  they are sampler parts or rendered audio: they are the set's own
+  timekeeping, and one summed into a submix is a click nobody can turn down.
+  None of the three is offered as a part to keep, because keeping them was
+  never a choice. A submix that would stand for fewer
   than two parts is not written: that is a part under a worse name. Who the
   band are, and what each of them keeps separate, is `members.json` at the
   root of the band's folder — the Studio's own file, and the only thing that

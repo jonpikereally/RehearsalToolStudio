@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import * as local from '../lib/localSource';
 import {
-  DEFAULT_KEEPS, isClickOrCue, keepsPart, membersFromRigs, readMembers, submixesBehind, submixLabel, writeMembers,
-  type MemberMix,
+  DEFAULT_KEEPS, isClickOrCue, isWholeSong, keepsPart, membersFromRigs, readMembers, submixesBehind, submixLabel,
+  writeMembers, type MemberMix,
 } from '../lib/members';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import PrepareSetDialog from './PrepareSetDialog';
@@ -63,7 +63,7 @@ export default function BandView() {
       library.songs
         .filter((song) => !currentSet || song.setPath === currentSet)
         .flatMap((song) => song.variants.map((v) => v.name.trim().toLowerCase()))
-        .filter((label) => label && !isClickOrCue(label)),
+        .filter((label) => label && !isClickOrCue(label) && !isWholeSong(label)),
     ),
   ].sort();
 
@@ -125,7 +125,8 @@ export default function BandView() {
         Each member gets one part per song of everything they are <em>not</em> keeping separate, summed here from the
         multitrack and written beside the stems. Their phone loads that one file in place of the parts inside it — four
         files instead of eight, and a quarter of the decoding. The record itself is never in one, and a submix that
-        would stand for fewer than two parts isn’t written, and neither the click nor the cues is ever in one.
+        would stand for fewer than two parts isn’t written. The record, a full mix, the click and the cues are never in
+        one, so they are not offered here.
       </div>
 
       {error && <div className="notice error">{error}</div>}

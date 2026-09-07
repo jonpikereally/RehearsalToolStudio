@@ -1878,6 +1878,14 @@ group('a member\'s submix');
   check('and a list that keeps them is tidied: it is not a choice',
     parseMembers([{ member: 'Casey', keeps: ['click', 'Cues', 'gtr'] }])[0].keeps.join() === 'gtr',
     parseMembers([{ member: 'Casey', keeps: ['click', 'Cues', 'gtr'] }])[0].keeps.join());
+  // The same for a whole song: the record, or the band's own full bounce.
+  const withMix = { ...song, stems: [...song.stems, { ...song.stems[0], name: 'FULL MIX' }] };
+  check('a whole song is never in a submix either, record or bounce',
+    submixPartsFor(withMix, partsFor(withMix), [{ member: 'Casey', keeps: [] }])[0].submix.of.join() === 'drums,bass,keys,gtr,vox',
+    submixPartsFor(withMix, partsFor(withMix), [{ member: 'Casey', keeps: [] }])[0].submix.of.join());
+  check('and keeping one is tidied away as well',
+    parseMembers([{ member: 'Casey', keeps: ['ref song', 'Full Mix', 'gtr'] }])[0].keeps.join() === 'gtr',
+    parseMembers([{ member: 'Casey', keeps: ['ref song', 'Full Mix', 'gtr'] }])[0].keeps.join());
   const [mix] = of(alex);
   check('the submix folds in everything the member does not keep',
     mix.submix.of.join(', ') === 'drums, bass, keys, vox', mix.submix.of.join(', '));
