@@ -5,6 +5,7 @@ import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
+import { note } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { readBytes } from '../lib/source';
@@ -204,6 +205,17 @@ export default function PrepareSetDialog({
       setResult(out.result);
       setRefreshed(out.refreshed);
       setPublished(out.published);
+      // By hand, but the same thing happened to the band's folder, so it goes
+      // in the same log as the saves the studio answered on its own.
+      note({
+        kind: out.result?.songsWritten || out.refreshed?.count ? 'updated' : 'nothing',
+        session: setPath.split('/').pop() ?? setPath,
+        set: folderName,
+        songs: [...selected],
+        text: `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
+          out.refreshed?.count ? `, ${out.refreshed.count} refreshed` : ''
+        }. The band sees ${out.published.songs}.`,
+      });
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
         // What the stop left behind: nothing, when it came before the first
@@ -238,6 +250,12 @@ export default function PrepareSetDialog({
       setResult(null);
       setRefreshed(null);
       setPublished(put.published);
+      note({
+        kind: 'undone',
+        session: setPath?.split('/').pop() ?? 'the set',
+        set: last.folder,
+        text: `Undone by hand: ${put.restored} song${put.restored === 1 ? '' : 's'} put back${put.removed ? `, ${put.removed} removed` : ''}. The band sees ${put.published.songs}.`,
+      });
       setUndone(
         `Undone: ${put.restored} song${put.restored === 1 ? '' : 's'} put back as ${put.restored === 1 ? 'it was' : 'they were'}` +
           (put.removed ? `, ${put.removed} the run had added removed` : '') +

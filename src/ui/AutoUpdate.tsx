@@ -11,6 +11,7 @@ import { runningOrderTitles } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
+import { note } from '../lib/saveLog';
 
 /**
  * Keeping the prepared set current with the set as Live saves it.
@@ -84,6 +85,7 @@ export default function AutoUpdate() {
         const folderName = outputSet?.name ?? (await preparedNameFor(band, currentSet, keys.byName));
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
+          note({ kind: 'held', session: setName, set: folderName, text: `Left alone: nothing has been prepared into “${folderName}” yet.` });
           if (current()) setPhase({ kind: 'unprepared', at });
           return;
         }
@@ -95,6 +97,12 @@ export default function AutoUpdate() {
          * hour nobody asked for. Said, and left to a person.
          */
         if (selected.length === titles.length && titles.length > 1) {
+          note({
+            kind: 'held',
+            session: setName,
+            set: folderName,
+            text: `Left alone: all ${titles.length} songs would have been written again against “${folderName}”, which is not a save's worth of change.`,
+          });
           if (current()) setPhase({ kind: 'wholeSet', at, folder: folderName, count: titles.length });
           return;
         }
@@ -117,11 +125,30 @@ export default function AutoUpdate() {
           signal: controller.signal,
           onProgress: (p) => current() && setPhase({ kind: 'running', at, stage: '', progress: p }),
         });
+        const written = outcome.result?.songsWritten ?? 0;
+        const refreshed = outcome.refreshed?.count ?? 0;
+        note({
+          kind: written || refreshed ? 'updated' : 'nothing',
+          session: setName,
+          set: folderName,
+          songs: selected,
+          text: written
+            ? `${written} song${written === 1 ? '' : 's'} written again${refreshed ? `, ${refreshed} refreshed` : ''}. The band sees ${outcome.published.songs}.`
+            : refreshed
+              ? `No audio had changed; words and sections refreshed for ${refreshed} song${refreshed === 1 ? '' : 's'}.`
+              : 'Nothing had changed.',
+        });
         if (current()) setPhase({ kind: 'done', at, outcome, selected });
       } catch (err) {
         if (!current()) return;
         const aborted = (err as { name?: string })?.name === 'AbortError';
         const touched = new Set((aside.current?.songs ?? []).map((a) => folderBaseOf(a.folder).toLowerCase())).size;
+        const message = aborted
+          ? touched
+            ? `Stopped by hand after ${touched === 1 ? 'one song' : `${touched} songs`} had been written over.`
+            : 'Stopped by hand before anything was written.'
+          : err instanceof Error ? err.message : String(err);
+        note({ kind: aborted ? 'stopped' : 'error', session: setName, text: message });
         setPhase({
           kind: 'error',
           at,
@@ -156,6 +183,12 @@ export default function AutoUpdate() {
       if (!band) throw new Error("The band's folder is not to hand.");
       const put = await undoPrepare(band, last.folder, last.songs);
       aside.current = null;
+      note({
+        kind: 'undone',
+        session: setName,
+        set: last.folder,
+        text: `Undone: ${put.restored} song${put.restored === 1 ? '' : 's'} put back${put.removed ? `, ${put.removed} removed` : ''}. The band sees ${put.published.songs}.`,
+      });
       setPhase({ kind: 'undone', at, restored: put.restored, removed: put.removed, songs: put.published.songs });
     } catch (err) {
       setPhase({ kind: 'error', at, message: `Could not undo: ${err instanceof Error ? err.message : String(err)}` });

@@ -6,7 +6,7 @@ import * as local from '../lib/localSource';
 import type { FolderSessions } from '../lib/localSource';
 import { createOutputSet, outputSets, type OutputSet } from '../lib/locatePrepared';
 import { alwaysOpen, recentOutput, recentSession, setAlwaysOpen, takeAsk } from '../lib/recent';
-import { chooserChose, chooserWantsTools, isChooserWindow } from '../lib/appWindow';
+import { choosingNew, chooserChose, chooserWantsTools, isChooserWindow } from '../lib/appWindow';
 import { SETS_FOLDER } from '../lib/prints';
 import { safeSetName } from '../lib/setName';
 
@@ -22,7 +22,8 @@ import { safeSetName } from '../lib/setName';
  * what it opened last first, and can be told to take it without asking. In
  * the Mac app this is a small window of its own in front of the studio: what
  * it chooses is handed back to the window behind, and closing it changes
- * nothing.
+ * nothing. File ▸ Open (⌘O) puts it up; File ▸ New (⌘N) puts it up with the
+ * new set folder already asked for.
  */
 
 const asPath = (dir: string, name: string) => `${dir}/${name}`;
@@ -56,7 +57,8 @@ export default function Launch() {
   const [inError, setInError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
-  const [making, setMaking] = useState(false);
+  // Opened by File ▸ New, the window arrives with the new folder asked for.
+  const [making, setMaking] = useState(choosingNew);
   const [newName, setNewName] = useState('');
 
   /* Asked for on purpose, this window asks, whatever the switches say. */
@@ -139,6 +141,16 @@ export default function Launch() {
     void openBoth(recentSet, recentAls);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask, sets, always, recentSet, recentAls, opening]);
+
+  /* File ▸ New while this window is already up: ask for the new folder here. */
+  useEffect(() => {
+    const onNew = () => {
+      setMaking(true);
+      setChoosing(false);
+    };
+    window.addEventListener('studio:new', onNew);
+    return () => window.removeEventListener('studio:new', onNew);
+  }, []);
 
   /** Choosing a folder offers the session it remembers, when none is chosen yet. */
   const takeOutput = (set: OutputSet) => {

@@ -101,26 +101,6 @@ function clock(seconds: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-/**
- * The key changes after the top of the song, as they follow the key.
- *
- * `Key: C → D from bar 97`. A change at bar 1 is the song's key, not a
- * change, and a change back to the key already in force says nothing.
- */
-function keyChangesText(song: AlsSong, key: string): string {
-  const changes = (song.keyChanges ?? []).filter((c) => c.bar > 1 + 1e-6);
-  if (!changes.length) return '';
-  const parts: string[] = [];
-  let running = key.trim();
-  for (const change of [...changes].sort((a, b) => a.bar - b.bar)) {
-    const next = clean(change.key).trim();
-    if (!next || next.toLowerCase() === running.toLowerCase()) continue;
-    parts.push(`→ ${next} from bar ${Math.round(change.bar)}`);
-    running = next;
-  }
-  return parts.length ? ` ${parts.join(' ')}` : '';
-}
-
 /** The lines one song's clip carries, in the order they read best. */
 export function infoLinesFor(
   song: AlsSong,
@@ -133,7 +113,7 @@ export function infoLinesFor(
   const lines: string[] = [];
   if (fields.title) lines.push(forAbleSet ? `**${clean(song.title)}**` : clean(song.title));
   const key = keyOverride?.trim() || song.key;
-  if (fields.key && key) lines.push(`Key: ${clean(key)}${keyChangesText(song, key)}`);
+  if (fields.key && key) lines.push(`Key: ${clean(key)}`);
   const bpm = song.bpm ?? song.startBpm;
   const facts: string[] = [];
   if (fields.tempo && bpm) facts.push(`${Math.round(bpm * 10) / 10} BPM`);
@@ -185,9 +165,40 @@ export function infoClipsFor(
       empty.push(song.title);
       continue;
     }
-    // The clip runs whole bars, rounded up, so it ends on a bar line.
-    const bars = Math.max(1, Math.ceil(song.endBar - song.startBar + 1 - 1e-6));
-    clips.push({ bar: song.startBar, text: lines.join(forAbleSet ? BREAK : PLAIN_BREAK), bars: opts.wholeSong === false ? 1 : bars });
+    const join = (parts: string[]) => parts.join(forAbleSet ? BREAK : PLAIN_BREAK);
+    /*
+     * The song's stretch on the timeline, in whole bars, ending where the
+     * song does: at the next song's locator or at its AUTOSTOP. A clip a bar
+     * longer than that hangs past the stop, which is a bar of the next song's
+     * room taken for nothing.
+     */
+    const songBars = Math.max(1, Math.ceil(song.endBar - song.startBar - 1e-6));
+    /*
+     * A key change is a clip of its own, at the bar it happens.
+     *
+     * It has to be: a key written into the first clip's name — “Key: C → D
+     * from bar 101” — is read back as C for the whole song, so chords after
+     * the change would be counted in the wrong key by anything reading the
+     * copy. Split at each change instead, and every bar's clip names the key
+     * in force there. The parts after the first carry the title and the key
+     * and nothing else: the bars and the length belong to the whole song.
+     */
+    const marks = (song.keyChanges ?? [])
+      .filter((c) => c.bar > 1 + 1e-6 && c.bar < songBars + 1 - 1e-6)
+      .map((c) => ({ bar: Math.round(c.bar), key: c.key }))
+      .sort((a, b) => a.bar - b.bar);
+    const starts = [{ bar: 1, lines }, ...marks.map((m) => ({
+      bar: m.bar,
+      lines: [...(fields.title ? [lines[0]] : []), ...(fields.key ? [`Key: ${clean(m.key)}`] : [])],
+    }))].filter((part) => part.lines.length);
+    for (const [i, part] of starts.entries()) {
+      const until = starts[i + 1]?.bar ?? songBars + 1;
+      clips.push({
+        bar: song.startBar + (part.bar - 1),
+        text: join(part.lines),
+        bars: opts.wholeSong === false ? 1 : Math.max(1, until - part.bar),
+      });
+    }
     songs.push(song.title);
   }
   return { clips, songs, empty };

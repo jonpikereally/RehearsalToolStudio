@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Keep a log of what each save came to, in a window of its own**
+
+The bar along the top says what is happening to the band's folder and is then dismissed, which left no answer to the question you actually ask after a rehearsal: what did it do while I was playing? So every save Live makes, and every answer the studio gives one — written again, nothing to do, left alone, stopped, undone — is written down with its time, and shown in a small window of its own: File ▸ Changes, or the button in the set bar, which is where Open used to sit. Opening belongs in the File menu now: ⌘N makes a new set folder, ⌘O opens one, both through the same window.
+
 **Say what is open in one panel, instead of asking the same things twice**
 
 Settings still carried the old way in: a folder to point at, a switch to read from it, a menu of the .als files beside it, a Forget button — and then, below, the set folder and the session again, each with its own way to change them. None of that is a choice any more. The session decides its own folder, opening one is what turns reading on, and both halves are chosen in the Open window.

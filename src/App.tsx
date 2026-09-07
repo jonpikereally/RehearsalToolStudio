@@ -12,9 +12,10 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { isChooserWindow, showChooser } from './lib/appWindow';
+import { panelWindow, showChanges, showChooser } from './lib/appWindow';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
+import ChangesView from './ui/ChangesView';
 import AutoUpdate from './ui/AutoUpdate';
 
 /**
@@ -92,7 +93,7 @@ function useDropped(open: (path: string) => Promise<void>): { over: boolean; err
 }
 
 /**
- * File ▸ Open, and ⌘N with it: put the choosing window back up.
+ * File ▸ Open, and ⌘O with it: put the choosing window back up.
  *
  * The Mac app's menu sends an event; the key is caught here as well, for a
  * window with no menu bar of its own — a browser looking at the dev server.
@@ -105,7 +106,7 @@ function useOpenMenu(reopen: () => void) {
       if ((e as CustomEvent<{ item?: string }>).detail?.item === 'open') reopen();
     };
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === 'o' || e.key.toLowerCase() === 'n')) {
         e.preventDefault();
         reopen();
       }
@@ -248,7 +249,7 @@ export default function App() {
    * tools without a set when the chooser was skipped for the tools that need
    * none.
    */
-  const aside = section === 'settings' || (section === 'tools' && toolsAlone());
+  const aside = section === 'settings' || section === 'changes' || (section === 'tools' && toolsAlone());
   const needsChoosing = !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
   const gate = useOpenGate(needsChoosing, takeChosen);
   let body: JSX.Element | null;
@@ -289,6 +290,8 @@ export default function App() {
     // Query first, path second: a set's setlist is named after a file path and
     // can't sit in a path segment. Links made before that still work.
     body = <SetlistView setlistId={route.query.get('id') ?? route.path[1]} />;
+  } else if (section === 'changes') {
+    body = <ChangesView />;
   } else if (section === 'tools') {
     body = <SetToolsView />;
   } else if (section === 'settings') {
@@ -305,20 +308,34 @@ export default function App() {
    * where you are — and get back — turns out to matter more, and at the top it
    * is nowhere near the controls you reach for while playing.
    */
-  if (isChooserWindow()) {
+  /*
+   * A small window of its own: the chooser, or the log of what has been done.
+   * Only what it is for — no tabs, no set bar, no update bar — since the
+   * studio's own window is behind it doing all of that.
+   */
+  const panel = panelWindow();
+  if (panel) {
     return (
       <div className="app chooser-window">
-        <div className="topbar">
-          <h1>
-            Open a set
-            <span className="sub" style={{ display: 'block' }}>
-              an Ableton session, and the folder it fills
-            </span>
-          </h1>
-        </div>
-        <div className="app-body">
-          <Launch />
-        </div>
+        {panel === 'chooser' ? (
+          <>
+            <div className="topbar">
+              <h1>
+                Open a set
+                <span className="sub" style={{ display: 'block' }}>
+                  an Ableton session, and the folder it fills
+                </span>
+              </h1>
+            </div>
+            <div className="app-body">
+              <Launch />
+            </div>
+          </>
+        ) : (
+          <div className="app-body">
+            <ChangesView />
+          </div>
+        )}
       </div>
     );
   }
@@ -387,8 +404,15 @@ export default function App() {
               </span>
             )}
           </span>
-          <button className="chip" onClick={reopen} title="File ▸ Open (⌘N)">
-            Open another…
+          <button
+            className="chip"
+            onClick={() => {
+              // Its own window in the Mac app; a page of its own in a browser.
+              if (!showChanges()) navigate('/changes');
+            }}
+            title="Every save, and what the studio made of it"
+          >
+            Changes…
           </button>
         </div>
       )}

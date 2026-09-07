@@ -19,8 +19,18 @@ const handler = (): Handlers[string] | undefined =>
 /** Whether the page is inside the Mac app rather than a browser. */
 export const inMacApp = (): boolean => !!handler();
 
-/** Whether this window is the chooser: the small one, showing only the chooser. */
-export const isChooserWindow = (): boolean => new URLSearchParams(window.location.search).has('chooser');
+/** Which small window this is, if it is one: the chooser, or the changes. */
+export function panelWindow(): 'chooser' | 'changes' | null {
+  const query = new URLSearchParams(window.location.search);
+  if (query.has('chooser')) return 'chooser';
+  if (query.get('window') === 'changes') return 'changes';
+  return null;
+}
+
+export const isChooserWindow = (): boolean => panelWindow() === 'chooser';
+
+/** Whether the chooser was opened to make a new set folder rather than open one. */
+export const choosingNew = (): boolean => new URLSearchParams(window.location.search).has('new');
 
 /** Ask the app for something. False when there is no app, so do it here. */
 export function askApp(message: Record<string, unknown>): boolean {
@@ -36,6 +46,12 @@ export function askApp(message: Record<string, unknown>): boolean {
 
 /** Put the chooser window up, or bring it forward if it is already there. */
 export const showChooser = (): boolean => askApp({ chooser: true });
+
+/** The same, with the new set folder already asked for. */
+export const showNewSet = (): boolean => askApp({ chooser: true, making: true });
+
+/** The window of what the studio has done, save by save. */
+export const showChanges = (): boolean => askApp({ panel: 'changes' });
 
 /**
  * What the chooser chose, for the main window to open: the set folder whole,

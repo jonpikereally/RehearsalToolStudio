@@ -104,9 +104,9 @@ final class StudioWebView: WKWebView {
 final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: StudioWebView!
-    /// The chooser: a small window of its own, in front of the studio.
-    var chooserWindow: NSWindow?
-    var chooserWeb: WKWebView?
+    /// The small windows in front of the studio, by name: the chooser, the changes.
+    var panels: [String: NSWindow] = [:]
+    var panelWebs: [String: WKWebView] = [:]
     var titleWatch: NSKeyValueObservation?
     /// The build the page was loaded from, to notice when the server has moved on.
     var loadedBuild: String?
@@ -295,7 +295,8 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             open([])
         }
         // The chooser: put it up, take what it chose, or take its way past itself.
-        if body["chooser"] as? Bool == true { showChooser() }
+        if body["chooser"] as? Bool == true { showChooser(making: body["making"] as? Bool == true) }
+        if body["panel"] as? String == "changes" { showChangesWindow() }
         if let chose = body["chose"] as? [String: Any] {
             closeChooser()
             window.makeKeyAndOrderFront(nil)
@@ -332,12 +333,18 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         tell("studio:open", ["paths": batch])
     }
 
-    /// An event on the page's window, its detail as JSON.
+    /// An event on the studio window's page, its detail as JSON.
     func tell(_ event: String, _ detail: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: detail),
+        tell(web, event, detail)
+    }
+
+    /// The same, on whichever window's page is meant.
+    func tell(_ view: WKWebView?, _ event: String, _ detail: [String: Any]) {
+        guard let view,
+              let data = try? JSONSerialization.data(withJSONObject: detail),
               let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(json)}))",
-                               completionHandler: nil)
+        view.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(json)}))",
+                                completionHandler: nil)
     }
 
     // MARK: - The chooser, in a window of its own.
@@ -351,13 +358,23 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
      * to the window behind, which is the one that holds the set. Closed
      * without choosing, nothing has changed.
      */
-    func showChooser() {
-        if let already = chooserWindow {
+    /**
+     * A small window in front of the studio, running the same page.
+     *
+     * The page is told by its query which window it is, so there is one of
+     * everything rather than two: the chooser is the page's chooser, the
+     * changes are the page's log. They are deliberately smaller than the
+     * studio's own window — each holds one thing — and closing one changes
+     * nothing behind it.
+     */
+    @discardableResult
+    func showPanel(_ id: String, query: String, title: String, size: NSSize, minimum: NSSize) -> NSWindow? {
+        if let already = panels[id] {
             already.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            return
+            return already
         }
-        guard loadedBuild != nil, let url = URL(string: "http://localhost:5177/?chooser=1") else { return }
+        guard loadedBuild != nil, let url = URL(string: "http://localhost:5177/?\(query)") else { return nil }
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "studio")
@@ -369,40 +386,67 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         if #available(macOS 13.3, *) { view.isInspectable = true }
 
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        panel.title = "Open a set"
-        panel.minSize = NSSize(width: 620, height: 460)
+        panel.title = title
+        panel.minSize = minimum
         panel.backgroundColor = ink
         panel.contentView = view
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        // Beside the studio's window rather than over its middle, and where it was last left.
-        if !panel.setFrameUsingName("studio-chooser") { panel.center() }
-        panel.setFrameAutosaveName("studio-chooser")
+        // Where it was last left, or the middle of the screen the first time.
+        if !panel.setFrameUsingName(NSWindow.FrameAutosaveName("studio-\(id)")) { panel.center() }
+        panel.setFrameAutosaveName(NSWindow.FrameAutosaveName("studio-\(id)"))
 
-        chooserWindow = panel
-        chooserWeb = view
+        panels[id] = panel
+        panelWebs[id] = view
         view.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30))
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        return panel
+    }
+
+    /// The chooser: an Ableton session, and the folder it fills.
+    func showChooser(making: Bool = false) {
+        let up = panels["chooser"] != nil
+        showPanel("chooser", query: "chooser=1\(making ? "&new=1" : "")", title: "Open a set",
+                  size: NSSize(width: 760, height: 540), minimum: NSSize(width: 620, height: 460))
+        // Already up, and asked for a new folder: it can't be in the query now.
+        if up, making { tell(panelWebs["chooser"], "studio:new", [:]) }
+    }
+
+    /// The log of what the studio has made of each save.
+    func showChangesWindow() {
+        showPanel("changes", query: "window=changes", title: "Changes",
+                  size: NSSize(width: 620, height: 640), minimum: NSSize(width: 460, height: 380))
     }
 
     func closeChooser() {
-        chooserWindow?.close()
+        panels["chooser"]?.close()
     }
 
-    /// Let go of the chooser's web view when its window is closed, so the next one is fresh.
+    /// Let go of a panel's web view when its window is closed, so the next one is fresh.
     func windowWillClose(_ note: Notification) {
-        guard (note.object as? NSWindow) === chooserWindow else { return }
-        chooserWeb?.stopLoading()
-        chooserWeb = nil
-        chooserWindow = nil
+        guard let closing = note.object as? NSWindow,
+              let id = panels.first(where: { $0.value === closing })?.key else { return }
+        panelWebs[id]?.stopLoading()
+        panelWebs[id] = nil
+        panels[id] = nil
     }
 
     /// File ▸ Open: the chooser, over whatever the studio is showing.
     @objc func openChooser() {
         showChooser()
+    }
+
+    /// File ▸ New: the same window, with the new set folder already asked for.
+    @objc func newSet() {
+        showChooser(making: true)
+    }
+
+    /// File ▸ Changes: what the studio has done, save by save.
+    @objc func showChanges() {
+        showChangesWindow()
     }
 
     /// A folder or a set dropped on the Dock icon, or opened with the app from the Finder.
@@ -428,8 +472,13 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         // The one thing the app itself opens: the set folder and the session
         // that fills it, chosen together in the page's own window.
         let file = NSMenu(title: "File")
-        let openItem = file.addItem(withTitle: "Open…", action: #selector(openChooser), keyEquivalent: "n")
+        let newItem = file.addItem(withTitle: "New Set Folder…", action: #selector(newSet), keyEquivalent: "n")
+        newItem.target = self
+        let openItem = file.addItem(withTitle: "Open…", action: #selector(openChooser), keyEquivalent: "o")
         openItem.target = self
+        file.addItem(NSMenuItem.separator())
+        let changes = file.addItem(withTitle: "Changes…", action: #selector(showChanges), keyEquivalent: "y")
+        changes.target = self
         bar.addItem(holding(file))
 
         let edit = NSMenu(title: "Edit")

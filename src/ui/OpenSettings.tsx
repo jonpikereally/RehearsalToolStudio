@@ -111,7 +111,7 @@ export default function OpenSettings() {
 
       <div className="btn-row">
         <button className="btn primary" onClick={open} disabled={busy}>
-          Open another… <span className="key-hint">⌘N</span>
+          Open another… <span className="key-hint">⌘O</span>
         </button>
         <button className="btn" onClick={() => void rescan()} disabled={!reading || scanning}>
           {scanning ? scanProgress || 'Scanning…' : 'Read the session again'}
@@ -124,7 +124,7 @@ export default function OpenSettings() {
       <div className="field stacked">
         <label>
           Opening the studio
-          <span className="hint">With both on, a launch goes straight to the tabs. File ▸ Open (⌘N) always asks.</span>
+          <span className="hint">With both on, a launch goes straight to the tabs. File ▸ Open (⌘O) always asks.</span>
         </label>
         <label className="switch-row">
           <input type="checkbox" checked={always.session} onChange={(e) => setAlways(setAlwaysOpen({ session: e.target.checked }))} />

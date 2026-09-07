@@ -15,8 +15,9 @@ import { setToolsAlone } from './toolsAlone';
 import { prepareRunning } from './prepareState';
 import { rememberSession, type OutputSet } from './locatePrepared.ts';
 import { rememberRecentOutput, rememberRecentSession } from './recent.ts';
+import { note } from './saveLog.ts';
 import { navigate } from './router';
-import { isChooserWindow } from './appWindow.ts';
+import { panelWindow } from './appWindow.ts';
 
 /**
  * Library state, persisted to localStorage for instant startup and written to
@@ -553,9 +554,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * changes — lives only in that file, so starting from whatever the browser
    * happened to be holding is starting from the past.
    */
-  // The chooser window shows folders and sessions and nothing else: no scan,
-  // no sync, no watch on the set — the window behind it is doing all that.
-  const canReadLibrary = localStatus === 'ready' && !isChooserWindow();
+  // A small window — the chooser, the changes — shows what it is for and
+  // nothing else: no scan, no sync, no watch on the set. The studio's own
+  // window is doing all that, and two windows doing it would fight.
+  const canReadLibrary = localStatus === 'ready' && !panelWindow();
   useEffect(() => {
     if (!canReadLibrary) return;
     void pullNow();
@@ -916,6 +918,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSetSaved(null);
     setWatching(null);
     if (!currentSet || !canReadLibrary) return;
+    const fileName = currentSet.split('/').pop() ?? currentSet;
     let on = true;
     let seen: string | null = null;
     let pending: string | null = null;
@@ -952,7 +955,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          */
         const before = rememberedRev(currentSet);
         rememberRev(currentSet, rev);
-        if (before && before !== rev) setSetSaved({ path: currentSet, at: st.modified });
+        if (before && before !== rev) {
+          note({ at: st.modified, kind: 'saved', session: fileName, text: 'Saved while the studio was closed.' });
+          setSetSaved({ path: currentSet, at: st.modified });
+        }
         return;
       }
       if (rev === seen) {
@@ -968,7 +974,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pending = null;
       rememberRev(currentSet, rev);
       await rescanRef.current();
-      if (on) setSetSaved({ path: currentSet, at: st.modified });
+      if (!on) return;
+      note({ at: st.modified, kind: 'saved', session: fileName, text: 'Saved by Live, and read again.' });
+      setSetSaved({ path: currentSet, at: st.modified });
     };
     void look();
     const timer = window.setInterval(() => void look(), SET_WATCH_MS);

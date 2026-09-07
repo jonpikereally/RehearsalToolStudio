@@ -4597,15 +4597,25 @@ group('song info as AbleSet clips');
 
   const p2 = { ...project, songs: [song(), song({ title: 'Yellow' }), song({ title: 'Clocks', startBar: 80, endBar: 100, key: 'D', notes: '', tags: [], sections: [] }), song({ title: 'Blank', startBar: 110, endBar: 120, key: null, notes: '', tags: [], sections: [] })] };
   const { clips, songs, empty } = infoClipsFor(p2, ['Yellow', 'Clocks'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false });
-  check('one clip per song, at its first bar, the song long', clips.length === 2 && clips[0].bar === 9 && clips[0].bars === 64 && clips[1].bar === 80, JSON.stringify(clips.map((c) => [c.bar, c.bars])));
+  // Bars 9 to 71: the clip ends where the song does — at the next song's
+  // locator, or at its AUTOSTOP — rather than a bar past it.
+  check('one clip per song, at its first bar, ending where the song does', clips.length === 2 && clips[0].bar === 9 && clips[0].bars === 63 && clips[1].bar === 80 && clips[1].bars === 20, JSON.stringify(clips.map((c) => [c.bar, c.bars])));
   check('a repeated title is one song', songs.join() === 'Yellow,Clocks' && empty.length === 0);
   const bare = infoClipsFor(p2, ['Blank'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false, key: true });
   check('a song with nothing to say under the ticks is named, not written', bare.clips.length === 0 && bare.empty.join() === 'Blank');
   check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
   const halfBar = { ...project, songs: [song({ title: 'Ragged', startBar: 1, endBar: 63.5 })] };
   check('a song that ends mid-bar is counted, and its clip drawn, in whole bars rounded up',
-    infoLinesFor(halfBar.songs[0], project, all).some((l) => /\b64 bars\b/.test(l)) && infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars === 64,
+    infoLinesFor(halfBar.songs[0], project, all).some((l) => /\b64 bars\b/.test(l)) && infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars === 63,
     JSON.stringify([infoLinesFor(halfBar.songs[0], project, all), infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars]));
+
+  // A key change is its own clip, so the key is right at every bar of the copy.
+  const modulates = { ...project, songs: [song({ title: 'Turn', startBar: 1, endBar: 65, key: 'C', keyChanges: [{ bar: 1, key: 'C' }, { bar: 33, key: 'D' }] })] };
+  const split = infoClipsFor(modulates, ['Turn'], all).clips;
+  check('a key change splits the song\'s clip at the bar it happens',
+    split.length === 2 && split[0].bar === 1 && split[0].bars === 32 && split[1].bar === 33 && split[1].bars === 32
+      && / Key: C /.test(split[0].text) && split[1].text === '**Turn** / Key: D',
+    JSON.stringify(split));
   check('lines are joined with a slash, the title bold for AbleSet', /\*\*Yellow\*\* \/ Key: Bb \/ /.test(infoClipsFor(p2, ['Yellow'], all).clips[0].text), infoClipsFor(p2, ['Yellow'], all).clips[0].text);
 
   // Off AbleSet's tracks, a clip is a plain name for Live: no stars, no backslashes.
