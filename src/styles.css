@@ -2641,6 +2641,12 @@ input[type='range'] {
 
 /* ------------------------------ the band ---------------------------------- */
 
+/* A page of its own now, so it carries its own padding. */
+.band-page {
+  padding: 14px 16px 24px;
+}
+
+
 .member {
   border: 1px solid var(--border);
   border-radius: 10px;

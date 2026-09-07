@@ -7,7 +7,6 @@ import {
 } from '../lib/members';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import PrepareSetDialog from './PrepareSetDialog';
-import SettingsSection from './SettingsSection';
 
 /**
  * The band, and what each of them keeps on a fader of their own.
@@ -18,12 +17,16 @@ import SettingsSection from './SettingsSection';
  * come from the set that is open — which is what a person is actually
  * looking at when they think about what they want separate.
  *
+ * A tab of its own rather than a panel in Settings: it is about the people
+ * the set is prepared for, which is work of the same kind as the songs and
+ * the tools, and it decides how every song is written.
+ *
  * Changes are held until they are saved, because saving them is a decision
  * with hours of rendering behind it: what is written for the band only
  * becomes true when the songs are prepared again, so the save says which
  * songs are now behind and offers to run them.
  */
-export default function MembersSettings() {
+export default function BandView() {
   const { publishFolder, library, currentSet, publishFolderName, outputSet } = useStore();
   const [saved, setSaved] = useState<MemberMix[] | null>(null);
   const [draft, setDraft] = useState<MemberMix[]>([]);
@@ -102,20 +105,23 @@ export default function MembersSettings() {
   };
 
   const on = (saved ?? []).filter((m) => !m.off);
-  const summary = !saved?.length ? (
-    <>
-      <span className="badge">off</span>no submixes written
-    </>
-  ) : (
-    <>
-      <span className={on.length ? 'badge ok' : 'badge'}>{on.length ? `${on.length} submixes` : 'off'}</span>
-      {saved.map((m) => m.member).join(', ')}
-    </>
-  );
 
   return (
-    <SettingsSection id="members" title="The band" summary={summary}>
-      <div style={{ color: 'var(--text-dim)', fontSize: 13.5, lineHeight: 1.5 }}>
+    <>
+      <div className="topbar">
+        <h1>
+          The band
+          <span className="sub" style={{ display: 'block' }}>
+            {saved?.length
+              ? `${saved.map((m) => m.member).join(', ')} — ${on.length ? `${on.length} submix${on.length === 1 ? '' : 'es'} per song` : 'no submixes written'}`
+              : 'nobody yet — a member here gets a submix of their own in every song'}
+          </span>
+        </h1>
+        {publishFolderName && <span className="code">{publishFolderName}</span>}
+      </div>
+
+      <div className="band-page">
+      <div style={{ color: 'var(--text-dim)', fontSize: 13.5, lineHeight: 1.5, maxWidth: 780 }}>
         Each member gets one part per song of everything they are <em>not</em> keeping separate, summed here from the
         multitrack and written beside the stems. Their phone loads that one file in place of the parts inside it — four
         files instead of eight, and a quarter of the decoding. The record itself is never in one, and a submix that
@@ -166,7 +172,12 @@ export default function MembersSettings() {
                 {label}
               </button>
             ))}
-            {/* Kept parts the open set has no track for: another set's, or typed. */}
+            {/*
+              Parts they keep that the open set has no track for — another
+              set's, or typed. Marked only when there is a set to compare
+              against: with none open, every one of them would be marked,
+              which says nothing at all.
+            */}
             {member.keeps
               .filter((keep) => !labels.includes(keep.toLowerCase()))
               .map((keep) => (
@@ -175,12 +186,13 @@ export default function MembersSettings() {
                   className="chip on"
                   disabled={busy || !!member.off}
                   onClick={() => change(member, { keeps: member.keeps.filter((k) => k !== keep) })}
-                  title="Not a part of the set that is open"
+                  title={labels.length ? 'Not a part of the set that is open' : undefined}
                 >
-                  {keep} ·
+                  {keep}
+                  {labels.length ? ' ·' : ''}
                 </button>
               ))}
-            {!labels.length && <span className="hint">Open a set to see its parts.</span>}
+            {!labels.length && <span className="hint">Open a set to tick its parts.</span>}
           </div>
         </div>
       ))}
@@ -249,6 +261,7 @@ export default function MembersSettings() {
       )}
 
       {dialog && <PrepareSetDialog preselect={dialog} onClose={() => setDialog(null)} />}
-    </SettingsSection>
+      </div>
+    </>
   );
 }

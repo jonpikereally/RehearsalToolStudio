@@ -4,7 +4,6 @@ import { cacheStats, clearCache, clearLocalDuplicates, type CacheStats } from '.
 import { isLocal } from '../lib/source';
 import { formatBytes } from '../lib/songLoader';
 import OpenSettings from './OpenSettings';
-import MembersSettings from './MembersSettings';
 import CueSettings from './CueSettings';
 import MidiSettings from './MidiSettings';
 import SettingsSection from './SettingsSection';
@@ -61,8 +60,6 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
       </div>
 
       <OpenSettings />
-
-      <MembersSettings />
 
       <CueSettings />
 

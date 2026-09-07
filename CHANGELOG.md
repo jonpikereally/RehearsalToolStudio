@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Give the band a tab of its own**
+
+Who the set is prepared for is not a setting: it decides how every song is written, and it is work of the same kind as the songs and the tools. So it comes out of Settings and becomes a tab — the band, their submixes, and what each of them keeps on a fader of their own, with the head saying who they are and how many submixes a song carries.
+
 **Only offer a reload when reloading would change something**
 
 The banner compared this page with the build the server process started with, so a page already showing the newest bundle was told a newer one was ready — and the Reload button loaded the same bundle again and the banner came straight back. Nothing to see, nothing to do, no way to tell why.
