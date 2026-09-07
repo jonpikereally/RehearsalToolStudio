@@ -459,6 +459,27 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       return {};
     },
 
+    /**
+     * The Ableton sessions sitting in a folder, newest save first.
+     *
+     * The launch chooser offers the sessions in the folder it last read
+     * without opening any of them, and a project folder holds its sets at
+     * the top: a shallow look, not the whole walk `list` does through every
+     * stem in it.
+     */
+    async sessions({ dir }) {
+      const base = permitted(dir);
+      const out = [];
+      for (const entry of await readdir(base, { withFileTypes: true })) {
+        if (!entry.isFile() || entry.name.startsWith('.')) continue;
+        if (extname(entry.name).toLowerCase() !== '.als') continue;
+        const st = await stat(join(base, entry.name)).catch(() => null);
+        if (st) out.push({ name: entry.name, modified: modified(st) });
+      }
+      out.sort((a, b) => b.modified - a.modified);
+      return { dir: base, name: basename(base), files: out };
+    },
+
     async list({ dir }) {
       const base = permitted(dir);
       const out = [];

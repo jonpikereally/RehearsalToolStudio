@@ -320,6 +320,11 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
                                completionHandler: nil)
     }
 
+    /// File ▸ Open: the page puts its choosing window back up, whatever it is showing.
+    @objc func openChooser() {
+        tell("studio:menu", ["item": "open"])
+    }
+
     /// A folder or a set dropped on the Dock icon, or opened with the app from the Finder.
     func application(_ application: NSApplication, open urls: [URL]) {
         open(urls.map(\.path))
@@ -339,6 +344,13 @@ final class Studio: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         app.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         bar.addItem(holding(app))
+
+        // The one thing the app itself opens: the set folder and the session
+        // that fills it, chosen together in the page's own window.
+        let file = NSMenu(title: "File")
+        let openItem = file.addItem(withTitle: "Open…", action: #selector(openChooser), keyEquivalent: "n")
+        openItem.target = self
+        bar.addItem(holding(file))
 
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")

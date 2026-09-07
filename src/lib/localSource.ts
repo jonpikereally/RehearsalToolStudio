@@ -182,6 +182,32 @@ export async function openPath(path: string): Promise<{ folder: LocalFolder; fil
   };
 }
 
+/**
+ * The Ableton sessions in a folder the studio has already been given, newest
+ * save first — for offering them before one is opened. A folder that was
+ * never granted answers with nothing rather than an error: the chooser then
+ * simply asks for one.
+ */
+export interface FolderSessions {
+  dir: string;
+  name: string;
+  files: { name: string; modified: number }[];
+}
+
+export async function sessionsIn(dir: string): Promise<FolderSessions> {
+  try {
+    return await call('sessions', { dir });
+  } catch {
+    return { dir, name: dir.split('/').pop() ?? dir, files: [] };
+  }
+}
+
+/** The same, for the folder remembered under a slot — the last one opened. */
+export async function sessionsInStored(slot: FolderSlot = 'songs'): Promise<FolderSessions | null> {
+  const stored = await call<{ dir: string | null }>('stored', { slot });
+  return stored.dir ? sessionsIn(stored.dir) : null;
+}
+
 /* ---------------------------------- paths --------------------------------- */
 
 /** The part of a path below the root: what the folder itself holds. */

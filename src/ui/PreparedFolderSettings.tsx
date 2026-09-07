@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useStore } from '../lib/store';
 import * as local from '../lib/localSource';
 import { SETS_FOLDER } from '../lib/prints';
+import { askForFiles } from '../lib/recent';
+import { navigate } from '../lib/router';
 import SettingsSection from './SettingsSection';
 
 /**
@@ -13,7 +15,8 @@ import SettingsSection from './SettingsSection';
  * going back through the launch screens.
  */
 export default function PreparedFolderSettings() {
-  const { outputSet, chooseOutput, chooseSet, openSession, publishFolder, pickPublishFolder, sessionPath } = useStore();
+  const { outputSet, chooseOutput, chooseSet, openSession, publishFolder, pickPublishFolder, sessionPath, settings, saveSettings } =
+    useStore();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,8 +63,13 @@ export default function PreparedFolderSettings() {
           <button
             className="btn"
             onClick={() => {
+              // Asked for, so the chooser asks — even with both sides set to
+              // open what they had last, which would otherwise walk straight
+              // back in here.
+              askForFiles();
               chooseSet(null);
               chooseOutput(null);
+              navigate('/');
             }}
             disabled={busy}
           >
@@ -84,6 +92,33 @@ export default function PreparedFolderSettings() {
           </button>
         </div>
         {error && <div className="notice error">{error}</div>}
+      </div>
+      {/*
+        The same two switches the choosing window carries, for turning them
+        off again from here: with both on there is no choosing window to turn
+        them off in unless it is asked for.
+      */}
+      <div className="field stacked">
+        <label>
+          Opening the studio
+          <span className="hint">With both on, a launch goes straight to the tabs. File ▸ Open (⌘N) always asks.</span>
+        </label>
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={settings.alwaysRecentOutput}
+            onChange={(e) => saveSettings({ alwaysRecentOutput: e.target.checked })}
+          />
+          <span>Always open the most recent output folder</span>
+        </label>
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={settings.alwaysRecentSession}
+            onChange={(e) => saveSettings({ alwaysRecentSession: e.target.checked })}
+          />
+          <span>Always open the most recent Ableton set</span>
+        </label>
       </div>
     </SettingsSection>
   );

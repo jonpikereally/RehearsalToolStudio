@@ -2365,6 +2365,168 @@ input[type='range'] {
   font-style: italic;
 }
 
+/* ------------------------- the launch window ------------------------------ */
+
+/*
+ * Output and input side by side, because the question is really one question:
+ * which folder, filled from which session. Two columns where there is room,
+ * one under the other where there isn't.
+ */
+.launch {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
+.launch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.launch-card header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.launch-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.launch-card header p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* Which half of the pair this card is. */
+.launch-step {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* The one thing each side offers first: what it opened last. */
+.launch-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised-2);
+}
+
+.launch-pick:hover {
+  border-color: var(--text-faint);
+}
+
+.launch-pick.on {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.launch-pick-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.launch-pick-sub {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* The folders to choose between, folded away until they are asked for. */
+.launch-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.launch-list .row {
+  padding: 10px 12px;
+  min-height: 52px;
+}
+
+.launch-list .row:last-child {
+  border-bottom: none;
+}
+
+.launch-list .row.on {
+  background: var(--accent-dim);
+}
+
+.launch-sub {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 12px 10px;
+}
+
+.launch-card .switch-row .hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.launch-card .field {
+  padding: 0;
+}
+
+/* A choice that is worth offering but not worth a button of its own. */
+.linky {
+  align-self: flex-start;
+  padding: 4px 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: none;
+}
+
+.linky:hover {
+  color: var(--text);
+}
+
+/* What is about to be opened, and the button that does it. */
+.launch-go {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.launch-go span {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.launch-go strong {
+  color: var(--text);
+}
+
 /* ---------------------------- first-run choices --------------------------- */
 
 .source-choices {

@@ -14,6 +14,7 @@ import { normalisePath } from './paths.ts';
 import { setToolsAlone } from './toolsAlone';
 import { prepareRunning } from './prepareState';
 import { rememberSession, type OutputSet } from './locatePrepared.ts';
+import { rememberRecentOutput, rememberRecentSession } from './recent.ts';
 import { navigate } from './router';
 
 /**
@@ -88,6 +89,14 @@ export interface Settings {
    */
   autoUpdate: boolean;
   /**
+   * Open the set folder last worked in without asking for it again, and the
+   * session that fills it. With both on, and both still there, the chooser
+   * is skipped altogether and the studio comes up where it left off; File ▸
+   * Open brings it back whenever it is wanted.
+   */
+  alwaysRecentOutput: boolean;
+  alwaysRecentSession: boolean;
+  /**
    * The output device to play out of, where the browser lets a page choose.
    * Kept with its label as well as its id: ids are opaque, and a device that
    * has gone missing is worth naming rather than showing as a code.
@@ -103,6 +112,8 @@ const DEFAULT_SETTINGS: Settings = {
   keepAwake: true,
   useLocal: false,
   autoUpdate: false,
+  alwaysRecentOutput: false,
+  alwaysRecentSession: false,
   outputDevice: null,
 };
 
@@ -161,8 +172,12 @@ interface StoreValue {
    * Open an Ableton session by its absolute path: its folder becomes the one
    * stems are read from, that one file is the set, and the set folder — when
    * one is chosen — remembers it as what feeds it.
+   *
+   * `into` is the set folder to belong to, for opening both at once: state
+   * set a moment ago is not visible here yet, so the chooser hands the folder
+   * over rather than setting it and hoping.
    */
-  openSession: (alsPath: string) => Promise<void>;
+  openSession: (alsPath: string, into?: OutputSet | null) => Promise<void>;
   /** The session's absolute path, once opened. */
   sessionPath: string | null;
   /** Every .als in the session's folder, for switching between saves of it. */
@@ -858,7 +873,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const openSession = useCallback(
-    async (alsPath: string) => {
+    async (alsPath: string, into?: OutputSet | null) => {
       const { folder, file } = await local.openPath(alsPath);
       if (!file) throw new Error('That is a folder, not an Ableton session.');
       source.configureSource({ root: settings.root, useLocal: true, folder: folder.handle });
@@ -874,10 +889,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       chooseSet(opened);
       setSessionPath(alsPath);
       // The set folder remembers what feeds it, for the next launch.
-      if (outputSet) {
+      const set = into !== undefined ? into : outputSet;
+      if (set) {
         const band = await local.storedFolder('publish');
-        if (band) await rememberSession(band.handle, outputSet.folder, alsPath).catch(() => undefined);
+        if (band) await rememberSession(band.handle, set.folder, alsPath).catch(() => undefined);
+        rememberRecentOutput(set);
       }
+      rememberRecentSession(alsPath);
       navigate('/');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRoute, navigate, songUrl } from './lib/router';
 import { closeRun, useRun } from './lib/run';
 import { releaseReady } from './lib/songLoader';
@@ -9,9 +9,9 @@ import SetlistsView from './ui/SetlistsView';
 import SetlistView from './ui/SetlistView';
 import SettingsView from './ui/SettingsView';
 import Onboarding from './ui/Onboarding';
-import ChooseOutput from './ui/ChooseOutput';
-import ChooseSession from './ui/ChooseSession';
-import { toolsAlone } from './lib/toolsAlone';
+import Launch from './ui/Launch';
+import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
+import { askForFiles } from './lib/recent';
 import SetToolsView from './ui/SetToolsView';
 import AutoUpdate from './ui/AutoUpdate';
 
@@ -89,10 +89,47 @@ function useDropped(open: (path: string) => Promise<void>): { over: boolean; err
   return { over, error, clear: () => setError(null) };
 }
 
+/**
+ * File ▸ Open, and ⌘N with it: put the choosing window back up.
+ *
+ * The Mac app's menu sends an event; the key is caught here as well, for a
+ * window with no menu bar of its own — a browser looking at the dev server.
+ * Asking on purpose always asks, even when both sides are set to open what
+ * they had last, so `askForFiles` is what the chooser reads.
+ */
+function useOpenMenu(reopen: () => void) {
+  useEffect(() => {
+    const onMenu = (e: Event) => {
+      if ((e as CustomEvent<{ item?: string }>).detail?.item === 'open') reopen();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        reopen();
+      }
+    };
+    window.addEventListener('studio:menu', onMenu);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('studio:menu', onMenu);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [reopen]);
+}
+
 export default function App() {
   const route = useRoute();
   const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourcesFolderName, library, openDropped, watching } = useStore();
   const drop = useDropped(openDropped);
+  /* Back to the choosing window: nothing is closed but the choice itself. */
+  const reopen = useCallback(() => {
+    askForFiles();
+    setToolsAlone(false);
+    chooseSet(null);
+    chooseOutput(null);
+    navigate('/');
+  }, [chooseSet, chooseOutput]);
+  useOpenMenu(reopen);
   const newerBuild = useNewerBuild();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
@@ -117,10 +154,11 @@ export default function App() {
   const heldSong = section === 'settings' && held ? library.songs.find((s) => s.id === held.songId) : undefined;
 
   /*
-   * A launch goes: the band's folder, then which set folder in it, then the
-   * session that feeds it — usually silent, since the folder remembers.
-   * Settings is always reachable, and the set tools without a set when the
-   * chooser was skipped for the tools that need none.
+   * A launch goes: the band's folder once, then the choosing window — the set
+   * folder that is filled and the session that fills it, together — and the
+   * four tabs once both are open. Settings is always reachable, and the set
+   * tools without a set when the chooser was skipped for the tools that need
+   * none.
    */
   const aside = section === 'settings' || (section === 'tools' && toolsAlone());
   let body: JSX.Element | null;
@@ -128,10 +166,8 @@ export default function App() {
     body = null;
   } else if (!aside && !publishFolderName) {
     body = <Onboarding />;
-  } else if (!aside && !outputSet) {
-    body = <ChooseOutput />;
-  } else if (!aside && (!usingLocalFolder || !currentSet)) {
-    body = <ChooseSession />;
+  } else if (!aside && (!outputSet || !usingLocalFolder || !currentSet)) {
+    body = <Launch />;
   } else if (section === 'setlists') {
     body = <SetlistsView />;
   } else if (section === 'setlist' && (route.query.get('id') ?? route.path[1])) {
@@ -218,14 +254,8 @@ export default function App() {
               </span>
             )}
           </span>
-          <button
-            className="chip"
-            onClick={() => {
-              chooseSet(null);
-              chooseOutput(null);
-            }}
-          >
-            Change set
+          <button className="chip" onClick={reopen} title="File ▸ Open (⌘N)">
+            Open another…
           </button>
         </div>
       )}
