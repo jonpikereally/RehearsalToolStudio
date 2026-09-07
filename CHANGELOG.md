@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Write the site the prompt for submixes**
+
+The other repo has to be told what is in the band's folder now, and in one piece rather than in pieces: what a submix is, where it sits, the three fields that declare it, the two shapes submixFor comes in, and the one thing the site must go on doing — dropping hidden parts — for a player that does nothing about submixes to stay correct. The two open questions go with it: the device-render cache that shares the name, and device rendering being the worse of the two ways to get the same file.
+
 **Name a submix for what is in it, and write one file for everybody who wants it**
 
 A submix is a sum of parts and nothing else, so naming it after the person it was worked out for said the wrong thing about it: two members who keep the same things want the same sum, and a file called "submix robin" is one nobody else can be told to use. It is named for its contents now — "Cruel Summer [submix drums+bass+other+piano].mp3" — and a list of parts is written once however many people it serves, with their names on the entry rather than on the file. A list too long for a name is cut short and marked with four letters of its own hash, so two lists can never come out alike.
