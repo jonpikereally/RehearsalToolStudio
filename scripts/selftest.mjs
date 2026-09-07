@@ -1936,6 +1936,22 @@ group('a member\'s submix');
   check('a submix is not read back as a stem',
     isSubmixFile('Cruel Summer [submix alex].mp3') && !isSubmixFile('Cruel Summer [drums].mp3'));
   check('keeps are matched however they are written', keepsPart({ member: 'x', keeps: ['Ref Vox'] }, 'ref vox'));
+
+  // A word instead of a list: one says every way a set spells an instrument.
+  const { keptBy } = await import('../src/lib/members.ts');
+  const byWord = { member: 'Casey', keeps: [], contains: ['gtr'] };
+  check('a word keeps every part whose name contains it',
+    ['gtr', 'GTR 2', 'ref gtr', 'gtr pop'].every((l) => keepsPart(byWord, l))
+      && !['bass', 'vocals'].some((l) => keepsPart(byWord, l)));
+  check('and the panel can say which word did it',
+    keptBy(byWord, 'ref gtr') === 'gtr' && keptBy({ ...byWord, keeps: ['ref gtr'] }, 'ref gtr') === 'named'
+      && keptBy(byWord, 'bass') === null);
+  const wordy = submixPartsFor(song, parts, [byWord])[0];
+  check('so a submix holds everything the word does not name',
+    wordy.submix.of.join() === 'drums,bass,keys,vox', wordy.submix.of.join());
+  check('and a list of words survives being read back',
+    parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0].contains.join() === 'gtr,Vox',
+    JSON.stringify(parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0]));
   const { audioKeyFor } = await import('../src/lib/audioKey.ts');
   const inputs = { fileRev: () => 'r1', bitrate: 192, sampleRate: 48000 };
   const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [song] };

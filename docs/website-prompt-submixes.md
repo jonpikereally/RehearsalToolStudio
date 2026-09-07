@@ -120,9 +120,15 @@ the band's folder, written by the Studio's "The band" tab:
 {
   "writtenBy": "rehearsaltool",
   "writtenAt": "2026-09-07T17:29:47.059Z",
-  "members": [{ "member": "Alex", "keeps": ["guitar", "ref gtr", "ref vox"] }]
+  "members": [
+    { "member": "Alex", "keeps": ["guitar", "ref gtr"], "contains": ["vox"] }
+  ]
 }
 ```
+
+`keeps` names parts outright; `contains` keeps any part whose name holds that
+word, which is how one line covers `vox`, `ref vox` and `bgvs vox` in this set
+and the next one.
 
 The site does not have to read it — everything it needs is in the manifest and
 the library — but it is the answer to "why is my submix that shape?", and if

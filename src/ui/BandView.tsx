@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import * as local from '../lib/localSource';
 import {
-  DEFAULT_KEEPS, isClickOrCue, isWholeSong, keepsPart, membersFromRigs, readMembers, submixesBehind, submixLabel,
-  writeMembers, type MemberMix,
+  DEFAULT_KEEPS, isClickOrCue, isWholeSong, keepsPart, keptBy, membersFromRigs, readMembers, submixesBehind,
+  submixLabel, writeMembers, type MemberMix,
 } from '../lib/members';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import PrepareSetDialog from './PrepareSetDialog';
@@ -34,6 +34,8 @@ export default function BandView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState('');
+  /** A word being typed for one member's filters, by member name. */
+  const [word, setWord] = useState<Record<string, string>>({});
   /** What the prepared set is missing, worked out after a save. */
   const [behind, setBehind] = useState<{ title: string; who: string[] }[] | null>(null);
   const [dialog, setDialog] = useState<string[] | null>(null);
@@ -164,24 +166,64 @@ export default function BandView() {
               Remove
             </button>
           </div>
+          {/*
+            Words that keep a part by matching its name. A set names the same
+            instrument several ways — gtr, guitar, guitar pop, ref gtr — and
+            one word says all of them, in this set and in the next one.
+          */}
           <div className="member-keeps">
-            <span className="control-label">Keeps separate</span>
-            {labels.map((label) => (
+            <span className="control-label">Keeps anything containing</span>
+            {(member.contains ?? []).map((keep) => (
               <button
-                key={label}
-                className={keepsPart(member, label) ? 'chip on' : 'chip'}
+                key={keep}
+                className="chip on"
                 disabled={busy || !!member.off}
-                onClick={() =>
-                  change(member, {
-                    keeps: keepsPart(member, label)
-                      ? member.keeps.filter((k) => k.toLowerCase() !== label)
-                      : [...member.keeps, label],
-                  })
-                }
+                onClick={() => change(member, { contains: (member.contains ?? []).filter((k) => k !== keep) })}
+                title={`Stop keeping parts whose name contains “${keep}”`}
               >
-                {label}
+                {keep} ×
               </button>
             ))}
+            <input
+              className="text-input"
+              type="text"
+              value={word[member.member] ?? ''}
+              onChange={(e) => setWord({ ...word, [member.member]: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                const typed = (word[member.member] ?? '').trim();
+                if (!typed || (member.contains ?? []).some((k) => k.toLowerCase() === typed.toLowerCase())) return;
+                change(member, { contains: [...(member.contains ?? []), typed] });
+                setWord({ ...word, [member.member]: '' });
+              }}
+              placeholder="gtr, vox…"
+              aria-label={`A word ${member.member} keeps parts by`}
+              disabled={busy || !!member.off}
+              style={{ maxWidth: 150 }}
+            />
+          </div>
+          <div className="member-keeps">
+            <span className="control-label">Keeps separate</span>
+            {labels.map((label) => {
+              const why = keptBy(member, label);
+              return (
+                <button
+                  key={label}
+                  className={why ? (why === 'named' ? 'chip on' : 'chip on by-word') : 'chip'}
+                  disabled={busy || !!member.off || (!!why && why !== 'named')}
+                  title={why && why !== 'named' ? `Kept by the word “${why}”` : undefined}
+                  onClick={() =>
+                    change(member, {
+                      keeps: why === 'named'
+                        ? member.keeps.filter((k) => k.toLowerCase() !== label)
+                        : [...member.keeps, label],
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
             {/*
               Parts they keep that the open set has no track for — another
               set's, or typed. Marked only when there is a set to compare
@@ -189,7 +231,7 @@ export default function BandView() {
               which says nothing at all.
             */}
             {member.keeps
-              .filter((keep) => !labels.includes(keep.toLowerCase()))
+              .filter((keep) => !labels.includes(keep.toLowerCase()) && keptBy(member, keep) === 'named')
               .map((keep) => (
                 <button
                   key={keep}

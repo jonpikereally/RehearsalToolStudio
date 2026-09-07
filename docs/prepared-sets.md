@@ -177,7 +177,10 @@ length of the song, and is meant to be played alongside the others.
   than two parts is not written: that is a part under a worse name. Who the
   band are, and what each of them keeps separate, is `members.json` at the
   root of the band's folder — the Studio's own file, and the only thing that
-  has to be set for any of this to happen.
+  has to be set for any of this to happen. A member keeps parts by name in
+  `keeps`, and by word in `contains`: a set spells one instrument several
+  ways — `gtr`, `guitar`, `guitar pop`, `ref gtr` — and one word says all of
+  them, in this set and in the next one.
 - **The click and cues are sampler parts, not files.** A click is a short
   sample struck on every beat and a cue track a handful of spoken files
   along the song; rendering either into a song-length MP3 made megabytes of

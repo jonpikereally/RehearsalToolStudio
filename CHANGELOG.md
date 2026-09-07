@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Let a member keep parts by a word, not one label at a time**
+
+A set spells one instrument several ways — gtr, guitar, guitar pop, ref gtr — and ticking them off one at a time says what a guitarist wants in this set only: the next set, and the song added next week, arrive with the guitar summed into the thing they play along to. So a member can keep by word as well as by name, and one word covers every spelling, now and later.
+
 **Write the site the prompt for submixes**
 
 The other repo has to be told what is in the band's folder now, and in one piece rather than in pieces: what a submix is, where it sits, the three fields that declare it, the two shapes submixFor comes in, and the one thing the site must go on doing — dropping hidden parts — for a player that does nothing about submixes to stay correct. The two open questions go with it: the device-render cache that shares the name, and device rendering being the worse of the two ways to get the same file.

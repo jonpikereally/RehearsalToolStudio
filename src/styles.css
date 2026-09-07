@@ -2677,6 +2677,12 @@ input[type='range'] {
   margin: 0;
 }
 
+/* Kept by a word rather than by its own tick: said, but not to be clicked. */
+.chip.on.by-word {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
 /* The parts they keep on their own faders; everything else is summed. */
 .member-keeps {
   display: flex;

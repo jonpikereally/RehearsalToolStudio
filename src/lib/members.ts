@@ -29,6 +29,15 @@ export interface MemberMix {
    * never in one.
    */
   keeps: string[];
+  /**
+   * Words that keep a part by matching its name rather than being it.
+   *
+   * A set names the same instrument several ways across its songs — `gtr`,
+   * `guitar`, `guitar pop`, `ref gtr` — and a guitarist wants every one of
+   * them on a fader, in the songs that have them and the songs added next
+   * year. Ticking labels one set at a time cannot say that; `gtr` can.
+   */
+  contains?: string[];
   /** Set while a member is in the band but wants no submix written. */
   off?: boolean;
 }
@@ -70,14 +79,17 @@ const same = (a: string, b: string) => clean(a).toLowerCase() === clean(b).toLow
 /** One member as read back, or null when the entry isn't one. */
 export function parseMember(raw: unknown): MemberMix | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { member, keeps, off } = raw as Record<string, unknown>;
+  const { member, keeps, contains, off } = raw as Record<string, unknown>;
   if (typeof member !== 'string' || !member.trim()) return null;
-  const list = Array.isArray(keeps) ? keeps.filter((k): k is string => typeof k === 'string' && !!k.trim()) : DEFAULT_KEEPS;
+  const words = (value: unknown, fallback: string[] = []) =>
+    Array.isArray(value) ? [...new Set(value.filter((k): k is string => typeof k === 'string' && !!k.trim()).map(clean))] : fallback;
+  const matching = words(contains);
   return {
     member: clean(member),
     // The click and the cues are never in a submix, so keeping them is not a
     // choice anybody has to make, and a list saying so is a list to tidy.
-    keeps: [...new Set(list.map(clean))].filter((keep) => !isClickOrCue(keep) && !isWholeSong(keep)),
+    keeps: words(keeps, DEFAULT_KEEPS).filter((keep) => !isClickOrCue(keep) && !isWholeSong(keep)),
+    ...(matching.length ? { contains: matching } : {}),
     ...(off === true ? { off: true } : {}),
   };
 }
@@ -130,9 +142,16 @@ export async function membersFromRigs(band: local.FolderHandle): Promise<string[
 /** Which prepared set a rig file belongs to, for saying where a name came from. */
 export const setOfRig = (path: string): string => setFolderOf(path.slice(0, path.lastIndexOf('/')));
 
+/** Why a part is kept out of a member's submix, or null when it isn't. */
+export function keptBy(member: MemberMix, label: string): 'named' | string | null {
+  if (member.keeps.some((keep) => same(keep, label))) return 'named';
+  const text = clean(label).toLowerCase();
+  return (member.contains ?? []).find((word) => text.includes(clean(word).toLowerCase())) ?? null;
+}
+
 /** Whether a part label is one this member keeps on a fader of their own. */
 export function keepsPart(member: MemberMix, label: string): boolean {
-  return member.keeps.some((keep) => same(keep, label));
+  return keptBy(member, label) !== null;
 }
 
 /**
