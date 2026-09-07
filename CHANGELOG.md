@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Only offer a reload when reloading would change something**
+
+The banner compared this page with the build the server process started with, so a page already showing the newest bundle was told a newer one was ready — and the Reload button loaded the same bundle again and the banner came straight back. Nothing to see, nothing to do, no way to tell why.
+
 **Never sum the click or the cues into anybody's submix**
 
 They are the set's own timekeeping, not something to play along to, and one summed into a member's submix is a click they can never turn down. It held already for the usual case — a click is a pattern striking samples, which cannot be summed — but a set that renders its click as audio would have had it folded in for anyone who hadn't thought to keep it out.

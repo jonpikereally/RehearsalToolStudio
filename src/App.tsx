@@ -19,25 +19,30 @@ import ChangesView from './ui/ChangesView';
 import AutoUpdate from './ui/AutoUpdate';
 
 /**
- * Whether the studio's server is now serving a newer build than this page.
+ * Whether the studio has moved on from what this window is running.
  *
- * The launcher rebuilds on every click, but an already-open window keeps
- * running whatever it loaded — so on focus the page asks the server which
- * build sits on disk and compares it to its own stamp. A mismatch becomes a
- * banner rather than a silent reload: reloading under someone mid-edit is
- * its own kind of unreliability.
+ * Two ways it can, and they want different answers. A newer bundle on disk is
+ * one reload away, so the banner offers the reload — never taking it, since
+ * reloading under somebody mid-edit is its own kind of unreliability. A
+ * server still running the code it started with is not: the page is already
+ * current and reloading it changes nothing, which is what a Reload button
+ * that appeared to do nothing used to mean. That one is fixed by quitting and
+ * opening the app again, and the banner says so instead of offering a button
+ * that cannot help.
  */
-function useNewerBuild(): string | null {
-  const [newer, setNewer] = useState<string | null>(null);
+type Behind = { build: string; kind: 'page' | 'server' };
+
+function useNewerBuild(): Behind | null {
+  const [behind, setBehind] = useState<Behind | null>(null);
   useEffect(() => {
     const check = async () => {
       try {
         const res = await fetch('/__rehearsal-studio', { signal: AbortSignal.timeout(2000) });
         const info = await res.json();
-        // What the server *is*, not what sits on disk: a rebuilt bundle behind
-        // a server still running old code is not a newer studio yet.
-        const running = info.server ?? info.build;
-        if (running && running !== __BUILD__) setNewer(running);
+        // `build` is what sits on disk; `server` is what this server is.
+        if (info.build && info.build !== __BUILD__) setBehind({ build: info.build, kind: 'page' });
+        else if (info.server && info.server !== __BUILD__) setBehind({ build: info.server, kind: 'server' });
+        else setBehind(null);
       } catch {
         // The dev server has no such route; there is nothing to say.
       }
@@ -46,7 +51,7 @@ function useNewerBuild(): string | null {
     window.addEventListener('focus', check);
     return () => window.removeEventListener('focus', check);
   }, []);
-  return newer;
+  return behind;
 }
 
 /**
@@ -351,11 +356,23 @@ export default function App() {
           style={{ display: 'flex', gap: 12, alignItems: 'center', margin: 0, borderRadius: 0 }}
         >
           <span style={{ flex: 1 }}>
-            A newer build ({newerBuild}) is ready — this window is showing {__BUILD__}.
+            {newerBuild.kind === 'page' ? (
+              <>
+                A newer build ({newerBuild.build}) is ready — this window is showing {__BUILD__}.
+              </>
+            ) : (
+              <>
+                This window is showing the newest build ({__BUILD__}), but the studio’s own server is still the one it
+                started with ({newerBuild.build}) — so anything new it does with the disk isn’t there yet. Quit and open
+                the app again to pick it up.
+              </>
+            )}
           </span>
-          <button className="btn primary" onClick={() => window.location.reload()}>
-            Reload
-          </button>
+          {newerBuild.kind === 'page' && (
+            <button className="btn primary" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          )}
         </div>
       )}
       {drop.over && (
