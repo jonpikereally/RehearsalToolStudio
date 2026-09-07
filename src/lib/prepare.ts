@@ -8,7 +8,7 @@ import { songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
-import { isClickOrCue, isWholeSong, keepsPart, submixLabel, type MemberMix } from './members.ts';
+import { SUBMIX_FOLDER, isClickOrCue, isWholeSong, keepsPart, submixLabel, type MemberMix } from './members.ts';
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
@@ -369,7 +369,11 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
   const to = clips.length ? Math.min(bars, Math.ceil(Math.max(...clips.map((c) => c.endBar)))) : null;
   const gain = part.combined ? 1 : (part.stems[0]?.gain ?? 1);
   return {
-    file: partFileName(song.title, part.name, part.reference),
+    // A submix lives in the song's submixes/ folder; every other part sits in
+    // the song folder itself, and its name is all the manifest has ever said.
+    file: part.submix
+      ? `${SUBMIX_FOLDER}/${partFileName(song.title, part.name, part.reference)}`
+      : partFileName(song.title, part.name, part.reference),
     /*
      * A submix is declared hidden, and says whose it is and what it stands
      * for. Hidden is what makes it safe to write before anything reads it:
@@ -966,7 +970,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           await opts.beforeSong?.(folderName, previousFolder && previousFolder !== folderName ? previousFolder : undefined);
         }
         report('writing', 1);
-        await writeFile(`${songFolder}/${partFileName(song.title, part.name, part.reference)}`, blob);
+        await writeFile(
+          `${songFolder}/${part.submix ? `${SUBMIX_FOLDER}/` : ''}${partFileName(song.title, part.name, part.reference)}`,
+          blob,
+        );
         const info = {
           ...partInfoFor(song.title, part.name, part.reference),
           ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate),

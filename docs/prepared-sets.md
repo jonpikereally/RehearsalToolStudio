@@ -125,16 +125,20 @@ length of the song, and is meant to be played alongside the others.
   would clip, and left alone otherwise. How far it was pulled down is written
   as `gainDb` on its entry.
 - **A member's submix** is a combined part chosen for one person rather than
-  typed: `<Title> [submix <member>].mp3`, everything that member does not keep
-  on a fader of their own, summed at unity. It is a part like any other —
-  same lead-in, same 192 kbps, same rate — and is declared with three fields
-  on its `parts` entry:
+  typed: `submixes/<Title> [submix <member>].mp3` inside the song's folder,
+  everything that member does not keep on a fader of their own, summed at
+  unity. It is a part like any other — same lead-in, same 192 kbps, same rate
+  — and the only one that does not sit in the song folder itself: a song
+  folder of eight stems and four submixes is one nobody can read at a glance.
+  Its `file` carries the path from the song folder, `submixes/…`, where every
+  other part's `file` is a bare name. It is declared with three fields on its
+  `parts` entry:
 
   ```json
   {
     "label": "submix alex",
     "name": "submix alex",
-    "file": "Cruel Summer [submix alex].mp3",
+    "file": "submixes/Cruel Summer [submix alex].mp3",
     "role": "stem",
     "hidden": true,
     "submixFor": "Alex",

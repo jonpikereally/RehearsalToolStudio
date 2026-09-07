@@ -1854,7 +1854,7 @@ group('preparing a set');
 group('a member\'s submix');
 {
   const { submixPartsFor, partsFor, partInfoFor, partFileName } = await import('../src/lib/prepare.ts');
-  const { DEFAULT_KEEPS, isSubmixFile, keepsPart, parseMembers, submixLabel } = await import('../src/lib/members.ts');
+  const { DEFAULT_KEEPS, SUBMIX_FOLDER, isSubmixFile, keepsPart, parseMembers, submixLabel } = await import('../src/lib/members.ts');
 
   const stem = (name, over = {}) => ({
     name, reference: false, gain: 1, pan: 0, muted: false, soloed: false, frozen: false, sends: [], devices: [],
@@ -1896,6 +1896,8 @@ group('a member\'s submix');
     mix.name === submixLabel('Alex') && mix.combined && !mix.reference
       && partFileName(song.title, mix.name) === 'Cruel Summer [submix alex].mp3',
     partFileName(song.title, mix.name));
+  check('and it sits in the song\'s submixes folder, which is what the manifest says',
+    SUBMIX_FOLDER === 'submixes' && isSubmixFile(`${SUBMIX_FOLDER}/${partFileName(song.title, mix.name)}`));
   check('and it is declared hidden, saying whose it is and what it stands for',
     partInfoFor(song.title, mix.name, false).role === undefined, JSON.stringify(partInfoFor(song.title, mix.name, false)));
 

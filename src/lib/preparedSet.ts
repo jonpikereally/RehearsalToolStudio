@@ -170,7 +170,11 @@ export interface PreparedPart {
    * for whoever wonders why a part sounds as it does. All optional; a part
    * written before they existed carries none.
    */
-  /** The file's name in the folder. */
+  /**
+   * Where the file is, from the song's folder: a name for an ordinary part,
+   * and `submixes/<name>` for a member's submix, which sits in a folder of
+   * its own so a song folder still reads as the parts the band play.
+   */
   file?: string;
   /** The Live tracks the part was rendered from: one, or several for a combined part. */
   sources?: string[];

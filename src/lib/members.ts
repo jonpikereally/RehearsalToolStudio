@@ -189,6 +189,17 @@ export function submixesBehind(
   return out;
 }
 
+/**
+ * Where a song's submixes sit: a folder of their own inside the song's.
+ *
+ * They are parts like any other and could sit beside the stems, but a song
+ * folder of eight stems and four submixes is a folder nobody can read at a
+ * glance — the things the band play are lost among the things the studio
+ * summed for them. The manifest names each one by its path from the song
+ * folder, so nothing has to guess where they are.
+ */
+export const SUBMIX_FOLDER = 'submixes';
+
 /** `Fix You [submix alex].mp3` — the label a member's submix carries. */
 export const submixLabel = (member: string): string => `submix ${clean(member).toLowerCase()}`;
 

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Put a song's submixes in a folder of their own**
+
+A song folder of eight stems and four submixes is a folder nobody can read at a glance: the parts the band play are lost among the things the studio summed for them. So each song's submixes go under submixes/ inside it, and their manifest entries carry the path from the song folder — `submixes/Cruel Summer [submix alex].mp3` — where every other part's file is a bare name.
+
 **Keep whole songs out of submixes, and out of the choosing**
 
 The record was already left out of every submix, but it was still offered as a part to keep — a choice that changed nothing, which is worse than no choice at all. It is gone from the chips now, along with the click and the cues, and so is a full mix: a whole song summed into a submix puts everything in it twice, whether it is the record the band play against or their own bounce.
