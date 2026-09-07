@@ -58,8 +58,6 @@ export default function SetToolsView() {
   /** Where Lyrics Studio answers; null once looked for and not found. */
   const [lyricsUrl, setLyricsUrl] = useState<string | null | undefined>(undefined);
   const lyricsUp = lyricsUrl === undefined ? null : lyricsUrl !== null;
-  const [lone, setLone] = useState<{ name: string; bytes: ArrayBuffer } | null>(null);
-  const [outDir, setOutDir] = useState<local.FolderHandle | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet, publishFolder, pickPublishFolder } = useStore();
   const [tool, setTool] = useState<
@@ -133,9 +131,8 @@ export default function SetToolsView() {
   }, []);
 
   /*
-   * The set is the one chosen on opening; every tool here works on it. It is
-   * read afresh whenever that choice changes, and a lone .als opened in the
-   * meantime gives way to it.
+   * The set is the one chosen on opening; every tool here works on it, and it
+   * is read afresh whenever that choice changes.
    */
   useEffect(() => {
     let live = true;
@@ -143,7 +140,6 @@ export default function SetToolsView() {
       const stored = await local.storedFolder('songs');
       if (!live) return;
       setFolder(stored);
-      setLone(null);
       setChosen(null);
       if (stored && currentSet) await openSet(stored, currentSet);
     })();
@@ -153,46 +149,12 @@ export default function SetToolsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSet]);
 
-  const backToSet = () => {
-    setLone(null);
-    setChosen(null);
-    if (folder && currentSet) void openSet(folder, currentSet);
-  };
-
-  /**
-   * A set on its own, with none of its audio to hand.
-   *
-   * Usually it has come off another machine: the stems are elsewhere and the
-   * point is to change the .als itself. Nothing here reads the audio, so that
-   * costs nothing — but a file picked on its own grants nothing beside it, so
-   * what comes out goes to a folder chosen for it.
-   */
-  const openLoneAls = async () => {
-    setError(null);
-    setDone(null);
-    try {
-      const file = await local.pickFile({ description: 'an Ableton Live set', extensions: ['als'] });
-      setProject(await parseAls(file.bytes));
-      setLone({ name: file.name, bytes: file.bytes });
-      setSetPath(null);
-      setChosen(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
-    }
-  };
-
   /** Where results are written, and what to call them. */
   const destination = async (): Promise<{
     dir: local.FolderHandle;
     prefix: string;
     base: string;
   }> => {
-    if (lone) {
-      const dir = outDir ?? (await local.pickFolder(null)).handle;
-      setOutDir(dir);
-      return { dir, prefix: '', base: lone.name };
-    }
     const path = setPath!;
     const at = path.lastIndexOf('/');
     return {
@@ -202,9 +164,8 @@ export default function SetToolsView() {
     };
   };
 
-  /** The set's bytes, from wherever it came. */
-  const setBytes = async (): Promise<ArrayBuffer> =>
-    lone ? lone.bytes : (await local.readBytes(folder!.handle, '', setPath!)).bytes;
+  /** The set's bytes, read from the session's own folder. */
+  const setBytes = async (): Promise<ArrayBuffer> => (await local.readBytes(folder!.handle, '', setPath!)).bytes;
 
   const openSet = async (from: local.LocalFolder, path: string) => {
     setError(null);
@@ -250,7 +211,7 @@ export default function SetToolsView() {
     const needle = pickFilter.trim().toLowerCase();
     // Set order is the running order — AbleSet's, as the library has it —
     // with the arrangement's order for a set the library has no setlist for.
-    const running = setPath && !lone ? runningOrderTitles(library, setPath) : null;
+    const running = setPath ? runningOrderTitles(library, setPath) : null;
     const place = new Map((running ?? []).map((t, i) => [t, i]));
     const info = new Map(project?.songs.map((sg, i) => [sg.title, { i: place.get(sg.title) ?? (running ? running.length + i : i), sg }]) ?? []);
     const rows = titles.filter((t) => !needle || t.toLowerCase().includes(needle));
@@ -292,7 +253,7 @@ export default function SetToolsView() {
   };
 
   const addSlates = async () => {
-    if (!project || (!setPath && !lone)) return;
+    if (!project || !setPath) return;
     setError(null);
     setDone(null);
     try {
@@ -360,7 +321,7 @@ export default function SetToolsView() {
    * one back. Into a copy, like the slates: this is somebody's project file.
    */
   const addChords = async (force = false) => {
-    if (!project || (!setPath && !lone)) return;
+    if (!project || !setPath) return;
     setError(null);
     setDone(null);
     try {
@@ -417,7 +378,7 @@ export default function SetToolsView() {
    * Song info, as one AbleSet lyrics clip per song in a copy of the set.
    */
   const addInfo = async () => {
-    if (!project || (!setPath && !lone)) return;
+    if (!project || !setPath) return;
     setError(null);
     setDone(null);
     try {
@@ -644,30 +605,47 @@ export default function SetToolsView() {
 
   return (
     <>
-      <div className="topbar">
+      {/*
+        The head says what these tools are pointed at: the session, and the
+        songs of it they will act on. What they act on is a choice, and the
+        commonest one to change, so it sits in the head beside the set rather
+        than in a panel of its own below it.
+      */}
+      <div className="topbar tools-head">
         <h1>
           Set tools
           <span className="sub" style={{ display: 'block' }}>
-            {lone
-              ? `${lone.name} — opened on its own; what comes out goes to a folder you choose`
-              : currentSet
-                ? `${currentSet.split('/').pop()}${project ? ` · ${titles.length} song${titles.length === 1 ? '' : 's'}` : ''}`
-                : 'No set chosen — Slates and Lyrics work without one; the rest need a set'}
+            {currentSet
+              ? `${currentSet.split('/').pop()}${project ? ` · ${titles.length} song${titles.length === 1 ? '' : 's'}` : ''}`
+              : 'No set chosen — Slates and Lyrics work without one; the rest need a set'}
           </span>
         </h1>
-        {lone && currentSet && (
-          <button className="btn" disabled={!!progress} onClick={backToSet}>
-            Back to {currentSet.split('/').pop()?.replace(/\.als$/i, '')}
-          </button>
+        {project && (
+          <div className={pickerOpen ? 'working on' : 'working'}>
+            <span className="working-label">Working on</span>
+            <strong>
+              {wholeSet
+                ? `all ${titles.length} songs`
+                : selected.size === 0
+                  ? 'no songs'
+                  : `${selected.size} of ${titles.length} songs`}
+            </strong>
+            {!wholeSet && selected.size > 0 && (
+              <span className="picker-names">
+                {titles.filter((t) => selected.has(t)).slice(0, 4).join(', ')}
+                {selected.size > 4 ? '…' : ''}
+              </span>
+            )}
+            <button
+              className={pickerOpen ? 'btn primary' : 'btn'}
+              onClick={() => setPickerOpen((o) => !o)}
+              aria-expanded={pickerOpen}
+              disabled={!!progress}
+            >
+              {pickerOpen ? 'Done' : 'Choose songs'}
+            </button>
+          </div>
         )}
-        <button
-          className="btn"
-          disabled={!!progress}
-          onClick={() => void openLoneAls()}
-          title="Work on a set file that isn't in the folder"
-        >
-          {lone ? 'Different .als…' : 'Open a single .als…'}
-        </button>
       </div>
 
       <div style={{ padding: '12px 16px 16px' }}>
@@ -677,37 +655,8 @@ export default function SetToolsView() {
           </div>
         )}
 
-        {/*
-          The songs every tool acts on: a line saying which, and the picker
-          only while they are being chosen. The whole set is the usual case,
-          and a list of twenty tick boxes above every tool was most of the page.
-        */}
         {project && (
-          <div className="picker">
-            <div className="picker-summary">
-              <span className="control-label">Working on</span>
-              <strong>
-                {wholeSet
-                  ? `all ${titles.length} songs`
-                  : selected.size === 0
-                    ? 'no songs'
-                    : `${selected.size} of ${titles.length} songs`}
-              </strong>
-              {!wholeSet && selected.size > 0 && (
-                <span className="picker-names">
-                  {titles.filter((t) => selected.has(t)).slice(0, 4).join(', ')}
-                  {selected.size > 4 ? '…' : ''}
-                </span>
-              )}
-              <button
-                className={pickerOpen ? 'chip on' : 'chip'}
-                onClick={() => setPickerOpen((o) => !o)}
-                aria-expanded={pickerOpen}
-                disabled={!!progress}
-              >
-                {pickerOpen ? 'Done' : 'Choose songs'}
-              </button>
-            </div>
+          <>
             {pickerOpen && (
               <div className="picker-body">
               <div className="picker-bar">
@@ -790,7 +739,7 @@ export default function SetToolsView() {
               </div>
               </div>
             )}
-          </div>
+          </>
         )}
 
         <nav className="subtabs" role="tablist" aria-label="Set tools">
@@ -825,7 +774,7 @@ export default function SetToolsView() {
               {tool === 'update' && (
                 <UpdatePreparedPanel
                   project={project}
-                  alsPath={lone ? null : setPath}
+                  alsPath={setPath}
                   selected={selected}
                   titles={titles}
                 />
@@ -876,105 +825,96 @@ export default function SetToolsView() {
 
               {tool === 'lyrics' && (
                 <>
-                  {lone ? (
-                    <div className="notice quiet">
-                      Lyrics come from the set's audio, which a set opened on its own does not have to hand. Open the set
-                      from its folder to transcribe a track.
-                    </div>
-                  ) : (
-                    <>
-                      <div className="controls flush" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        <span className="control-label">Song</span>
-                        <select
-                          className="jump-select"
-                          value={lyricSongObj?.title ?? ''}
-                          disabled={!!progress}
-                          onChange={(e) => {
-                            setLyricSong(e.target.value);
-                            setLyricTrack('');
-                          }}
-                          style={{ maxWidth: 320 }}
-                        >
-                          {titles.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="control-label">Track</span>
-                        <select
-                          className="jump-select"
-                          value={lyricStem?.name ?? ''}
-                          disabled={!!progress || !stemsOf.length}
-                          onChange={(e) => setLyricTrack(e.target.value)}
-                          style={{ maxWidth: 320 }}
-                        >
-                          {stemsOf.map((st) => (
-                            <option key={st.name} value={st.name}>
-                              {st.name}
-                              {st.reference ? ' · the record' : ''}
-                            </option>
-                          ))}
-                          {!stemsOf.length && <option value="">no audio tracks in this song</option>}
-                        </select>
-                      </div>
-                      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
-                          <button
-                            key={f}
-                            className={lyricFineness === f ? 'chip on' : 'chip'}
-                            aria-pressed={lyricFineness === f}
-                            disabled={!!progress}
-                            onClick={() => {
-                              setLyricFineness(f);
-                              localStorage.setItem('ls.settools.lyricFineness', f);
-                            }}
-                          >
-                            {FINENESS_LABEL[f]}
-                          </button>
-                        ))}
-                        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 8 }}>
-                          <input type="checkbox" checked={lyricIsolate} disabled={!!progress} onChange={(e) => setLyricIsolate(e.target.checked)} />
-                          <span style={{ fontSize: 14 }}>Isolate the voice first</span>
-                        </label>
-                      </div>
-                      <div className="field stacked">
-                        <label htmlFor="lyric-known">
-                          Known words
-                          <span className="hint">
-                            Optional. The lyrics as you know them, pasted in: the listening is steered by them and the
-                            lines aligned to them, which beats a guess at every mumbled word.
-                          </span>
-                        </label>
-                        <textarea
-                          id="lyric-known"
-                          className="text-input"
-                          rows={3}
-                          value={lyricKnown}
-                          disabled={!!progress}
-                          onChange={(e) => setLyricKnown(e.target.value)}
-                          placeholder="Paste the lyrics here, or leave it empty"
-                          style={{ width: '100%', resize: 'vertical' }}
-                        />
-                      </div>
-                      <div className="btn-row">
-                        <button className="btn primary" disabled={!!progress || !lyricStem || !lyricSongObj} onClick={() => void transcribeLyrics()}>
-                          {lyricStem && lyricSongObj
-                            ? `Transcribe “${lyricStem.name}” of ${lyricSongObj.title} and write lyric clips`
-                            : 'Choose a song with audio tracks'}
-                        </button>
-                        <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="The standalone Lyrics Studio page, for its own workflow">
-                          Open Lyrics Studio instead
-                        </button>
-                      </div>
-                      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                        Listens to that track inside the song, on this Mac, and writes the words as timed clips on an
-                        “ADD THIS LYRICS +LYRICS” track in a copy of the set named “… (lyrics).als” — the copy holds only
-                        that track. Lyrics Studio is started here if it is not running
-                        {lyricsUp ? ' (it is running now)' : ''}. Save the set in Live first, so it is read as it stands.
-                      </div>
-                    </>
-                  )}
+                  <div className="controls flush" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <span className="control-label">Song</span>
+                    <select
+                      className="jump-select"
+                      value={lyricSongObj?.title ?? ''}
+                      disabled={!!progress}
+                      onChange={(e) => {
+                        setLyricSong(e.target.value);
+                        setLyricTrack('');
+                      }}
+                      style={{ maxWidth: 320 }}
+                    >
+                      {titles.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="control-label">Track</span>
+                    <select
+                      className="jump-select"
+                      value={lyricStem?.name ?? ''}
+                      disabled={!!progress || !stemsOf.length}
+                      onChange={(e) => setLyricTrack(e.target.value)}
+                      style={{ maxWidth: 320 }}
+                    >
+                      {stemsOf.map((st) => (
+                        <option key={st.name} value={st.name}>
+                          {st.name}
+                          {st.reference ? ' · the record' : ''}
+                        </option>
+                      ))}
+                      {!stemsOf.length && <option value="">no audio tracks in this song</option>}
+                    </select>
+                  </div>
+                  <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
+                      <button
+                        key={f}
+                        className={lyricFineness === f ? 'chip on' : 'chip'}
+                        aria-pressed={lyricFineness === f}
+                        disabled={!!progress}
+                        onClick={() => {
+                          setLyricFineness(f);
+                          localStorage.setItem('ls.settools.lyricFineness', f);
+                        }}
+                      >
+                        {FINENESS_LABEL[f]}
+                      </button>
+                    ))}
+                    <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 8 }}>
+                      <input type="checkbox" checked={lyricIsolate} disabled={!!progress} onChange={(e) => setLyricIsolate(e.target.checked)} />
+                      <span style={{ fontSize: 14 }}>Isolate the voice first</span>
+                    </label>
+                  </div>
+                  <div className="field stacked">
+                    <label htmlFor="lyric-known">
+                      Known words
+                      <span className="hint">
+                        Optional. The lyrics as you know them, pasted in: the listening is steered by them and the
+                        lines aligned to them, which beats a guess at every mumbled word.
+                      </span>
+                    </label>
+                    <textarea
+                      id="lyric-known"
+                      className="text-input"
+                      rows={3}
+                      value={lyricKnown}
+                      disabled={!!progress}
+                      onChange={(e) => setLyricKnown(e.target.value)}
+                      placeholder="Paste the lyrics here, or leave it empty"
+                      style={{ width: '100%', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div className="btn-row">
+                    <button className="btn primary" disabled={!!progress || !lyricStem || !lyricSongObj} onClick={() => void transcribeLyrics()}>
+                      {lyricStem && lyricSongObj
+                        ? `Transcribe “${lyricStem.name}” of ${lyricSongObj.title} and write lyric clips`
+                        : 'Choose a song with audio tracks'}
+                    </button>
+                    <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="The standalone Lyrics Studio page, for its own workflow">
+                      Open Lyrics Studio instead
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Listens to that track inside the song, on this Mac, and writes the words as timed clips on an
+                    “ADD THIS LYRICS +LYRICS” track in a copy of the set named “… (lyrics).als” — the copy holds only
+                    that track. Lyrics Studio is started here if it is not running
+                    {lyricsUp ? ' (it is running now)' : ''}. Save the set in Live first, so it is read as it stands.
+                  </div>
                 </>
               )}
 
@@ -1129,7 +1069,7 @@ export default function SetToolsView() {
                 </>
               )}
 
-              {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={lone ? null : setPath} />}
+              {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={setPath} />}
 
               {tool === 'setlist' && <SetlistPanel project={project} selected={selected} />}
 
@@ -1138,7 +1078,7 @@ export default function SetToolsView() {
                   <div className="btn-row">
                     <button
                       className="btn primary"
-                      disabled={!!progress || !!lone}
+                      disabled={!!progress}
                       onClick={() => void writePatches()}
                     >
                       {wholeSet
@@ -1151,7 +1091,6 @@ export default function SetToolsView() {
                     member from the rig files the website writes under the prepared set’s rigs/ folder, and
                     one for what was programmed in the player here. Drag the tracks into the set in Live;
                     the next prepare reads them back as the set’s own.
-                    {lone ? ' A lone .als was never scanned, so the library has no patches for it.' : ''}
                   </div>
                 </>
               )}

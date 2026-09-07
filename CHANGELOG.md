@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Point the set tools with their head, and drop the lone .als**
+
+"Open a single .als…" opened a set from anywhere with none of its audio to hand, from when the studio was pointed at a folder of sets and a file off another machine had nowhere to belong. The Open window does that now — any session, any folder — so the button and the mode behind it go, and with them every branch that asked whether the set had a folder.
+
 **Find AbleSet where it actually answers, and read the names it gives**
 
 AbleSet serves on port 80, not the 3000 that was guessed at, and its answer carries each song's locator name under the cue rather than as a lastKnownName. Both now read, and checked against the running app: the order it hands back is the one on AbleSet's screen, a reorder included, and the scan says so — "as AbleSet has it open right now".

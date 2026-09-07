@@ -2242,44 +2242,70 @@ input[type='range'] {
   flex: 0 0 auto;
 }
 
-/* A line saying which songs the set tools act on, opening into the picker. */
-.picker {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-raised);
-  padding: 10px 12px;
-  margin-bottom: 4px;
+/* The set tools' head: what they are pointed at, and what they will act on. */
+.tools-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
-.picker-summary {
+/*
+ * Which songs the tools act on, in the head beside the set. The whole set is
+ * the usual answer, so it reads as a statement with a way to change it rather
+ * than a control waiting to be filled in.
+ */
+.working {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  min-height: 34px;
+  min-width: 0;
+  padding: 5px 5px 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised-2);
 }
 
-.picker-summary strong {
-  font-weight: 600;
+.working.on {
+  border-color: var(--accent);
 }
 
-.picker-summary .picker-names {
+.working-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex: none;
+}
+
+.working strong {
+  font-weight: 650;
+  font-size: 14.5px;
+  white-space: nowrap;
+}
+
+.working .picker-names {
   color: var(--text-dim);
   font-size: 13px;
-  flex: 1 1 200px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.picker-summary .chip {
-  margin-left: auto;
+.working .btn {
+  flex: none;
   min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
 }
 
+/* The songs themselves, while they are being chosen. */
 .picker-body {
-  margin-top: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
 
 /* The tool's own controls, in a card under the tab it belongs to. */
