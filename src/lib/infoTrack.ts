@@ -101,6 +101,26 @@ function clock(seconds: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/**
+ * The key changes after the top of the song, as they follow the key.
+ *
+ * `Key: C → D from bar 97`. A change at bar 1 is the song's key, not a
+ * change, and a change back to the key already in force says nothing.
+ */
+function keyChangesText(song: AlsSong, key: string): string {
+  const changes = (song.keyChanges ?? []).filter((c) => c.bar > 1 + 1e-6);
+  if (!changes.length) return '';
+  const parts: string[] = [];
+  let running = key.trim();
+  for (const change of [...changes].sort((a, b) => a.bar - b.bar)) {
+    const next = clean(change.key).trim();
+    if (!next || next.toLowerCase() === running.toLowerCase()) continue;
+    parts.push(`→ ${next} from bar ${Math.round(change.bar)}`);
+    running = next;
+  }
+  return parts.length ? ` ${parts.join(' ')}` : '';
+}
+
 /** The lines one song's clip carries, in the order they read best. */
 export function infoLinesFor(
   song: AlsSong,
@@ -113,7 +133,7 @@ export function infoLinesFor(
   const lines: string[] = [];
   if (fields.title) lines.push(forAbleSet ? `**${clean(song.title)}**` : clean(song.title));
   const key = keyOverride?.trim() || song.key;
-  if (fields.key && key) lines.push(`Key: ${clean(key)}`);
+  if (fields.key && key) lines.push(`Key: ${clean(key)}${keyChangesText(song, key)}`);
   const bpm = song.bpm ?? song.startBpm;
   const facts: string[] = [];
   if (fields.tempo && bpm) facts.push(`${Math.round(bpm * 10) / 10} BPM`);

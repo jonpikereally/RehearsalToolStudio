@@ -140,6 +140,14 @@ which it stands up against a scratch folder. `npm run build` writes `dist/`,
 which the app serves; there is no other build, no staging copy and nothing to
 deploy.
 
+Every change is logged in [CHANGELOG.md](CHANGELOG.md), which is written from
+the commits themselves — so a change is described in its commit message, and
+the log is regenerated rather than edited:
+
+```bash
+npm run changelog   # then include CHANGELOG.md in the commit it describes
+```
+
 ## Two folders
 
 The studio holds two, kept apart on purpose. **Your sets** is the workshop it

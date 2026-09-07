@@ -58,6 +58,25 @@ export function keyAt(bar: number, base: string | null | undefined, changes: Key
   return key;
 }
 
+/**
+ * A key moved by so many semitones — what `KEY CHANGE +2` means.
+ *
+ * Spelled the way that key is normally written rather than by whichever list
+ * it came out of: two up from C is D, one up is Db and not C#, because a
+ * chart in Db is a chart people have seen. A minor key stays minor.
+ */
+export function transposeKey(key: string, semitones: number): string | null {
+  const tonic = pitchOf(key);
+  if (tonic === null || !Number.isFinite(semitones)) return null;
+  const name = key.trim().replace(/\s+/g, '');
+  const minor = /m(in)?$/i.test(name) && !/maj/i.test(name);
+  const moved = (((tonic + Math.round(semitones)) % 12) + 12) % 12;
+  const flat = FLAT[moved];
+  const sharp = SHARP[moved];
+  const spelled = FLAT_KEYS.has(minor ? `${flat}m` : flat) || FLAT_KEYS.has(flat) ? flat : sharp;
+  return `${spelled}${minor ? 'm' : ''}`;
+}
+
 export interface Key {
   tonic: number;
   /** True when the chart should be spelled with flats. */

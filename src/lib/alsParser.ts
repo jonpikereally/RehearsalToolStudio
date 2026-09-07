@@ -14,6 +14,7 @@ import type { Bus, Device } from '../types';
 
 import { isRigLocator } from './alsPatch.ts';
 import { rigTrackMember } from './rigTrack.ts';
+import { transposeKey } from './nashville.ts';
 
 export interface TempoChange {
   /** Beats from the start of the set. */
@@ -1053,6 +1054,24 @@ function unbracket(clip: Clip): Clip {
  */
 const KEY_MARK = /\bkey(?:\s*change)?\s*[:=\-–—>→]*\s*([A-G])([#b♯♭]?)(?:\s*(m|min|minor|maj|major))?\b/i;
 
+/**
+ * A key change written as a move rather than a key: `KEY CHANGE +2`, `key
+ * change up 2`, `KEY CHANGE -1`, `key change down a semitone`. Answers the
+ * semitones, which the song's own key turns into a key.
+ */
+// No hyphen among the separators: in `KEY CHANGE -1` the hyphen is the sign.
+const KEY_SHIFT = /\bkey(?:\s*change)?\s*[:=–—>→]*\s*(?:(up|down)\s*)?([+-]?\d{1,2})\s*(?:semitones?|semis?|half\s*steps?|st|hs)?\b/i;
+
+export function keyShiftIn(text: string): number | null {
+  if (!/\bkey\b/i.test(text)) return null;
+  const m = KEY_SHIFT.exec(text);
+  if (!m) return null;
+  const size = parseInt(m[2], 10);
+  if (!Number.isFinite(size) || size === 0 || Math.abs(size) > 12) return null;
+  const down = /down/i.test(m[1] ?? '') || m[2].startsWith('-');
+  return down ? -Math.abs(size) : Math.abs(size);
+}
+
 export function keyMarkIn(text: string): string | null {
   const m = KEY_MARK.exec(text);
   if (!m) return null;
@@ -1061,13 +1080,25 @@ export function keyMarkIn(text: string): string | null {
   return `${m[1].toUpperCase()}${accidental}${minor ? 'm' : ''}`;
 }
 
-/** Every key mark on the timeline, from the clips of every MIDI track. */
-function keyMarkClips(tracks: Track[]): { beat: number; key: string }[] {
-  const out: { beat: number; key: string }[] = [];
+/**
+ * Every key mark on the timeline, from the clips of every MIDI track.
+ *
+ * A mark either names the new key (`Key: Eb`) or says how far the song
+ * moves (`KEY CHANGE +2`), which is how a band that thinks in semitones
+ * writes it; the move is turned into a key later, against whatever key is
+ * in force by then.
+ */
+function keyMarkClips(tracks: Track[]): { beat: number; key?: string; shift?: number }[] {
+  const out: { beat: number; key?: string; shift?: number }[] = [];
   for (const track of tracks) {
     for (const clip of clipsOf(track.chunk, 'MidiClip')) {
       const key = keyMarkIn(clip.name);
-      if (key) out.push({ beat: clip.beat, key });
+      if (key) {
+        out.push({ beat: clip.beat, key });
+        continue;
+      }
+      const shift = keyShiftIn(clip.name);
+      if (shift !== null) out.push({ beat: clip.beat, shift });
     }
   }
   return out.sort((a, b) => a.beat - b.beat);
@@ -1625,13 +1656,28 @@ export function parseAlsXml(xml: string): AlsProject {
     }
 
     // The key marks inside this song, the last at any bar winning.
-    const marksHere = new Map<number, string>();
+    const marksHere = new Map<number, { key?: string; shift?: number }>();
     for (const k of keyMarks) {
-      if (k.beat >= loc.beat - 1e-6 && k.beat < endBeat) marksHere.set(relBar(k.beat), k.key);
+      if (k.beat >= loc.beat - 1e-6 && k.beat < endBeat) marksHere.set(relBar(k.beat), k);
     }
-    const keyChanges = [...marksHere.entries()].map(([bar, key]) => ({ bar, key })).sort((a, b) => a.bar - b.bar);
+    const marks = [...marksHere.entries()]
+      .map(([bar, mark]) => ({ bar, ...mark }))
+      .sort((a, b) => a.bar - b.bar);
     // A mark at the top of the song names its key when the locator did not.
-    const openingKey = keyChanges.find((k) => k.bar <= 1 + 1e-6)?.key ?? null;
+    const openingKey = marks.find((m) => m.bar <= 1 + 1e-6 && m.key)?.key ?? null;
+    /*
+     * A mark that says +2 rather than a key is worked out from the key in
+     * force where it sits — the song's own, or whatever an earlier mark made
+     * it. With no key to move, there is nothing to say, so it is left out.
+     */
+    let running = meta.key ?? region?.key ?? openingKey;
+    const keyChanges: { bar: number; key: string }[] = [];
+    for (const mark of marks) {
+      const key = mark.key ?? (mark.shift !== undefined && running ? transposeKey(running, mark.shift) : null);
+      if (!key) continue;
+      running = key;
+      keyChanges.push({ bar: mark.bar, key });
+    }
 
     return {
       title: meta.title,

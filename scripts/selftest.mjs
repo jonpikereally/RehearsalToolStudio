@@ -2317,6 +2317,17 @@ group('writing a chord track');
       && keyMarkIn('**One** / Key: C / 120 BPM') === 'C' && keyMarkIn('key = A minor') === 'Am',
     [keyMarkIn('Key: Bb'), keyMarkIn('KEY CHANGE → F#m'), keyMarkIn('Key change: Eb major'), keyMarkIn('key = A minor')].join());
   check('but not off a lyric, or a chord', keyMarkIn('the key to my heart') === null && keyMarkIn('[A]') === null && keyMarkIn('monkey A') === null);
+  // A change written as a move, which is how a band that thinks in semitones marks it.
+  const { keyShiftIn } = await import('../src/lib/alsParser.ts');
+  const { transposeKey } = await import('../src/lib/nashville.ts');
+  check('a key change written as semitones is read as a move',
+    keyShiftIn('KEY CHANGE +2') === 2 && keyShiftIn('key change up 2') === 2 && keyShiftIn('KEY CHANGE -1') === -1
+      && keyShiftIn('key change down 3 semitones') === -3 && keyShiftIn('KEY CHANGE') === null && keyShiftIn('Key: Bb') === null,
+    [keyShiftIn('KEY CHANGE +2'), keyShiftIn('key change up 2'), keyShiftIn('KEY CHANGE -1'), keyShiftIn('key change down 3 semitones')].join());
+  check('and the move is spelled as that key is written',
+    transposeKey('C', 2) === 'D' && transposeKey('C', 1) === 'Db' && transposeKey('Am', 2) === 'Bm'
+      && transposeKey('Bb', -2) === 'Ab' && transposeKey('G', 12) === 'G',
+    [transposeKey('C', 2), transposeKey('C', 1), transposeKey('Am', 2), transposeKey('Bb', -2)].join());
   const modulating = `<Ableton Creator="Live 12">
   <LiveSet>
     <NextPointeeId Value="5000" />
