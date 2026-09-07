@@ -3,8 +3,7 @@ import { useStore } from '../lib/store';
 import { cacheStats, clearCache, clearLocalDuplicates, type CacheStats } from '../lib/idb';
 import { isLocal } from '../lib/source';
 import { formatBytes } from '../lib/songLoader';
-import LocalFolderSettings from './LocalFolderSettings';
-import PreparedFolderSettings from './PreparedFolderSettings';
+import OpenSettings from './OpenSettings';
 import CueSettings from './CueSettings';
 import MidiSettings from './MidiSettings';
 import SettingsSection from './SettingsSection';
@@ -60,9 +59,7 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
         )}
       </div>
 
-      <LocalFolderSettings />
-
-      <PreparedFolderSettings />
+      <OpenSettings />
 
       <CueSettings />
 

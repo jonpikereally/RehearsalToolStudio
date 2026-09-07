@@ -171,10 +171,6 @@ interface StoreValue {
   openSession: (alsPath: string, into?: OutputSet | null) => Promise<void>;
   /** The session's absolute path, once opened. */
   sessionPath: string | null;
-  /** Every .als in the session's folder, for switching between saves of it. */
-  alsFiles: string[];
-  /** Open one of those by its path in the folder. */
-  chooseSessionFile: (path: string) => Promise<void>;
   /** The sets the library knows, for choosing between. */
   sets: KnownSet[];
   chooseSet: (path: string | null) => void;
@@ -202,8 +198,6 @@ interface StoreValue {
   watching: { live: boolean; paused: boolean } | null;
   /** `replace` takes the folder's library whole, discarding what is held here. */
   pullNow: (opts?: { replace?: boolean }) => Promise<void>;
-  /** Choose the synced folder on this machine. Must come from a click. */
-  pickLocalFolder: () => Promise<void>;
   /** The band's folder, which the studio publishes into. Chosen separately. */
   publishFolderName: string | null;
   /** A folder a set's samples live in outside the project, read only. */
@@ -211,8 +205,6 @@ interface StoreValue {
   pickResourcesFolder: (startIn?: string) => Promise<void>;
   pickPublishFolder: () => Promise<local.FolderHandle>;
   publishFolder: () => Promise<local.FolderHandle | null>;
-  stopUsingLocalFiles: () => void;
-  forgetLocalFolder: () => Promise<void>;
   dismissScanResult: () => void;
 }
 
@@ -327,7 +319,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const sessionFileRef = useRef(sessionFile);
   sessionFileRef.current = sessionFile;
   const [sessionPath, setSessionPath] = useState<string | null>(null);
-  const [alsFiles, setAlsFiles] = useState<string[]>([]);
 
   const [knownSets, setKnownSets] = useState<{ path: string; name: string }[]>(() =>
     loadLocal(LS_SETS, []),
@@ -423,30 +414,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void local.storedFolder('publish').then((f) => setPublishFolderName(f?.name ?? null));
     void local.storedFolder('resources').then((f) => setResourcesFolderName(f?.name ?? null));
   }, []);
-
-  const pickLocalFolder = useCallback(async () => {
-    const folder = await local.pickFolder();
-    source.configureSource({ root: settings.root, useLocal: true, folder: folder.handle });
-    setLocalFolderName(folder.name);
-    setLocalStatus('ready');
-    setSettings((prev) => ({ ...prev, useLocal: true }));
-  }, [settings.root]);
-
-  /** Stop reading from disk, but remember which folder it was. */
-  const stopUsingLocalFiles = useCallback(() => {
-    source.configureSource({ root: settings.root, useLocal: false, folder: null });
-    setLocalStatus('off');
-    setSettings((prev) => ({ ...prev, useLocal: false }));
-  }, [settings.root]);
-
-  /** Forget the folder entirely, so the picker starts fresh. */
-  const forgetLocalFolder = useCallback(async () => {
-    await local.forgetFolder();
-    source.configureSource({ root: settings.root, useLocal: false, folder: null });
-    setLocalFolderName(null);
-    setLocalStatus('not-picked');
-    setSettings((prev) => ({ ...prev, useLocal: false }));
-  }, [settings.root]);
 
   /* ------------------------------ local persist ----------------------------- */
 
@@ -685,12 +652,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const setFiles = wantedFile
         ? usable.filter((f) => f.path.replace(/^\/+/, '').toLowerCase() === wantedFile)
         : newestSetPerFolder(usable);
-      // The sessions here: every .als but the copies the studio's own tools wrote.
-      setAlsFiles(
-        usable
-          .filter((f) => /\.als$/i.test(f.name) && !/( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i.test(f.name))
-          .map((f) => f.path),
-      );
       setKnownSets(setFiles.map((f) => ({ path: f.path, name: f.name.replace(/\.als$/i, '') })));
       /* Sets that couldn't be read at all; the rest of the notes come later. */
       const readErrors: string[] = [];
@@ -895,15 +856,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [settings.root, rescan, chooseSet, outputSet],
   );
 
-  /** Another .als in the session's folder: an older save, say. */
-  const chooseSessionFile = useCallback(
-    async (path: string) => {
-      const abs = await source.absolutePath(path);
-      await openSession(abs);
-    },
-    [openSession],
-  );
-
   const openDropped = useCallback(
     async (path: string) => {
       const { folder, file } = await local.openPath(path);
@@ -1083,27 +1035,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       chooseOutput,
       openSession,
       sessionPath,
-      alsFiles,
-      chooseSessionFile,
       setSaved,
       dismissSetSaved: () => setSetSaved(null),
       watching,
       pullNow,
-      pickLocalFolder,
       publishFolderName,
       pickPublishFolder,
       publishFolder,
       resourcesFolderName,
       pickResourcesFolder,
-      stopUsingLocalFiles,
-      forgetLocalFolder,
       dismissScanResult: () => setLastScan(null),
     }),
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, alsFiles, chooseSessionFile, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
-      pickLocalFolder, stopUsingLocalFiles, forgetLocalFolder,
+      rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       publishFolderName, pickPublishFolder, publishFolder, resourcesFolderName, pickResourcesFolder,
     ],
   );

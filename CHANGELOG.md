@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Say what is open in one panel, instead of asking the same things twice**
+
+Settings still carried the old way in: a folder to point at, a switch to read from it, a menu of the .als files beside it, a Forget button — and then, below, the set folder and the session again, each with its own way to change them. None of that is a choice any more. The session decides its own folder, opening one is what turns reading on, and both halves are chosen in the Open window.
+
 **Hand the chooser's whole choice over, and say so while it opens**
 
 The chooser window closed on Open and the studio behind it sat where it was: the window sent the folder flattened into the message, and the studio was looking for the folder itself, so it dropped every choice on the floor. The set folder now travels whole, and the window that receives it says which session it is reading — and says what went wrong if it can't, rather than showing the same waiting screen for ever.
