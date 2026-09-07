@@ -170,7 +170,7 @@ function useOpenGate(
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, sets, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourceFolders, library, openDropped, openSession, watching } = useStore();
+  const { settings, localStatus, currentSet, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourceFolders, library, openDropped, openSession, watching } = useStore();
   const drop = useDropped(openDropped);
   /*
    * Back to the chooser. In the Mac app it is a window in front of what is
@@ -406,10 +406,14 @@ export default function App() {
       {currentSet && section !== 'song' && (
         <div className="setbar">
           <span>
-            Set: <strong>{outputSet?.name ?? sets.find((s) => s.path === currentSet)?.name ?? currentSet.split('/').pop()}</strong>
+            {/*
+              What comes in, then where it goes — the way the chooser asks for
+              them and the way the work runs: this session fills that folder.
+            */}
+            Set: <strong>{(sessionPath ?? currentSet).split('/').pop()}</strong>
             {outputSet && (
               <span style={{ color: 'var(--text-dim)' }}>
-                {' '}← {(sessionPath ?? currentSet).split('/').pop()}
+                {' '}→ {outputSet.name}
               </span>
             )}
             {/* The watch on the set, so nobody wonders whether a save will be noticed. */}

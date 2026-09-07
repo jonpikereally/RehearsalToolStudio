@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Say the session before the folder it fills**
+
+The bar named the folder first and the session it came from after, which is the work backwards and the other way round from how the chooser asks for them. It reads the way it runs now: this session fills that folder.
+
 **Choose what the chooser is offering, and let it fit a small window**
 
 It came up saying "opened last" on both sides and "not chosen" along the bottom, with Open greyed out — a window arguing with itself about the thing it exists to do. What each side opened last is now chosen as soon as it is known, and choosing something else is the click it always was.
