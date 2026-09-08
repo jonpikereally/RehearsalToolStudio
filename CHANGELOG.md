@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Bring the folder up to date on opening, not only on a save**
+
+Auto-update answered saves and nothing else, so a folder that fell behind for any other reason sat there until somebody clicked. It falls behind for other reasons often enough: a set edited while the studio was closed, a run stopped halfway, or the studio itself changing how it writes something — four songs went stale this afternoon because the chords it derives now spell a minor with a dash.
+
 **Mark a track that sends patch changes +PATCH, and read it by that**
 
 A set says what a track is in its name — AbleSet reads a text track by its +LYRICS — but a track that drives a rig was only ever guessed at, from words like MIDI, PC or Cortex in its name and from sitting outside any song's group. A guess is wrong both ways: a track called "Program" that plays a pad is read as a rig, and one called "Ben's board" is not read at all.

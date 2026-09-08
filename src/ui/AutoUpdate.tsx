@@ -12,6 +12,7 @@ import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
 import { note } from '../lib/saveLog';
+import { prepareRunning } from '../lib/prepareState';
 
 /**
  * Keeping the prepared set current with the set as Live saves it.
@@ -29,14 +30,17 @@ import { note } from '../lib/saveLog';
  * is named and the band's folder chosen.
  */
 
+/** What set a run going: a save Live made, or the studio opening. */
+type Why = 'save' | 'launch';
+
 type Phase =
   | { kind: 'saved'; at: number }
-  | { kind: 'running'; at: number; stage: string; progress: PrepareProgress | null }
-  | { kind: 'done'; at: number; outcome: RunOutcome; selected: string[] }
+  | { kind: 'running'; at: number; why: Why; stage: string; progress: PrepareProgress | null }
+  | { kind: 'done'; at: number; why: Why; outcome: RunOutcome; selected: string[] }
   | { kind: 'unprepared'; at: number }
   | { kind: 'nothing'; at: number }
-  | { kind: 'wholeSet'; at: number; folder: string; count: number }
-  | { kind: 'error'; at: number; message: string }
+  | { kind: 'wholeSet'; at: number; why: Why; folder: string; count: number }
+  | { kind: 'error'; at: number; why: Why; message: string }
   | { kind: 'undone'; at: number; restored: number; removed: number; songs: number };
 
 /** The three jobs a save can do on its own, as they are named on screen. */
@@ -47,6 +51,9 @@ export const AUTO_JOBS: { key: 'stems' | 'submixes' | 'info'; label: string; hin
 ];
 
 const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+/** What the bar calls the moment a run answers: a save, or the studio opening. */
+const since = (p: { at: number; why: Why }) => (p.why === 'save' ? `after the save at ${clock(p.at)}` : 'on opening');
 
 export default function AutoUpdate() {
   const { currentSet, outputSet, setSaved, dismissSetSaved, settings, saveSettings, publishFolder, library } = useStore();
@@ -64,38 +71,44 @@ export default function AutoUpdate() {
 
   const auto = settings.autoUpdate;
 
-  useEffect(() => {
-    if (!setSaved || !currentSet || setSaved.path !== currentSet) return;
-    const at = setSaved.at;
-    // Once per save — except that turning a job on while a save waits
-    // in the bar is the answer to that save, and it goes ahead now.
-    if (acting.current === at && !(autoUpdates(auto) && phase?.kind === 'saved')) return;
+  /**
+   * Bring the prepared set up to what the studio is set to keep current.
+   *
+   * `why` is what asked: a save Live has just made, or the studio opening on
+   * a folder that is behind. They differ only in what is said — a launch that
+   * finds nothing to do says nothing at all, where a save is always answered.
+   */
+  const catchUp = (at: number, why: Why, set: string) => {
     acting.current = at;
-    if (!autoUpdates(auto)) {
-      setPhase({ kind: 'saved', at });
-      return;
-    }
     const current = () => acting.current === at;
     const controller = new AbortController();
     stopper.current = controller;
+    const currentSet = set;
     void (async () => {
       try {
         // The band's folder as already granted; never a dialog from an effect.
         const band = await publishFolder();
         if (!band) {
-          if (current()) setPhase({ kind: 'error', at, message: "Auto-update needs the band's folder, which a prepare chooses. Prepare the set once by hand." });
+          // Never said on opening: a folder not granted yet is how every
+           // set starts, and the prepare that grants it is a click away.
+          if (current() && why === 'save') {
+            setPhase({ kind: 'error', at, why, message: "Auto-update needs the band's folder, which a prepare chooses. Prepare the set once by hand." });
+          }
           return;
         }
-        if (current()) setPhase({ kind: 'running', at, stage: 'Reading the set…', progress: null });
+        if (current()) setPhase({ kind: 'running', at, why, stage: 'Reading the set…', progress: null });
         const { bytes } = await readBytes(currentSet);
         const project = await parseAls(bytes);
-        if (current()) setPhase({ kind: 'running', at, stage: 'Looking at what changed…', progress: null });
+        if (current()) setPhase({ kind: 'running', at, why, stage: 'Looking at what changed…', progress: null });
         // The folder this set already has in the band's folder, whatever
         // either is called now: known by the songs in it.
         const keys = await audioKeysFor(project, currentSet);
         const folderName = outputSet?.name ?? (await preparedNameFor(band, currentSet, keys.byName));
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
+          // Nothing prepared under this name is news after a save and not on
+          // opening: the studio opens on plenty of sets nobody has prepared.
+          if (why === 'launch') return;
           note({ kind: 'held', session: setName, set: folderName, text: `Left alone: nothing has been prepared into “${folderName}” yet.` });
           if (current()) setPhase({ kind: 'unprepared', at });
           return;
@@ -108,7 +121,7 @@ export default function AutoUpdate() {
         const behind = auto.submixes ? titles.filter((t) => found.submixes.get(t)) : [];
         const refresh = auto.info ? 'auto' : 'none';
         if (!selected.length && !behind.length && refresh === 'none') {
-          if (current()) setPhase({ kind: 'nothing', at });
+          if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at });
           return;
         }
         /*
@@ -123,7 +136,7 @@ export default function AutoUpdate() {
             set: folderName,
             text: `Left alone: all ${titles.length} songs would have been written again against “${folderName}”, which is not a save's worth of change.`,
           });
-          if (current()) setPhase({ kind: 'wholeSet', at, folder: folderName, count: titles.length });
+          if (current()) setPhase({ kind: 'wholeSet', at, why, folder: folderName, count: titles.length });
           return;
         }
         const touched: Aside[] = [];
@@ -132,6 +145,7 @@ export default function AutoUpdate() {
           setPhase({
             kind: 'running',
             at,
+            why,
             stage: selected.length ? '' : behind.length ? 'Writing the submixes…' : 'Refreshing words and sections…',
             progress: null,
           });
@@ -151,7 +165,7 @@ export default function AutoUpdate() {
           cacheBudgetGB: settings.cacheBudgetGB,
           aside: touched,
           signal: controller.signal,
-          onProgress: (p) => current() && setPhase({ kind: 'running', at, stage: '', progress: p }),
+          onProgress: (p) => current() && setPhase({ kind: 'running', at, why, stage: '', progress: p }),
         });
         const written = outcome.result?.songsWritten ?? 0;
         const mixed = outcome.submixes?.songsWritten ?? 0;
@@ -171,7 +185,7 @@ export default function AutoUpdate() {
               (outcome.published ? ` The band sees ${outcome.published.songs}.` : ` The band's library could not be written: ${outcome.publishError}`)
             : 'Nothing had changed.',
         });
-        if (current()) setPhase({ kind: 'done', at, outcome, selected });
+        if (current()) setPhase({ kind: 'done', at, why, outcome, selected });
       } catch (err) {
         if (!current()) return;
         const aborted = (err as { name?: string })?.name === 'AbortError';
@@ -185,6 +199,7 @@ export default function AutoUpdate() {
         setPhase({
           kind: 'error',
           at,
+          why,
           message: aborted
             ? touched
               ? `Stopped. ${touched === 1 ? 'One song' : `${touched} songs`} had been written over — undo puts ${touched === 1 ? 'it' : 'them'} back; the next save, or a prepare, writes the rest.`
@@ -195,10 +210,58 @@ export default function AutoUpdate() {
         if (stopper.current === controller) stopper.current = null;
       }
     })();
+  };
+
+  useEffect(() => {
+    if (!setSaved || !currentSet || setSaved.path !== currentSet) return;
+    const at = setSaved.at;
+    // Once per save — except that turning a job on while a save waits
+    // in the bar is the answer to that save, and it goes ahead now.
+    if (acting.current === at && !(autoUpdates(auto) && phase?.kind === 'saved')) return;
+    if (!autoUpdates(auto)) {
+      acting.current = at;
+      setPhase({ kind: 'saved', at });
+      return;
+    }
     // A newer save while this runs is answered once the run has ended: the
     // store holds it back until then, so nothing here need cancel anything.
+    catchUp(at, 'save', currentSet);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSaved, currentSet, auto.stems, auto.submixes, auto.info, phase?.kind]);
+
+  /*
+   * The same check on opening, without waiting for a save.
+   *
+   * A folder falls behind for reasons that are not saves: the studio itself
+   * changes how it writes something, a set was edited while this was closed
+   * and the save went unnoticed, a run was stopped halfway. Answering only
+   * saves left those sitting in the bar until somebody clicked. So what is
+   * switched on is brought up to date once when a set is opened too.
+   *
+   * Once per set per session, a few seconds in — the folder is being scanned
+   * and AbleSet asked for the running order as the window opens, and the
+   * order they land in decides what the manifest is written with. Never over
+   * a prepare somebody started, and never when a save is already in hand:
+   * that is the same work, and it is about to be done anyway.
+   */
+  const launched = useRef<string | null>(null);
+  const savedRef = useRef(setSaved);
+  savedRef.current = setSaved;
+  useEffect(() => {
+    if (!currentSet || !autoUpdates(auto) || launched.current === currentSet) return;
+    const go = window.setTimeout(() => {
+      // Claimed here rather than when the wait began: an effect that runs
+      // twice — React's own doing in development — would otherwise claim the
+      // set on the first pass and cancel the wait on the second, and the
+      // check would never happen at all.
+      if (launched.current === currentSet) return;
+      if (savedRef.current || prepareRunning() || acting.current !== null) return;
+      launched.current = currentSet;
+      catchUp(Date.now(), 'launch', currentSet);
+    }, 5000);
+    return () => window.clearTimeout(go);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSet, auto.stems, auto.submixes, auto.info]);
 
   const dismiss = () => {
     setPhase(null);
@@ -210,7 +273,8 @@ export default function AutoUpdate() {
     const last = aside.current;
     if (!last || !phase) return;
     const at = phase.at;
-    setPhase({ kind: 'running', at, stage: 'Putting the songs back as they were…', progress: null });
+    const why: Why = 'why' in phase ? phase.why : 'save';
+    setPhase({ kind: 'running', at, why, stage: 'Putting the songs back as they were…', progress: null });
     try {
       const band = await publishFolder();
       if (!band) throw new Error("The band's folder is not to hand.");
@@ -224,7 +288,7 @@ export default function AutoUpdate() {
       });
       setPhase({ kind: 'undone', at, restored: put.restored, removed: put.removed, songs: put.published.songs });
     } catch (err) {
-      setPhase({ kind: 'error', at, message: `Could not undo: ${err instanceof Error ? err.message : String(err)}` });
+      setPhase({ kind: 'error', at, why, message: `Could not undo: ${err instanceof Error ? err.message : String(err)}` });
     }
   };
   const undoable = !!aside.current?.songs.length && (phase?.kind === 'done' || phase?.kind === 'error');
@@ -250,7 +314,7 @@ export default function AutoUpdate() {
           )}
           {running && (
             <>
-              <strong>Updating the prepared set</strong> after the save at {clock(phase.at)}
+              <strong>Updating the prepared set</strong> {since(phase)}
               {p
                 ? ` — ${p.songTitle} · ${p.partName}, ${p.stage}${
                     p.stage === 'shifting' || p.stage === 'encoding' ? ` ${Math.round(p.ratio * 100)}%` : ''
@@ -268,7 +332,7 @@ export default function AutoUpdate() {
           )}
           {phase.kind === 'done' && (
             <>
-              <strong>Updated</strong> after the save at {clock(phase.at)} —{' '}
+              <strong>Updated</strong> {since(phase)} —{' '}
               {phase.outcome.result
                 ? `${phase.outcome.result.songsWritten} song${phase.outcome.result.songsWritten === 1 ? '' : 's'} written again (${phase.selected.join(', ')})`
                 : 'no audio had changed'}
@@ -294,8 +358,18 @@ export default function AutoUpdate() {
           )}
           {phase.kind === 'wholeSet' && (
             <>
-              <strong>{setName}</strong> was saved at {clock(phase.at)}, but every one of its {phase.count} songs would be
-              written again against “{phase.folder}” — none of them match what is there. Either that is not this set's
+              {phase.why === 'save' ? (
+                <>
+                  <strong>{setName}</strong> was saved at {clock(phase.at)}, but every one of its {phase.count} songs
+                  would be written again against “{phase.folder}”
+                </>
+              ) : (
+                <>
+                  <strong>{setName}</strong> stands behind “{phase.folder}” on every one of its {phase.count} songs,
+                  which would all be written again
+                </>
+              )}{' '}
+              — none of them match what is there. Either that is not this set's
               folder, or something changed that every song is written from: the band's submixes, or how the studio
               renders. Not done on its own: locate the right folder in Settings, or prepare the whole set by hand.
             </>
@@ -314,7 +388,7 @@ export default function AutoUpdate() {
           )}
           {phase.kind === 'error' && (
             <>
-              <strong>The update after the save at {clock(phase.at)} didn't finish.</strong> {phase.message}
+              <strong>The update {since(phase)} didn't finish.</strong> {phase.message}
             </>
           )}
           {phase.kind === 'undone' && (
