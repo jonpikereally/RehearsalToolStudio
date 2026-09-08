@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Offer the button that would help, not the one that wouldn't**
+
+Two ways of being behind, and only one of them a reload fixes. A server still running the code it started with is caught up by opening the app again, since the servers come up with it — so that banner now carries a Quit and reopen button, which quits and opens it a second later, rather than a sentence telling somebody to do it themselves.
+
 **Mark a minor one way: m on a name, lower case on a numeral**
 
 A set marks its minors however whoever typed them marks them — Am, A-, Amin, "A minor" — and the dash went straight through the conversion: a classical track came out reading A- where a chart says Am, and a Roman one came out VI- where the numeral's own case is what says minor. Neither was read as minor at all, so a seventh on it came out attached to a major chord.

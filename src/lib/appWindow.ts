@@ -55,11 +55,14 @@ export function askApp(message: Record<string, unknown>): boolean {
  * is one from before it could say, and is treated as having none.
  */
 let known: Set<string> | null = null;
+/** Whether this app can quit and open itself again. */
+let restarts = false;
 const waiting: ((panels: Set<string>) => void)[] = [];
 
 window.addEventListener('studio:app', (e) => {
-  const said = (e as CustomEvent<{ panels?: string[] }>).detail?.panels;
-  known = new Set(Array.isArray(said) ? said : []);
+  const said = (e as CustomEvent<{ panels?: string[]; restart?: boolean }>).detail;
+  known = new Set(Array.isArray(said?.panels) ? said.panels : []);
+  restarts = said?.restart === true;
   for (const resolve of waiting.splice(0)) resolve(known);
 });
 
@@ -83,6 +86,15 @@ export const showNewSet = (): boolean => hasPanel('chooser') && askApp({ chooser
 
 /** The window of what the studio has done, save by save. */
 export const showChanges = (): boolean => hasPanel('changes') && askApp({ panel: 'changes' });
+
+/**
+ * Whether the app can be told to quit and come back. Older ones cannot, and
+ * are asked to do it by hand instead.
+ */
+export const canRestart = (): boolean => restarts;
+
+/** Quit and open again — how a server left behind by a rebuild is caught up. */
+export const restartApp = (): boolean => restarts && askApp({ restart: true });
 
 /**
  * What the chooser chose, for the main window to open: the set folder whole,

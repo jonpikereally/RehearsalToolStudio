@@ -296,9 +296,13 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         // it up itself rather than ask into silence.
         if body["ready"] as? Bool == true {
             pageReady = true
-            tell(message.webView, "studio:app", ["panels": ["chooser", "changes"], "menu": true])
+            tell(message.webView, "studio:app", ["panels": ["chooser", "changes"], "menu": true, "restart": true])
             open([])
         }
+        // Start again: the servers come up with the app, so a server left
+        // behind by a rebuild is fixed by opening the app afresh — which the
+        // page can ask for rather than telling somebody to do it by hand.
+        if body["restart"] as? Bool == true { restart() }
         // The chooser: put it up, take what it chose, or take its way past itself.
         if body["chooser"] as? Bool == true { showChooser(making: body["making"] as? Bool == true) }
         if body["panel"] as? String == "changes" { showChangesWindow() }
@@ -447,6 +451,28 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     /// File ▸ New: the same window, with the new set folder already asked for.
     @objc func newSet() {
         showChooser(making: true)
+    }
+
+    /**
+     * Quit and open again.
+     *
+     * A second later, so this one is gone before the next arrives: two studios
+     * on one port is the thing the launcher spends its life avoiding. The
+     * shell outlives the app, which is the whole point of it.
+     */
+    func restart() {
+        let path = Bundle.main.bundlePath
+        let sh = Process()
+        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+        sh.arguments = ["-c", "sleep 1; open \"\(path)\""]
+        do {
+            try sh.run()
+        } catch {
+            note("could not start the relaunch: \(error)")
+            return
+        }
+        note("quitting to come back on a newer build")
+        NSApp.terminate(nil)
     }
 
     /// File ▸ Changes: what the studio has done, save by save.

@@ -12,7 +12,7 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { panelWindow, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
+import { canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
@@ -372,15 +372,22 @@ export default function App() {
             ) : (
               <>
                 This window is showing the newest build ({__BUILD__}), but the studio’s own server is still the one it
-                started with ({newerBuild.build}) — so anything new it does with the disk isn’t there yet. Quit and open
-                the app again to pick it up.
+                started with ({newerBuild.build}) — so anything new it does with the disk isn’t there yet.
+                {canRestart() ? ' Opening the app again picks it up.' : ' Quit and open the app again to pick it up.'}
               </>
             )}
           </span>
-          {newerBuild.kind === 'page' && (
+          {newerBuild.kind === 'page' ? (
             <button className="btn primary" onClick={() => window.location.reload()}>
               Reload
             </button>
+          ) : (
+            // Only where it would do something: an older app cannot be asked.
+            canRestart() && (
+              <button className="btn primary" onClick={() => restartApp()} title="Quit the studio and open it again">
+                Quit and reopen
+              </button>
+            )
           )}
         </div>
       )}
