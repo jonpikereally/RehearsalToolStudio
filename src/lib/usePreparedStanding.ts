@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { parseAls } from './alsParser';
 import { preparedNameFor } from './locatePrepared.ts';
 import { audioKeysFor, standingFor, titlesOf } from './prepareRun.ts';
 import { readBytes } from './source';
+import { preparesFinished, watchPrepares } from './prepareState.ts';
 import { useStore } from './store';
 
 /**
@@ -51,6 +52,9 @@ export type PreparedLookup =
 export function usePreparedStanding(setPath: string | null, version: string): PreparedLookup {
   const { publishFolderName, publishFolder, outputSet } = useStore();
   const [lookup, setLookup] = useState<PreparedLookup>({ state: 'idle' });
+  // A run finishing anywhere in the page — a prepare, an update on a save or
+  // on opening, an undo — has changed the answer, so it is asked again.
+  const finished = useSyncExternalStore(watchPrepares, preparesFinished, preparesFinished);
 
   useEffect(() => {
     setLookup({ state: 'idle' });
@@ -101,7 +105,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setPath, publishFolderName, version, outputSet?.name]);
+  }, [setPath, publishFolderName, version, outputSet?.name, finished]);
 
   return lookup;
 }

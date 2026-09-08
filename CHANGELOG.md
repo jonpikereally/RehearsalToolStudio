@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Ask again the moment a run ends, rather than looking every two seconds**
+
+The sync bar went on saying four songs were behind after they had been written. It watched `prepareRunning()` on a two-second timer and took true-then-false for a run having ended — and refreshing four songs' words takes a second or two, so the whole run began and ended between two looks. Nothing asked again, and the bar kept its stale count until the page was reloaded.
+
 **Bring the folder up to date on opening, not only on a save**
 
 Auto-update answered saves and nothing else, so a folder that fell behind for any other reason sat there until somebody clicked. It falls behind for other reasons often enough: a set edited while the studio was closed, a run stopped halfway, or the studio itself changing how it writes something — four songs went stale this afternoon because the chords it derives now spell a minor with a dash.

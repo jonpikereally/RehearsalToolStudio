@@ -6,7 +6,7 @@ import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
 import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
-import { markPrepareRunning } from './prepareState';
+import { markPrepareRunning, prepareFinished } from './prepareState';
 import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest, type PreparedPart } from './preparedSet';
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
@@ -558,5 +558,7 @@ export async function undoPrepare(
 ): Promise<{ restored: number; removed: number; published: PublishResult }> {
   const put = await local.undoRestore(band, `${SETS_FOLDER}/${folderName}`, aside);
   const published = await publishLibrary(band);
+  // The folder has moved under whatever is showing how far behind it is.
+  prepareFinished();
   return { ...put, published };
 }

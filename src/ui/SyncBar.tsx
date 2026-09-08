@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { usePreparedStanding, type PreparedStanding } from '../lib/usePreparedStanding';
-import { prepareRunning } from '../lib/prepareState';
 import PrepareSetDialog from './PrepareSetDialog';
 
 /**
@@ -22,20 +21,10 @@ import PrepareSetDialog from './PrepareSetDialog';
  */
 export default function SyncBar() {
   const { currentSet, outputSet, setSaved } = useStore();
-  const [running, setRunning] = useState(0);
   const [dialog, setDialog] = useState<{ titles: string[]; only?: 'stems' | 'submixes' | 'info' } | null>(null);
-  const standing = usePreparedStanding(currentSet, `${setSaved?.at ?? ''}|${running}`);
-
-  // A prepare finishing anywhere is a reason to ask again.
-  useEffect(() => {
-    let was = prepareRunning();
-    const timer = window.setInterval(() => {
-      const now = prepareRunning();
-      if (was && !now) setRunning((n) => n + 1);
-      was = now;
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, []);
+  // A run finishing is a reason to ask again, and the counting of that lives
+  // where the runs are: the standing itself asks again when one does.
+  const standing = usePreparedStanding(currentSet, `${setSaved?.at ?? ''}`);
 
   /*
    * What was found last, held while the next look runs. Without it the bar
@@ -97,10 +86,7 @@ export default function SyncBar() {
         <PrepareSetDialog
           preselect={dialog.titles}
           only={dialog.only}
-          onClose={() => {
-            setDialog(null);
-            setRunning((n) => n + 1);
-          }}
+          onClose={() => setDialog(null)}
         />
       )}
     </>
