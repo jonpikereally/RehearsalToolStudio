@@ -167,6 +167,11 @@ const MINOR_SUFFIX = /^(m(?!aj)|min(?!or)?|dim|°|ø|o(?![a-z]))/;
  * `Dm7` in C → `ii7`; `Bb` in C → `bVII`; `Bdim` → `vii°`. The numeral's
  * case carries the quality, so a leading m is taken off; dim and ° stay,
  * as the convention writes them.
+ *
+ * An inversion is a slash chord — `I/3`, `V/7`, `ii7/6`, or `I/E` with the
+ * bass as a letter — and deliberately not figured bass: `I6` here is the I
+ * chord with a sixth on it, as every other notation reads it, not first
+ * inversion. Chosen, not overlooked; the two cannot both be true of `I6`.
  */
 export function toRoman(chord: string, key: Key): string | null {
   const text = chord.trim();

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Write down that an inversion is a slash chord here, not figured bass**
+
+`I6` is ambiguous between the two readings — the I chord with a sixth on it, and first inversion — and this reads it the first way, as every other notation in the app does. Said where the conversion is, so the next person to meet it knows it was chosen rather than missed.
+
 **Share the band's file with the website rather than owning it**
 
 members.json already sat where it belongs — the root of the band's folder, beside Sets/ and Resources/, the band's own file rather than any one set's. What it lacked was room for a second writer. A studio that wrote it whole on every save would have taken a member added on the website out again the next time somebody ticked a box on a laptop.
