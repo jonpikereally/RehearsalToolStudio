@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Mark a minor the way its own notation marks it**
+
+Converting to Nashville numbers wrote `6m`, and a chart of numbers is written `6-`. That came of a rule meant for names: minors were being tidied to `m` everywhere, so the one notation that spells them with a dash was having its own convention taken off it.
+
 **Ask for a newer build from the menu, and be told what came of it**
 
 The studio is built from the checkout beside it, so an update is a build: until now it happened when the app was clicked, and there was no way to ask for one with the app already open.

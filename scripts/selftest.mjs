@@ -2545,8 +2545,8 @@ group('writing a chord track');
     }
   }
 
-  // A minor is marked one way in what comes out, however it was marked going
-  // in: `m` on a name or a number, and a lower-case numeral in Roman.
+  // A minor is marked the way its notation marks it, however it was marked
+  // going in: `m` on a name, a dash on a number, a lower-case Roman numeral.
   const { convertChord: convert, parseKey: readKey } = await import('../src/lib/nashville.ts');
   const inC = readKey('C');
   const ways = ['A-', 'Am', 'Amin', 'A minor', 'vi', 'VI-', '6-', '6m'];
@@ -2556,9 +2556,13 @@ group('writing a chord track');
   check('and lower case as a Roman numeral',
     ways.every((w) => convert(w, 'roman', inC) === 'vi'),
     ways.map((w) => `${w}→${convert(w, 'roman', inC)}`).join(' '));
-  check('and m as a Nashville number',
-    ways.every((w) => convert(w, 'numbers', inC) === '6m'),
+  check('and a dash as a Nashville number',
+    ways.every((w) => convert(w, 'numbers', inC) === '6-'),
     ways.map((w) => `${w}→${convert(w, 'numbers', inC)}`).join(' '));
+  check('and what hangs off it comes too',
+    convert('Am7', 'numbers', inC) === '6-7' && convert('Cmaj7', 'numbers', inC) === '1maj7'
+      && convert('Bdim', 'numbers', inC) === '7dim' && convert('A-9/E', 'numbers', inC) === '6-9/3',
+    ['Am7', 'Cmaj7', 'Bdim', 'A-9/E'].map((c) => `${c}→${convert(c, 'numbers', inC)}`).join(' '));
   check('what is on the chord stays with it',
     convert('D-7', 'names', inC) === 'Dm7' && convert('A-9/E', 'names', inC) === 'Am9/E'
       && convert('Cmaj7', 'names', inC) === 'Cmaj7' && convert('vii°', 'names', inC) === 'B°',
@@ -2799,10 +2803,10 @@ group('nashville numbers');
   check('a slash bass is numbered', rom('C/E', 'C') === 'I/3', rom('C/E', 'C'));
   check('and maj7 is not mistaken for minor', rom('Cmaj7', 'C') === 'Imaj7', rom('Cmaj7', 'C'));
   check('any notation converts to any other through names',
-    convertChord('ii7', 'numbers', inKey('C')) === '2m7' && convertChord('2m7', 'roman', inKey('C')) === 'ii7'
+    convertChord('ii7', 'numbers', inKey('C')) === '2-7' && convertChord('2-7', 'roman', inKey('C')) === 'ii7'
       && convertChord('bVII', 'names', inKey('C')) === 'Bb' && convertChord('5', 'roman', inKey('G')) === 'V'
       && convertChord('Dm', 'names', inKey('C')) === 'Dm',
-    [convertChord('ii7', 'numbers', inKey('C')), convertChord('2m7', 'roman', inKey('C')), convertChord('bVII', 'names', inKey('C')), convertChord('5', 'roman', inKey('G'))].join());
+    [convertChord('ii7', 'numbers', inKey('C')), convertChord('2-7', 'roman', inKey('C')), convertChord('bVII', 'names', inKey('C')), convertChord('5', 'roman', inKey('G'))].join());
   check('a lane is told apart by what most of it looks like',
     notationOf([{ text: 'I' }, { text: 'IV' }, { text: 'V' }]) === 'roman' && notationOf([{ text: '1' }, { text: '4' }, { text: 'C' }]) === 'numbers'
       && notationOf([{ text: 'C' }, { text: 'F' }]) === 'names' && notationOf([{ text: '[vi]' }, { text: '[IV]' }]) === 'roman');
@@ -2811,11 +2815,11 @@ group('nashville numbers');
   // The plain diatonic run, both ways.
   check('1 4 5 in C', ['C', 'F', 'G'].map((c) => num(c, 'C')).join(' ') === '1 4 5');
   check('and back again', ['1', '4', '5'].map((n) => name(n, 'C')).join(' ') === 'C F G');
-  check('the relative minor is 6m', num('Am', 'C') === '6m');
-  check('read back as a chord', name('6m', 'C') === 'Am');
+  check('the relative minor is 6-', num('Am', 'C') === '6-', num('Am', 'C'));
+  check('read back as a chord, marked m as a name', name('6-', 'C') === 'Am' && name('6m', 'C') === 'Am');
 
   // A key with sharps, and one with flats, each spelled its own way.
-  check('sharps in D', ['D', 'F#m', 'A'].map((c) => num(c, 'D')).join(' ') === '1 3m 5');
+  check('sharps in D', ['D', 'F#m', 'A'].map((c) => num(c, 'D')).join(' ') === '1 3- 5', ['D', 'F#m', 'A'].map((c) => num(c, 'D')).join(' '));
   check('D spells its 3 with a sharp', name('3m', 'D') === 'F#m');
   check('flats in Eb', ['Eb', 'Ab', 'Bb'].map((c) => num(c, 'Eb')).join(' ') === '1 4 5');
   check('Eb spells its 6 flat, not as D#', name('6', 'Eb') === 'C');
@@ -2849,9 +2853,9 @@ group('nashville numbers');
   check('an inversion in a flat key', name('1/5', 'Bb') === 'Bb/F', name('1/5', 'Bb'));
 
   // A minor key counts from its own tonic, which is what a chart in Am means.
-  check('the tonic of a minor key is 1m', num('Am', 'Am') === '1m');
+  check('the tonic of a minor key is 1-', num('Am', 'Am') === '1-');
   check('its third is b3', num('C', 'Am') === 'b3');
-  check('and its fifth is 5m when minor', num('Em', 'Am') === '5m');
+  check('and its fifth is 5- when minor', num('Em', 'Am') === '5-');
 
   // Round trips over every degree, in a few keys.
   let trips = 0;
@@ -2880,7 +2884,8 @@ group('nashville numbers');
   check('named the way the set would name it',
     fromNames[1].name === 'Nash Chords' && fromNames[1].kind === 'chords');
   check('with the numbers right',
-    fromNames[1].items.map((i) => i.text).join(' ') === '1 6m 4 5');
+    fromNames[1].items.map((i) => i.text).join(' ') === '1 6- 4 5',
+    fromNames[1].items.map((i) => i.text).join(' '));
 
   const fromNumbers = deriveChordLanes([lane('nash', 'Nash Chords', ['1', '6m', '4', '5'])], 'G');
   check('a set with numbers gains names', fromNumbers.length === 2);

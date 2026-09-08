@@ -94,12 +94,15 @@ export function parseKey(key: string | null | undefined): Key | null {
   return { tonic, flats: name.includes('b') || FLAT_KEYS.has(minor ? `${root}m` : root) };
 }
 
-/** A chord as it stands, with its minor marked the one way: `A-` → `Am`. */
-function tidyMinor(chord: string): string {
+/**
+ * A chord as it stands, with its minor marked the way that notation marks it:
+ * `A-` → `Am` among names, `6m` → `6-` among numbers.
+ */
+function tidyMinor(chord: string, mark: MinorMark): string {
   const [head, bass] = splitSlash(chord);
   const root = NOTE.exec(head.trim())?.[0] ?? /^[b#♭♯]?[1-7]/.exec(head.trim())?.[0];
   if (!root) return chord;
-  const tidied = `${root}${asMinorM(head.trim().slice(root.length))}`;
+  const tidied = `${root}${asMinor(head.trim().slice(root.length), mark)}`;
   return bass ? `${tidied}/${bass}` : tidied;
 }
 
@@ -111,7 +114,7 @@ export function toNashville(chord: string, key: Key): string | null {
   const root = pitchOf(head);
   if (root === null) return null;
 
-  const suffix = asMinorM(head.replace(NOTE, ''));
+  const suffix = asMinor(head.replace(NOTE, ''), '-');
   const degree = LABEL[(root - key.tonic + 12) % 12];
   const bassPart = bass ? bassNumber(bass, key) : '';
   return `${degree}${suffix}${bassPart}`;
@@ -133,7 +136,7 @@ export function fromNashville(number: string, key: Key): string | null {
   if (!degree) return null;
 
   const names = spellingFor(degree.accidental, key);
-  const suffix = asMinorM(degree.suffix);
+  const suffix = asMinor(degree.suffix, 'm');
   const quality = degree.minorByCase && !MINOR_SUFFIX.test(suffix) ? 'm' : '';
   const bassPart = bass ? bassName(bass, key) : '';
   return `${names[(key.tonic + degree.semis + 12) % 12]}${quality}${suffix}${bassPart}`;
@@ -174,15 +177,19 @@ const ROMAN_UPPER = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 const MINOR_SUFFIX = /^\s*(minor|min|m(?!aj)|-|dim|°|ø|o(?![a-z]))/;
 
 /**
- * A minor written the way this app writes it: `m`.
+ * How a notation marks a minor chord: names write `Am`, numbers write `6-`.
  *
- * A set marks its minors however whoever typed them marks them — `Am`, `A-`,
- * `Amin`, `A minor` — and a jazz dash read back out as a dash gave `A-` where
- * a chart says `Am`. Read as minor either way; written the one way, so a
+ * Not a preference but the two conventions themselves — a chart of names
+ * saying `A-` is somebody's jazz shorthand, a chart of numbers saying `6m`
+ * is not how the Nashville number system is written. Read either way, since
+ * a set marks its minors however whoever typed them did — `Am`, `A-`,
+ * `Amin`, `A minor` — and written the one way for the notation, so a
  * converted track reads as one hand wrote it.
  */
-function asMinorM(suffix: string): string {
-  return suffix.replace(/^\s*(?:-|minor|min|m(?!aj))/i, 'm');
+type MinorMark = 'm' | '-';
+
+function asMinor(suffix: string, mark: MinorMark): string {
+  return suffix.replace(/^\s*(?:-|minor|min|m(?!aj))/i, mark);
 }
 
 /**
@@ -238,12 +245,16 @@ export function convertChord(chord: string, to: ChordNotation, key: Key): string
   if (!text) return null;
   const from = notationOf([{ text }]);
   /*
-   * Already the kind asked for — but not necessarily written the way this
-   * app writes it. A minor marked with a dash or spelled out is still tidied
-   * to `m`, so a converted track reads as one hand wrote it whether or not
-   * anything was converted.
+   * Already the kind asked for — but not necessarily written the way that
+   * notation writes it. A minor spelled out, or marked the other notation's
+   * way, is still tidied — `m` among names, `-` among numbers — so a
+   * converted track reads as one hand wrote it whether or not anything was
+   * converted.
    */
-  if (from === to) return to === 'roman' ? (toRoman(fromNashville(text, key) ?? text, key) ?? text) : tidyMinor(text);
+  if (from === to) {
+    if (to === 'roman') return toRoman(fromNashville(text, key) ?? text, key) ?? text;
+    return tidyMinor(text, to === 'numbers' ? '-' : 'm');
+  }
   const name = from === 'names' ? text : fromNashville(text, key);
   if (name === null) return null;
   if (to === 'names') return name;
