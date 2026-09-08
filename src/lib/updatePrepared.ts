@@ -3,7 +3,7 @@ import { clipsFromMarks, clipsFromRig, laneList, songIdFor } from './alsImport.t
 import { chordProFor } from './chordPro.ts';
 import { folderOrder, lyricsFileFor, mergeSongs, songFolderBase, tempoOf } from './prepare.ts';
 import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
-import { songLengthSec } from './infoTrack.ts';
+import { songBars, songLengthSec } from './infoTrack.ts';
 import { parseNameMeta } from './scan.ts';
 
 /**
@@ -224,7 +224,7 @@ export function songInfoFor(
     submixesAt,
     tempo: Math.round(tempoOf(song, project) * 10) / 10,
     timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
-    bars: song.endBar - song.startBar + 1,
+    bars: Math.round(songBars(song) * 1000) / 1000,
     durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
     firstBarOffsetSec,
     /*

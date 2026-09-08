@@ -322,8 +322,8 @@ way a hand-made folder would.
 | `songs[].submixesAt` | no | when the song's **submixes** were last written, ISO; absent when it has none. Its own date because it is its own work: the band changes, a member's submix is written again, and every stem beside it is untouched — so a song can honestly hold stems from Tuesday and submixes from Friday |
 | `songs[].tempo` | no | the tempo at the song's start, to one decimal — what the folder name used to carry. `tempoMap` has the rest |
 | `songs[].timeSignature` | no | the meter, as `4/4` |
-| `songs[].bars` | no | the song's length in bars |
-| `songs[].durationSec` | no | the song's length in seconds, through its tempo map |
+| `songs[].bars` | no | the song's length in bars: from its first bar to where it ends, at the next song's locator or its stop. Fractional when the end sits mid-bar. A set prepared before September 2026 said one bar more than this — the bar line the song ends on was counted as a bar it plays |
+| `songs[].durationSec` | no | the song's length in seconds, through its tempo map — the same bars, timed. The files are this long (plus the lead-in); earlier sets overstated it by a bar the same way |
 | `songs[].firstBarOffsetSec` | no | seconds from the start of each file to the downbeat of bar 1 |
 | `songs[].originalKey` | no | the key the set gave the song |
 | `songs[].notes` | no | free text about the song, from the info text of its group track in Live; line breaks kept, worth showing as typed |

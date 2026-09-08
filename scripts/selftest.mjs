@@ -4269,7 +4269,7 @@ group('updating a prepared set without re-rendering');
   const info = songInfoFor(fixYou, project, '/Sets/Friday.als', { folder, firstBarOffsetSec: 0.0261, renderedAt: '2026-01-01T00:00:00.000Z' });
   check('the manifest entry keeps the lead-in it was given', info.firstBarOffsetSec === 0.0261);
   check('and says the tempo, meter and length the folder name no longer carries',
-    info.tempo === 120 && info.timeSignature === '4/4' && info.bars === 33 && info.renderedAt === '2026-01-01T00:00:00.000Z', JSON.stringify(info));
+    info.tempo === 120 && info.timeSignature === '4/4' && info.bars === 32 && info.renderedAt === '2026-01-01T00:00:00.000Z', JSON.stringify(info));
   check('a refresh writes into the folder the files are in, dated as it was',
     updatableSong(fixYou, project, manifest, []).folder === folder);
 
@@ -4983,7 +4983,7 @@ group('running order from AbleSet');
 
 group('song info as AbleSet clips');
 {
-  const { infoLinesFor, infoClipsFor, songLengthSec, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, abletReads } = await import('../src/lib/infoTrack.ts');
+  const { infoLinesFor, infoClipsFor, songLengthSec, songBars, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, abletReads } = await import('../src/lib/infoTrack.ts');
   const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [] };
   const song = (over = {}) => ({
     title: 'Yellow', raw: '', startBar: 9, endBar: 72, bpm: 88, startBpm: 88, key: 'Bb', durationText: null, tags: ['#slow'],
@@ -4994,13 +4994,15 @@ group('song info as AbleSet clips');
   const lines = infoLinesFor(song(), project, all);
   check('the title is bold, as AbleSet reads it', lines[0] === '**Yellow**', lines[0]);
   check('the key is said', lines.includes('Key: Bb'));
-  check('tempo, time and length share a line', lines.some((l) => l === '88 BPM · 4/4 · 64 bars · 2:55'), lines.join(' | '));
+  // Bars 9 to 71 — the locator at 72 is where the song ends, not a bar of it.
+  check('tempo, time and length share a line', lines.some((l) => l === '88 BPM · 4/4 · 63 bars · 2:52'), lines.join(' | '));
+  check('the bars are the song\'s stretch, not a bar past it', songBars(song()) === 63 && Math.abs(songLengthSec(song(), project) - 63 * 4 * 60 / 88) < 1e-9);
   check('sections are listed in order', lines.includes('Sections: INTRO · VERSE 1'));
   check('notes lose their line breaks for a slash', lines.includes('Watch the drummer / for the stop.'), lines.join(' | '));
   check('tags ride along', lines.includes('#slow'));
   check('unticked facts are left out', infoLinesFor(song(), project, { ...DEFAULT_INFO_FIELDS, sections: false, tags: false, notes: false }).length === 3);
   check('a key typed by hand wins over the locator\'s', infoLinesFor(song(), project, all, 'A').includes('Key: A'));
-  check('a song with a tempo change is timed through it', Math.abs(songLengthSec(song({ tempoChanges: [{ bar: 33, bpm: 176 }] }), project) - (32 * 4 * 60 / 88 + 32 * 4 * 60 / 176)) < 1e-6);
+  check('a song with a tempo change is timed through it', Math.abs(songLengthSec(song({ tempoChanges: [{ bar: 33, bpm: 176 }] }), project) - (32 * 4 * 60 / 88 + 31 * 4 * 60 / 176)) < 1e-6);
 
   const p2 = { ...project, songs: [song(), song({ title: 'Yellow' }), song({ title: 'Clocks', startBar: 80, endBar: 100, key: 'D', notes: '', tags: [], sections: [] }), song({ title: 'Blank', startBar: 110, endBar: 120, key: null, notes: '', tags: [], sections: [] })] };
   const { clips, songs, empty } = infoClipsFor(p2, ['Yellow', 'Clocks'], { ...DEFAULT_INFO_FIELDS, title: false, tempo: false, timeSig: false, length: false });
@@ -5013,7 +5015,7 @@ group('song info as AbleSet clips');
   check('a first-bar clip is a bar long', infoClipsFor(p2, ['Yellow'], all, { wholeSong: false }).clips[0].bars === 1);
   const halfBar = { ...project, songs: [song({ title: 'Ragged', startBar: 1, endBar: 63.5 })] };
   check('a song that ends mid-bar is counted, and its clip drawn, in whole bars rounded up',
-    infoLinesFor(halfBar.songs[0], project, all).some((l) => /\b64 bars\b/.test(l)) && infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars === 63,
+    infoLinesFor(halfBar.songs[0], project, all).some((l) => /\b63 bars\b/.test(l)) && infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars === 63,
     JSON.stringify([infoLinesFor(halfBar.songs[0], project, all), infoClipsFor(halfBar, ['Ragged'], all).clips[0].bars]));
 
   // A key change is its own clip, so the key is right at every bar of the copy.

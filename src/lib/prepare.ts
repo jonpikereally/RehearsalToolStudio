@@ -4,7 +4,7 @@ import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, SONG_FILE_NAME, sameSong, folderBaseOf, songFileFor, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
-import { songLengthSec } from './infoTrack.ts';
+import { songBars, songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
@@ -476,7 +476,7 @@ export function songFolderName(song: AlsSong, renderedOn: string = renderStamp()
 function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
   const clips = part.stems.flatMap((s) => s.clips.filter((c) => !c.disabled));
   const shifted = clips.find((c) => (c.semitones ?? 0) !== 0 || Math.abs((c.speed ?? 1) - 1) > 1e-6);
-  const bars = song.endBar - song.startBar + 1;
+  const bars = Math.ceil(songBars(song) - 1e-6);
   const from = clips.length ? Math.max(1, Math.floor(Math.min(...clips.map((c) => c.startBar)))) : null;
   const to = clips.length ? Math.min(bars, Math.ceil(Math.max(...clips.map((c) => c.endBar)))) : null;
   const gain = part.combined ? 1 : (part.stems[0]?.gain ?? 1);
@@ -837,7 +837,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
     const bpm = tempoOf(song, project);
-    const durationSec = barToSeconds(song.endBar - song.startBar + 1, bpm, project);
+    // The song runs from bar 1 to the bar line after its last: the render is that long.
+    const durationSec = barToSeconds(1 + songBars(song), bpm, project);
     /*
      * Today's folder for a song being rendered; the folder it already has for
      * a submix-only run, which is not a new render of the song and must land
@@ -1188,7 +1189,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         ...(mixedNow ? { submixesAt: renderedAt } : {}),
         tempo: Math.round(tempoOf(song, project) * 10) / 10,
         timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
-        bars: song.endBar - song.startBar + 1,
+        bars: Math.round(songBars(song) * 1000) / 1000,
         durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
         firstBarOffsetSec: paddingSec,
         originalKey: song.key ?? undefined,

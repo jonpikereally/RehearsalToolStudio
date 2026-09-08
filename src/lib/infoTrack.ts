@@ -75,10 +75,23 @@ function clean(text: string): string {
   return text.replace(/\\/g, '/').replace(/\s*\n+\s*/g, BREAK).replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * How many bars a song runs: from its first bar to where it ends.
+ *
+ * `endBar` is where the next song's locator, or the stop, sits — the bar
+ * line the song runs up to, not a bar it plays — so the count is the gap
+ * between the two. Fractional when the end sits mid-bar; whoever needs whole
+ * bars rounds up. A "+ 1" here once made every song a bar longer than its
+ * files, and than the click.
+ */
+export function songBars(song: Pick<AlsSong, 'startBar' | 'endBar'>): number {
+  return Math.max(0, song.endBar - song.startBar);
+}
+
 /** `3:55`, from a song's bars through its tempo map. */
 export function songLengthSec(song: AlsSong, project: AlsProject): number {
   const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
-  const bars = song.endBar - song.startBar + 1;
+  const bars = songBars(song);
   const changes = [...song.tempoChanges].sort((a, b) => a.bar - b.bar);
   let bpm = song.bpm ?? song.startBpm ?? project.tempo;
   let at = 1;
@@ -120,7 +133,7 @@ export function infoLinesFor(
   if (fields.timeSig) facts.push(`${song.timeSigNum ?? project.timeSigNum}/${song.timeSigDen ?? project.timeSigDen}`);
   if (fields.length) {
     // A song whose end sits mid-bar is a whole number of bars to a person.
-    const bars = Math.ceil(song.endBar - song.startBar + 1 - 1e-6);
+    const bars = Math.ceil(songBars(song) - 1e-6);
     facts.push(`${bars} bar${bars === 1 ? '' : 's'} · ${clock(songLengthSec(song, project))}`);
   }
   if (facts.length) lines.push(facts.join(' · '));
@@ -172,7 +185,7 @@ export function infoClipsFor(
      * longer than that hangs past the stop, which is a bar of the next song's
      * room taken for nothing.
      */
-    const songBars = Math.max(1, Math.ceil(song.endBar - song.startBar - 1e-6));
+    const wholeBars = Math.max(1, Math.ceil(songBars(song) - 1e-6));
     /*
      * A key change is a clip of its own, at the bar it happens.
      *
@@ -184,7 +197,7 @@ export function infoClipsFor(
      * and nothing else: the bars and the length belong to the whole song.
      */
     const marks = (song.keyChanges ?? [])
-      .filter((c) => c.bar > 1 + 1e-6 && c.bar < songBars + 1 - 1e-6)
+      .filter((c) => c.bar > 1 + 1e-6 && c.bar < wholeBars + 1 - 1e-6)
       .map((c) => ({ bar: Math.round(c.bar), key: c.key }))
       .sort((a, b) => a.bar - b.bar);
     const starts = [{ bar: 1, lines }, ...marks.map((m) => ({
@@ -192,7 +205,7 @@ export function infoClipsFor(
       lines: [...(fields.title ? [lines[0]] : []), ...(fields.key ? [`Key: ${clean(m.key)}`] : [])],
     }))].filter((part) => part.lines.length);
     for (const [i, part] of starts.entries()) {
-      const until = starts[i + 1]?.bar ?? songBars + 1;
+      const until = starts[i + 1]?.bar ?? wholeBars + 1;
       clips.push({
         bar: song.startBar + (part.bar - 1),
         text: join(part.lines),

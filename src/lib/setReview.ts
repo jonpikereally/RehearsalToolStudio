@@ -12,6 +12,7 @@
  */
 
 import type { AlsProject, AlsSong } from './alsParser.ts';
+import { songBars } from './infoTrack.ts';
 
 export type Severity = 'problem' | 'warning' | 'info';
 
@@ -58,7 +59,7 @@ const beatsPerBarOf = (p: AlsProject) => p.timeSigNum * (4 / p.timeSigDen);
  * wrote, and the whole point of computing is catching the two disagreeing.
  */
 export function songDurationSec(song: AlsSong, beatsPerBar: number): number {
-  const totalBars = song.endBar - song.startBar;
+  const totalBars = songBars(song);
   if (totalBars <= 0) return 0;
 
   // Piecewise: each stretch runs at its tempo until the next change.
@@ -238,7 +239,7 @@ export function checkSet(project: AlsProject): Finding[] {
       );
     }
 
-    const bars = song.endBar - song.startBar;
+    const bars = songBars(song);
     if (song.durationText && bars > 0) {
       const pinned = parseTimeText(song.durationText);
       const actual = songDurationSec(song, beatsPerBar);

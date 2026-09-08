@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Count a song's bars up to where it ends, not a bar past it**
+
+A song's endBar is where the next locator or the stop sits: the bar line it runs up to, not a bar it plays. Four places added one to the gap anyway, so every set.json said 66 bars and 186 seconds for a 65-bar Cruel Summer whose files, and click, ran 65 — and the info clip in Live said the same. One definition now, songBars, used by the manifest, the info clip, the render span and the set review. The render itself was already the right length.
+
 **Read a freeze clip that begins off the bar line from the top of its file**
 
 Live's freeze writes a file that starts exactly where the clip does, but counts the clip's beats from the bar line before it: Cruel Summer's record begins a quarter-beat before bar 3, so its freeze clips carry a first warp marker of "second 0 is beat 3.89" and a LoopStart of 3.89 to match. The parser read that LoopStart as beats into the file and skipped 2.75 seconds of it, so every stem and submix of the song — locked to each other to the sample — played most of a bar early against the click, the cues and the words. Mean, whose record begins 0.79 seconds before its bar line, had the same. The marker at the file's first second now says where the beats begin, for frozen and for warped clips alike; a file whose markers start at beat zero reads exactly as before.
