@@ -12,7 +12,8 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
+import { askAppToBuild, canCheckUpdates, canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
+import { prepareRunning } from './lib/prepareState';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
@@ -34,26 +35,84 @@ import SyncBar from './ui/SyncBar';
  */
 type Behind = { build: string; kind: 'page' | 'server' };
 
-function useNewerBuild(): Behind | null {
+/**
+ * What a check asked for by hand found, when it found nothing to offer.
+ *
+ * Looking for updates and being told nothing is the usual answer, and a menu
+ * item that appears to do nothing is the complaint that follows. So a check
+ * somebody asked for always says something back — that it is looking, that
+ * this is the newest build, or that now is not the moment because the studio
+ * is in the middle of writing a set.
+ */
+type Checked = { kind: 'looking' } | { kind: 'current' } | { kind: 'busy' } | { kind: 'silent' };
+
+function useNewerBuild(): { behind: Behind | null; checked: Checked | null; check: () => void; clear: () => void } {
   const [behind, setBehind] = useState<Behind | null>(null);
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await fetch('/__rehearsal-studio', { signal: AbortSignal.timeout(2000) });
-        const info = await res.json();
-        // `build` is what sits on disk; `server` is what this server is.
-        if (info.build && info.build !== __BUILD__) setBehind({ build: info.build, kind: 'page' });
-        else if (info.server && info.server !== __BUILD__) setBehind({ build: info.server, kind: 'server' });
-        else setBehind(null);
-      } catch {
-        // The dev server has no such route; there is nothing to say.
-      }
-    };
-    void check();
-    window.addEventListener('focus', check);
-    return () => window.removeEventListener('focus', check);
+  const [checked, setChecked] = useState<Checked | null>(null);
+  /** Ask the server what it has, and answer whether this window is behind it. */
+  const look = useCallback(async (): Promise<Behind | null> => {
+    try {
+      const res = await fetch('/__rehearsal-studio', { signal: AbortSignal.timeout(2000) });
+      const info = await res.json();
+      // `build` is what sits on disk; `server` is what this server is.
+      const found: Behind | null =
+        info.build && info.build !== __BUILD__
+          ? { build: info.build, kind: 'page' }
+          : info.server && info.server !== __BUILD__
+            ? { build: info.server, kind: 'server' }
+            : null;
+      setBehind(found);
+      return found;
+    } catch {
+      // The dev server has no such route; there is nothing to say.
+      return null;
+    }
   }, []);
-  return behind;
+
+  useEffect(() => {
+    const onFocus = () => void look();
+    void look();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [look]);
+
+  /*
+   * A check asked for by hand — File ▸ Check for Updates, or the button in
+   * Settings. The studio is built from the checkout beside it, so the app is
+   * asked to build; only it can, and only when nothing is being written,
+   * since the build ends by replacing the server a prepare would be talking
+   * to. Without an app to ask — a browser, an older build — the most that can
+   * be done is to look at what the server already has.
+   */
+  const check = useCallback(() => {
+    if (prepareRunning()) {
+      setChecked({ kind: 'busy' });
+      return;
+    }
+    setChecked({ kind: 'looking' });
+    if (canCheckUpdates() && askAppToBuild()) return; // the app answers with studio:checked
+    void look().then((found) => setChecked(found ? null : { kind: canCheckUpdates() ? 'current' : 'silent' }));
+  }, [look]);
+
+  useEffect(() => {
+    const asked = () => check();
+    const answered = () => void look().then((found) => setChecked(found ? null : { kind: 'current' }));
+    window.addEventListener('studio:check', asked);
+    window.addEventListener('studio:checked', answered);
+    return () => {
+      window.removeEventListener('studio:check', asked);
+      window.removeEventListener('studio:checked', answered);
+    };
+  }, [check, look]);
+
+  // News that is only news for a moment: said, then out of the way.
+  useEffect(() => {
+    if (!checked || checked.kind === 'looking') return;
+    const go = window.setTimeout(() => setChecked(null), 10000);
+    return () => window.clearTimeout(go);
+  }, [checked]);
+
+  return { behind, checked, check, clear: () => setChecked(null) };
 }
 
 /**
@@ -229,7 +288,7 @@ export default function App() {
       window.removeEventListener('studio:tools', onTools);
     };
   }, [takeChosen]);
-  const newerBuild = useNewerBuild();
+  const { behind: newerBuild, checked, clear: clearChecked } = useNewerBuild();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
@@ -359,6 +418,24 @@ export default function App() {
 
   return (
     <div className="app">
+      {checked && !newerBuild && (
+        <div className="notice spread" role="status" style={{ margin: 0, borderRadius: 0, alignItems: 'center' }}>
+          <span style={{ flex: 1 }}>
+            {checked.kind === 'looking'
+              ? 'Looking for a newer build…'
+              : checked.kind === 'busy'
+                ? 'The studio is writing a set just now — checking would restart it. Try again when it has finished.'
+                : checked.kind === 'current'
+                  ? `This is the newest build (${__BUILD__}).`
+                  : `This window is on build ${__BUILD__}; there is no app here to build a newer one.`}
+          </span>
+          {checked.kind !== 'looking' && (
+            <button className="icon-btn" onClick={clearChecked} aria-label="Dismiss">
+              ×
+            </button>
+          )}
+        </div>
+      )}
       {newerBuild && (
         <div
           className="notice"

@@ -7,6 +7,22 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Ask for a newer build from the menu, and be told what came of it**
+
+The studio is built from the checkout beside it, so an update is a build: until now it happened when the app was clicked, and there was no way to ask for one with the app already open.
+
+**Draw a converted chord as long as the chord it came from**
+
+Writing a chart into another notation capped every clip at a bar, so a chord held for two bars came out as a one-bar clip and the copy no longer looked like the chart it was read from.
+
+**Read the set as it is now, not as it was when the tab opened**
+
+Two songs had a key added in Live and saved; Set tools went on saying they had chords but no key, and asked for the keys by hand. The set was right — parsing the file on disk gives both songs their key — but the tab had read it once, when the set was chosen, and never again. Every tool here is judged on that parse: which songs have chords, what key each is in, what the info clips say.
+
+**Let a save do the jobs asked of it, not all three or none**
+
+Auto-update was one switch: on, and a save of the set prepared the songs whose audio had changed, wrote nothing for the submixes, and refreshed the words and sections of the rest. But the three are not one job. The stems are an hour of rendering, the submixes minutes, the words and sections seconds, and which of those somebody wants happening behind them differs — wanting the words kept current should not mean agreeing to an hour of rendering on every save.
+
 **Keep a page open when the browser's storage is full**
 
 The studio died on a QuotaExceededError: nineteen songs with their words, chords, sections and patch changes came to four and a half megabytes, Safari allows five, and the write went off unguarded in the middle of drawing and took the page down with it.

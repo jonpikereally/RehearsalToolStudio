@@ -296,9 +296,13 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         // it up itself rather than ask into silence.
         if body["ready"] as? Bool == true {
             pageReady = true
-            tell(message.webView, "studio:app", ["panels": ["chooser", "changes"], "menu": true, "restart": true])
+            tell(message.webView, "studio:app",
+                 ["panels": ["chooser", "changes"], "menu": true, "restart": true, "updates": true])
             open([])
         }
+        // The page has decided a check is safe — nothing is being written —
+        // so the source is built if it has moved and the server caught up.
+        if body["check"] as? Bool == true { runUpdateCheck() }
         // Start again: the servers come up with the app, so a server left
         // behind by a rebuild is fixed by opening the app afresh — which the
         // page can ask for rather than telling somebody to do it by hand.
@@ -475,6 +479,59 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         NSApp.terminate(nil)
     }
 
+    /*
+     * File ▸ Check for Updates.
+     *
+     * The studio is built from the checkout beside it, so an update is a
+     * build: the launcher rebuilds when the source has moved and replaces a
+     * server that is behind what it built. That last part kills the server,
+     * which would take a prepare down with it — so the page is asked first,
+     * and answers with `check` only when nothing is being written. A page
+     * that isn't up to be asked can't be preparing anything, so the check
+     * goes ahead here and says how it went in a dialog of its own.
+     */
+    @objc func checkForUpdates() {
+        if pageReady {
+            tell("studio:check", [:])
+        } else {
+            runUpdateCheck()
+        }
+    }
+
+    /// Whether a check is already under way; one at a time.
+    var checking = false
+
+    func runUpdateCheck() {
+        guard !checking else { return }
+        checking = true
+        let before = loadedBuild
+        DispatchQueue.global(qos: .userInitiated).async {
+            let build = self.startServers()
+            DispatchQueue.main.async {
+                self.checking = false
+                self.note("checked for updates: \(build ?? "nothing answered"), was \(before ?? "unknown")")
+                // The page knows which build it is showing, so it is the one
+                // that says whether this is news; it is told either way.
+                if self.pageReady {
+                    self.tell("studio:checked", ["build": build ?? ""])
+                    return
+                }
+                let alert = NSAlert()
+                if let build {
+                    let same = before == nil || build == before
+                    alert.messageText = same ? "The studio is up to date." : "A newer build is ready."
+                    alert.informativeText = same
+                        ? "Build \(build)."
+                        : "Build \(build) is built and being served; this window is still on \(before ?? "an older one")."
+                } else {
+                    alert.messageText = "The studio didn't answer."
+                    alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."
+                }
+                alert.runModal()
+            }
+        }
+    }
+
     /// File ▸ Changes: what the studio has done, save by save.
     @objc func showChanges() {
         showChangesWindow()
@@ -510,6 +567,9 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         file.addItem(NSMenuItem.separator())
         let changes = file.addItem(withTitle: "Changes…", action: #selector(showChanges), keyEquivalent: "y")
         changes.target = self
+        file.addItem(NSMenuItem.separator())
+        let updates = file.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "u")
+        updates.target = self
         bar.addItem(holding(file))
 
         let edit = NSMenu(title: "Edit")

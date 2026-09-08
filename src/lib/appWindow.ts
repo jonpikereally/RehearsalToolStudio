@@ -57,12 +57,15 @@ export function askApp(message: Record<string, unknown>): boolean {
 let known: Set<string> | null = null;
 /** Whether this app can quit and open itself again. */
 let restarts = false;
+/** Whether this app can build the studio again and say what came of it. */
+let updates = false;
 const waiting: ((panels: Set<string>) => void)[] = [];
 
 window.addEventListener('studio:app', (e) => {
-  const said = (e as CustomEvent<{ panels?: string[]; restart?: boolean }>).detail;
+  const said = (e as CustomEvent<{ panels?: string[]; restart?: boolean; updates?: boolean }>).detail;
   known = new Set(Array.isArray(said?.panels) ? said.panels : []);
   restarts = said?.restart === true;
+  updates = said?.updates === true;
   for (const resolve of waiting.splice(0)) resolve(known);
 });
 
@@ -95,6 +98,23 @@ export const canRestart = (): boolean => restarts;
 
 /** Quit and open again — how a server left behind by a rebuild is caught up. */
 export const restartApp = (): boolean => restarts && askApp({ restart: true });
+
+/**
+ * Whether the app can look for a newer build — File ▸ Check for Updates, and
+ * the button that does the same thing. An older app cannot, and the page
+ * makes do with comparing itself against the server.
+ */
+export const canCheckUpdates = (): boolean => updates;
+
+/**
+ * Ask the app to build the studio from the source if it has moved on, and to
+ * bring the server up to what it built.
+ *
+ * Only ever asked when nothing is being written: the last step replaces the
+ * server, and a prepare talking to it would stop where it stood. The app
+ * answers with `studio:checked` when it has finished.
+ */
+export const askAppToBuild = (): boolean => updates && askApp({ check: true });
 
 /**
  * What the chooser chose, for the main window to open: the set folder whole,
