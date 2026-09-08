@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Say in green when the submixes are written, and never lose the saying of it**
+
+A submix run finished into silence: the dialog only knew how to show what a stems prepare had written, so a run that wrote nothing else left the form sitting there as though nothing had happened. It has its own word now, in the same green as a prepare's — how many submixes, into which folder, and that the stems were not touched.
+
 **Let the submix job arrive with its songs already chosen**
 
 Clicking "Submixes 7 behind" opened the dialog with nothing ticked and nothing to press. The songs were chosen and then unchosen a moment later: the dialog unticks every song whose audio is unchanged, which is every song a submix run is for — their stems are right, that is the point of the pass.

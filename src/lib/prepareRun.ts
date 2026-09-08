@@ -180,6 +180,28 @@ export async function standingFor(
    * else. Read once for the whole set.
    */
   const members = (await bandMembers(band)).filter((m) => !m.off);
+  /*
+   * And whether the submixes the manifest promises are actually there. A file
+   * taken away — by a hand in the Finder, by a sync that went wrong — leaves
+   * an entry pointing at nothing, which the band's app meets as a part that
+   * will not load. A stat apiece, a dozen at a time.
+   */
+  const gone = new Set<string>();
+  if (manifest) {
+    const declared = manifest.songs.flatMap((entry) =>
+      (entry.parts ?? [])
+        .filter((part) => part.submixOf && part.file)
+        .map((part) => ({ song: entry.title ?? folderBaseOf(entry.folder), path: `${folderName}/${entry.folder}/${part.file}` })),
+    );
+    for (let i = 0; i < declared.length; i += 12) {
+      await Promise.all(
+        declared.slice(i, i + 12).map(async ({ song, path }) => {
+          const there = await local.exists(band, '', `${SETS_FOLDER}/${path}`).catch(() => true);
+          if (!there) gone.add(song);
+        }),
+      );
+    }
+  }
   const standing = new Map<string, AudioStanding>();
   const submixes = new Map<string, string | null>();
   const words = new Set<string>();
@@ -190,7 +212,14 @@ export async function standingFor(
     standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
     // Whether the submixes match the band is its own question, and its own
     // work: the stems being right says nothing about them, or the other way.
-    submixes.set(song.title, entry?.parts?.length ? submixesFor(entry.parts, members) : null);
+    submixes.set(
+      song.title,
+      gone.has(song.title)
+        ? 'a submix it says it has is not there'
+        : entry?.parts?.length
+          ? submixesFor(entry.parts, members)
+          : null,
+    );
     if (entry && wordsChanged(entry, song, project, setPath)) words.add(song.title);
   }
   return { standing, submixes, words, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
@@ -246,7 +275,15 @@ export interface RunOutcome {
   submixes: PrepareResult | null;
   /** Words and sections refreshed for the unchanged songs left alone, and which. */
   refreshed: { count: number; songs: string[]; error?: string } | null;
-  published: PublishResult;
+  /**
+   * The band's library as it now stands — or null when it could not be
+   * written. The files are already in the folder by then: a run that wrote
+   * every song and then failed to publish is not a run that failed, and
+   * saying so is how somebody knows to try that last step again.
+   */
+  published: PublishResult | null;
+  /** Why the library could not be written, when it could not. */
+  publishError?: string;
 }
 
 /**
@@ -468,8 +505,17 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
         }
       }
     }
-    const published = await publishLibrary(band);
-    return { result, submixes: submixResult, refreshed, published };
+    try {
+      return { result, submixes: submixResult, refreshed, published: await publishLibrary(band) };
+    } catch (err) {
+      return {
+        result,
+        submixes: submixResult,
+        refreshed,
+        published: null,
+        publishError: err instanceof Error ? err.message : String(err),
+      };
+    }
   } finally {
     releaseAwake();
     markPrepareRunning(false);

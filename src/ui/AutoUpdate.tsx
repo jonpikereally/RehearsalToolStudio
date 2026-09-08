@@ -133,7 +133,8 @@ export default function AutoUpdate() {
           set: folderName,
           songs: selected,
           text: written
-            ? `${written} song${written === 1 ? '' : 's'} written again${refreshed ? `, ${refreshed} refreshed` : ''}. The band sees ${outcome.published.songs}.`
+            ? `${written} song${written === 1 ? '' : 's'} written again${refreshed ? `, ${refreshed} refreshed` : ''}.` +
+              (outcome.published ? ` The band sees ${outcome.published.songs}.` : ` The band's library could not be written: ${outcome.publishError}`)
             : refreshed
               ? `No audio had changed; words and sections refreshed for ${refreshed} song${refreshed === 1 ? '' : 's'}.`
               : 'Nothing had changed.',
@@ -247,7 +248,10 @@ export default function AutoUpdate() {
                       (phase.outcome.refreshed.count <= 4 ? ` (${phase.outcome.refreshed.songs.join(', ')})` : '')
                     : '; nothing else had changed'
                 : ''}
-              . The band sees {phase.outcome.published.songs} song{phase.outcome.published.songs === 1 ? '' : 's'}.
+              .{' '}
+              {phase.outcome.published
+                ? `The band sees ${phase.outcome.published.songs} song${phase.outcome.published.songs === 1 ? '' : 's'}.`
+                : `The files are written, but the band's library could not be: ${phase.outcome.publishError}`}
               {phase.outcome.result && phase.outcome.result.skipped.length > 0 && (
                 <> {phase.outcome.result.skipped.length} part{phase.outcome.result.skipped.length === 1 ? '' : 's'} skipped — {phase.outcome.result.skipped[0].part} in {phase.outcome.result.skipped[0].song}: {phase.outcome.result.skipped[0].reason}.</>
               )}

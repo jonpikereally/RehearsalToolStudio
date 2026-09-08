@@ -58,6 +58,8 @@ export default function PrepareSetDialog({
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
+  /** What a submix run wrote, which is its own kind of finished. */
+  const [submixResult, setSubmixResult] = useState<PrepareResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<AlsProject | null>(null);
@@ -220,21 +222,28 @@ export default function PrepareSetDialog({
         onProgress: setProgress,
       });
       setResult(out.result);
+      setSubmixResult(out.submixes);
       setRefreshed(out.refreshed);
       setPublished(out.published);
+      if (!out.published && out.publishError) {
+        setError(`The files are written, but the band's library could not be: ${out.publishError}`);
+      }
       // By hand, but the same thing happened to the band's folder, so it goes
       // in the same log as the saves the studio answered on its own.
       const wrote = (out.result?.songsWritten ?? 0) + (out.submixes?.songsWritten ?? 0);
+      // What the band can see of it, or why they cannot see it yet.
+      const band = (o: typeof out) =>
+        o.published ? ` The band sees ${o.published.songs}.` : ` The band's library could not be written: ${o.publishError}`;
       note({
         kind: wrote || out.refreshed?.count ? 'updated' : 'nothing',
         session: setPath.split('/').pop() ?? setPath,
         set: folderName,
         songs: [...selected],
         text: only === 'submixes'
-          ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}. The band sees ${out.published.songs}.`
+          ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}.${band(out)}`
           : `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
               out.refreshed?.count ? `, ${out.refreshed.count} refreshed` : ''
-            }. The band sees ${out.published.songs}.`,
+            }.${band(out)}`,
       });
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
@@ -314,7 +323,7 @@ export default function PrepareSetDialog({
             : `${lastPrepared ? 'Update' : 'Prepare'} ${alsName ?? 'the set'} for Rehearsal Tool`}
         </h3>
         {/* The form, until a run has finished: then what happened is all that's shown. */}
-        {!result && (
+        {!result && !submixResult && (
           <>
         {!setPath && <p className="dialog-note">No set is open. Choose one from the Songs tab first.</p>}
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
@@ -529,6 +538,28 @@ export default function PrepareSetDialog({
         </div>
       )}
 
+      {submixResult && (
+        <div className="notice done" role="status">
+          <strong>
+            {submixResult.songsWritten > 0
+              ? `Done — the submixes are written for ${submixResult.songsWritten} song${submixResult.songsWritten === 1 ? '' : 's'}.`
+              : 'Finished, but nothing was written.'}
+          </strong>
+          <br />
+          Wrote {submixResult.partsWritten} submix{submixResult.partsWritten === 1 ? '' : 'es'} into{' '}
+          <span className="code">{submixResult.folder}</span>, under each song's{' '}
+          <span className="code">submixes/</span> folder. The stems were not touched.
+          {submixResult.skipped.length > 0 && (
+            <>
+              <br />
+              {submixResult.skipped.length} skipped — {submixResult.skipped[0].part} in {submixResult.skipped[0].song}:{' '}
+              {submixResult.skipped[0].reason}
+              {submixResult.skipped.length > 1 ? `, and ${submixResult.skipped.length - 1} more.` : ''}
+            </>
+          )}
+        </div>
+      )}
+
       {published && (
         <div className="notice">
           Published to <span className="code">{published.folderName}</span> — the band now sees{' '}
@@ -537,7 +568,7 @@ export default function PrepareSetDialog({
       )}
 
       <div className="btn-row">
-        {result ? (
+        {result || submixResult ? (
           // Finished: the plain thing to do first, and a way back to the form.
           <>
             <button className="btn primary" onClick={onClose} autoFocus>
@@ -547,11 +578,12 @@ export default function PrepareSetDialog({
               className="btn"
               onClick={() => {
                 setResult(null);
+                setSubmixResult(null);
                 setPublished(null);
                 setRefreshed(null);
               }}
             >
-              Prepare again
+              {only === 'submixes' ? 'Write more' : 'Prepare again'}
             </button>
             {undoable && (
               <button className="btn" onClick={() => void undo()} title="Put the songs this run wrote back as they were before it">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
-import { usePreparedStanding } from '../lib/usePreparedStanding';
+import { usePreparedStanding, type PreparedStanding } from '../lib/usePreparedStanding';
 import { prepareRunning } from '../lib/prepareState';
 import PrepareSetDialog from './PrepareSetDialog';
 
@@ -37,17 +37,26 @@ export default function SyncBar() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const found = standing.state === 'found' ? standing.found : null;
+  /*
+   * What was found last, held while the next look runs. Without it the bar
+   * disappears for the second or two it takes to read the set again — and it
+   * takes the dialog it opened with it, which is how a submix run finished
+   * and its own confirmation was thrown away.
+   */
+  const last = useRef<PreparedStanding | null>(null);
+  if (standing.state === 'found') last.current = standing.found;
+  const found = standing.state === 'found' ? standing.found : last.current;
   const stems = found?.stemsBehind.length ?? 0;
   const words = found?.wordsBehind.length ?? 0;
   // The ones a refresh can do alone; the rest come with their song's render.
   const refreshable = found?.wordsRefreshable.length ?? 0;
   const submixes = found?.submixesBehind.length ?? 0;
 
-  if (!currentSet || !outputSet || !found) return null;
-
+  // The dialog outlives the bar: a run's own window must not vanish because
+  // the bar above it went off to count again.
   return (
     <>
+      {currentSet && outputSet && found && (
       <div className="syncbar">
         <Chip
           label="Stems"
@@ -80,9 +89,10 @@ export default function SyncBar() {
           onClick={() => setDialog({ titles: found.submixesBehind, only: 'submixes' })}
         />
         <span className="syncbar-where">
-          against <strong>{outputSet.name}</strong>
+          against <strong>{outputSet?.name}</strong>
         </span>
       </div>
+      )}
       {dialog && (
         <PrepareSetDialog
           preselect={dialog.titles}
