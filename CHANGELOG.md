@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Ask before a prepare goes ahead**
+
+The four buttons started the work on the press. A prepare writes over the band's folder — for the stems that is every stem the set points at, gigabytes read and an hour of rendering — and the difference between "prepare the info" and "prepare all" is one button's width.
+
 **Print every track of a song, unless told otherwise**
 
 Preparing one song came up with its reference tracks already set to Skip. Preparing a whole set has always printed them, so the same song came out with different parts depending on which button was pressed — and a song prepared on its own quietly lost the reference the band play against, which is the thing they check themselves by.

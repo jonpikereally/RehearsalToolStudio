@@ -39,6 +39,17 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
   );
 };
 
+/** The four jobs the buttons offer: everything, or that work taken apart. */
+type Job = 'all' | 'stems' | 'submixes' | 'info';
+
+/** What a press is called back to it, before it goes ahead. */
+const CONFIRM_TITLE: Record<Job, string> = {
+  all: 'Prepare everything?',
+  stems: 'Render the stems?',
+  submixes: 'Write the submixes?',
+  info: 'Write the words and sections?',
+};
+
 export default function PrepareSetDialog({
   onClose,
   preselect,
@@ -69,7 +80,16 @@ export default function PrepareSetDialog({
    * The other three are that work taken apart, since a set is usually behind
    * in one way at a time.
    */
-  const [job, setJob] = useState<'all' | 'stems' | 'submixes' | 'info'>(only ?? 'all');
+  const [job, setJob] = useState<Job>(only ?? 'all');
+  /**
+   * The job a press has asked for and is waiting to be agreed to.
+   *
+   * A prepare writes over the band's folder — an hour of rendering for a set,
+   * and the songs that were there written over — and it went the moment a
+   * button was pressed. So the press names the job and says what it will do
+   * to what, and the work starts on the second press.
+   */
+  const [confirming, setConfirming] = useState<Job | null>(null);
   /** Which facts an info run writes. */
   const [infoKinds, setInfoKinds] = useState<InfoKinds>(ALL_INFO);
   const [error, setError] = useState<string | null>(null);
@@ -193,13 +213,28 @@ export default function PrepareSetDialog({
     setChosen(next);
   };
 
+  /* --- what a press is about to do, for the sentence that asks first --- */
+
+  const songCount = selected.size;
+  const someSongs = songCount === titles.length && titles.length > 1
+    ? `all ${songCount} songs`
+    : `${songCount} song${songCount === 1 ? '' : 's'}`;
+  /** How many of the chosen songs lack a submix the band asks for. */
+  const behindOnSubmixes = titles.filter((t) => selected.has(t) && submixStanding?.get(t)).length;
+  const infoWanted = (Object.keys(INFO_LABEL) as (keyof InfoKinds)[])
+    .filter((k) => infoKinds[k])
+    .map((k) => INFO_LABEL[k].toLowerCase())
+    .join(', ') || 'nothing';
+  /** The songs by name, while they are few enough to be worth naming. */
+  const chosenNames = songCount && songCount <= 6 ? [...selected].join(', ') : null;
+
   /**
    * Prepare, and hand the result to the band. The run itself is in
    * prepareRun; the folder is asked for inside the click when it is not
    * already granted — a picker opened after an await is a picker the browser
    * refuses.
    */
-  const go = async (folder: local.FolderHandle, kind: 'all' | 'stems' | 'submixes' | 'info' = job) => {
+  const go = async (folder: local.FolderHandle, kind: Job = job) => {
     if (!setPath) return;
     running.current = new AbortController();
     setBusy(true);
@@ -316,7 +351,7 @@ export default function PrepareSetDialog({
   };
   const undoable = !busy && !!aside.current?.songs.length;
 
-  const start = async (kind: 'all' | 'stems' | 'submixes' | 'info' = job) => {
+  const start = async (kind: Job = job) => {
     try {
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
       await go(folder, kind);
@@ -591,6 +626,50 @@ export default function PrepareSetDialog({
         </div>
       )}
 
+      {/*
+        What the press just asked for, in the plain terms it will happen in:
+        which songs, how many, into which folder, and — for the jobs that
+        render — that it is hours and gigabytes and writes over what is there.
+      */}
+      {confirming && !busy && !result && !submixResult && (
+        <div className="notice" role="status">
+          <strong>{CONFIRM_TITLE[confirming]}</strong>
+          <div style={{ marginTop: 4 }}>
+            {confirming === 'all' && (
+              <>
+                Render {someSongs}
+                {behindOnSubmixes
+                  ? `, write the submixes of the ${behindOnSubmixes} song${behindOnSubmixes === 1 ? '' : 's'} that lack one,`
+                  : ''}{' '}
+                and refresh the words and sections of the rest, into “{setName}” in the band’s folder. Every stem the
+                set points at is read, which is gigabytes and can be an hour.
+              </>
+            )}
+            {confirming === 'stems' && (
+              <>
+                Render {someSongs} into “{setName}” in the band’s folder. Every stem the set points at is read, which is
+                gigabytes and can be an hour; each song’s folder is written over.
+              </>
+            )}
+            {confirming === 'submixes' && (
+              <>
+                Write each member’s submix for {someSongs} into “{setName}”, from the audio already in the folder. The
+                stems are not touched.
+              </>
+            )}
+            {confirming === 'info' && (
+              <>
+                Write {infoWanted} for {someSongs} into “{setName}”. Nothing is rendered and no audio is read.
+              </>
+            )}
+            {(confirming === 'all' || confirming === 'stems') && (
+              <> What it writes over is kept aside, so it can be undone; and it can be stopped while it runs.</>
+            )}
+          </div>
+          {chosenNames && <div className="hint" style={{ marginTop: 4 }}>{chosenNames}</div>}
+        </div>
+      )}
+
       <div className="btn-row">
         {result || submixResult ? (
           // Finished: the plain thing to do first, and a way back to the form.
@@ -635,26 +714,35 @@ export default function PrepareSetDialog({
                 ['submixes', 'Prepare submixes', "Each member's submix of the ticked songs, from the audio already in the folder"],
                 ['info', 'Prepare info', 'The facts beside the audio: sections, chords, words, patch changes. Nothing is rendered.'],
               ] as const
-            ).map(([kind, label, why]) => (
-              <button
-                key={kind}
-                className={kind === (only ?? 'all') ? 'btn primary' : 'btn'}
-                title={why}
-                disabled={busy || !setPath || selected.size === 0}
-                onClick={() => {
-                  setJob(kind);
-                  void start(kind);
-                }}
-              >
-                {busy && kind === job ? `${label}…` : label}
-              </button>
-            ))}
+            ).map(([kind, label, why]) =>
+              // While a job waits to be agreed to, it is the only one offered:
+              // the other three would be a second question over the first.
+              confirming && confirming !== kind ? null : (
+                <button
+                  key={kind}
+                  className={kind === (confirming ?? only ?? 'all') ? 'btn primary' : 'btn'}
+                  title={why}
+                  disabled={busy || !setPath || selected.size === 0}
+                  onClick={() => {
+                    setJob(kind);
+                    if (confirming === kind) {
+                      setConfirming(null);
+                      void start(kind);
+                    } else {
+                      setConfirming(kind);
+                    }
+                  }}
+                >
+                  {busy && kind === job ? `${label}…` : confirming === kind ? `Yes — ${label.toLowerCase()}` : label}
+                </button>
+              ),
+            )}
             <button
               className={busy ? 'btn danger' : 'btn'}
-              onClick={() => (busy ? running.current?.abort() : onClose())}
+              onClick={() => (busy ? running.current?.abort() : confirming ? setConfirming(null) : onClose())}
               title={busy ? 'Stop preparing. What is already written stays.' : undefined}
             >
-              {busy ? 'Stop' : 'Cancel'}
+              {busy ? 'Stop' : confirming ? 'Back' : 'Cancel'}
             </button>
           </>
         )}
