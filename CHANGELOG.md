@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Say how many stems and how many submixes a run wrote**
+
+"Wrote 10 parts across 1 song" hides the half of the work that matters when the band changes: whether the submixes were written. The three kinds a run writes are now counted apart and named — "6 stems, 2 submixes and 2 patterns" — with only the kinds that happened said, in both the set's dialog and one song's. Checked against a song in the band's folder: 10 parts is 6 stems, 2 submixes and 2 patterns, which is what the entry holds.
+
 **Ask before a prepare goes ahead**
 
 The four buttons started the work on the press. A prepare writes over the band's folder — for the stems that is every stem the set points at, gigabytes read and an hour of rendering — and the difference between "prepare the info" and "prepare all" is one button's width.

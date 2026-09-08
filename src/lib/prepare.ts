@@ -336,6 +336,13 @@ export interface PrepareResult {
   folder: string;
   songsWritten: number;
   partsWritten: number;
+  /**
+   * Of those parts, the ones that are a member's submix — the sum of what
+   * they are not keeping on a fader of their own. Counted apart because they
+   * are separate work: a run can write submixes and no stems, or stems and
+   * no submixes, and "10 parts" says neither.
+   */
+  submixesWritten: number;
   /** Parts that could not be prepared, with why. */
   skipped: { song: string; part: string; reason: string }[];
   /** Parts written as patterns striking samples, rather than as files. */
@@ -351,6 +358,30 @@ export interface PrepareResult {
    * differently from song to song.
    */
   records: { song: string; part: string }[];
+}
+
+/**
+ * What a run wrote, said as the three kinds of part it writes.
+ *
+ * "10 parts" is a number nobody can act on: it hides whether the band's
+ * submixes were written, which is the half of the work that changes when the
+ * band does. So the stems, the submixes and the sampler patterns are counted
+ * apart and only the kinds that happened are named.
+ */
+export function describeParts(
+  result: Pick<PrepareResult, 'partsWritten' | 'submixesWritten' | 'samplerParts'>,
+): string {
+  const patterns = result.samplerParts;
+  const submixes = result.submixesWritten;
+  const stems = Math.max(0, result.partsWritten - submixes - patterns);
+  const kinds = [
+    stems ? `${stems} stem${stems === 1 ? '' : 's'}` : '',
+    submixes ? `${submixes} submix${submixes === 1 ? '' : 'es'}` : '',
+    patterns ? `${patterns} pattern${patterns === 1 ? '' : 's'}` : '',
+  ].filter(Boolean);
+  if (!kinds.length) return 'nothing';
+  if (kinds.length === 1) return kinds[0];
+  return `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`;
 }
 
 /** Characters a file name can't carry, whatever the filesystem. */
@@ -634,6 +665,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const written: PreparedSongInfo[] = [];
   let songsWritten = 0;
   let partsWritten = 0;
+  /** Of those, the ones written as a member's submix rather than as a stem. */
+  let submixesWritten = 0;
   let samplerParts = 0;
 
   /*
@@ -1032,6 +1065,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         wroteParts.push(info);
         if (info.record) records.push({ song: song.title, part: info.label });
         partsWritten++;
+        if (part.submix) submixesWritten++;
         wroteAny = true;
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') throw err;
@@ -1146,7 +1180,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, partsWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec, records };
+  return { folder, songsWritten, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */

@@ -5127,6 +5127,22 @@ group('patch changes to and from the band');
     JSON.stringify(board("Ben's board").rigPatches.map((r) => r.track)));
 }
 
+/* ------------------------- what a run says it wrote ------------------------ */
+
+group('counting what a run wrote');
+{
+  const { describeParts } = await import('../src/lib/prepare.ts');
+  const said = (partsWritten, submixesWritten, samplerParts) =>
+    describeParts({ partsWritten, submixesWritten, samplerParts });
+
+  check('stems alone', said(10, 0, 0) === '10 stems', said(10, 0, 0));
+  check('one of each reads singular', said(2, 1, 0) === '1 stem and 1 submix', said(2, 1, 0));
+  check('stems and submixes are counted apart', said(12, 4, 0) === '8 stems and 4 submixes', said(12, 4, 0));
+  check('and the sampler patterns with them', said(10, 2, 2) === '6 stems, 2 submixes and 2 patterns', said(10, 2, 2));
+  check('a submixes-only run says only submixes', said(7, 7, 0) === '7 submixes', said(7, 7, 0));
+  check('and a run that wrote nothing says so', said(0, 0, 0) === 'nothing');
+}
+
 /* --------------------- runs, and who is told about them -------------------- */
 
 group('when a run has finished');

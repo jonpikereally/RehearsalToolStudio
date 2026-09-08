@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
-import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
+import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
 import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
 import { note } from '../lib/saveLog';
@@ -554,15 +554,14 @@ export default function PrepareSetDialog({
               : 'Finished, but nothing was written.'}
           </strong>
           <br />
-          Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} across{' '}
-          {result.songsWritten} song{result.songsWritten === 1 ? '' : 's'} to{' '}
-          <span className="code">{result.folder}</span>.
+          Wrote {describeParts(result)} across {result.songsWritten} song
+          {result.songsWritten === 1 ? '' : 's'} to <span className="code">{result.folder}</span>.
           {result.samplerParts > 0 && (
             <>
               {' '}
-              {result.samplerParts} of them {result.samplerParts === 1 ? 'is a pattern' : 'are patterns'} striking{' '}
-              {result.samplesShared} sample{result.samplesShared === 1 ? '' : 's'} in{' '}
-              <span className="code">Resources/</span> — one kick for every song that fires it.
+              {result.samplerParts === 1 ? 'The pattern strikes' : 'The patterns strike'} {result.samplesShared} sample
+              {result.samplesShared === 1 ? '' : 's'} in <span className="code">Resources/</span> — one kick for every
+              song that fires it.
             </>
           )}
           {result.records.length > 0 && (

@@ -5,7 +5,7 @@ import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchSe
 import { holdAwake } from '../lib/keepAwake';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
-import { overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
+import { describeParts, overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
 import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
@@ -17,6 +17,7 @@ import { setNameFor } from '../lib/setName';
 import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
+import { bandMembers } from '../lib/prepareRun';
 
 /**
  * One song, prepared for the band.
@@ -152,6 +153,14 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       const ctx = new AudioContext();
       const done = await prepareSet({
         songOrder: liveOrder?.titles,
+        /*
+         * The band, so this song comes out with its submixes like any other.
+         * A whole set has always written them; a song on its own wrote none,
+         * so the same song had different parts depending on which button was
+         * pressed — and the folder then said it was behind on submixes it had
+         * just been asked to make.
+         */
+        members: (await bandMembers(folder)).filter((m) => !m.off),
         beforeSong: async (name, previous) => {
           if (previous) await local.undoKeep(folder, setFolder, previous);
           await local.undoKeep(folder, setFolder, name);
@@ -358,14 +367,14 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
           <div className="notice done" role="status">
             <strong>Done — the song is prepared.</strong>
             <br />
-            Wrote {result.partsWritten} part{result.partsWritten === 1 ? '' : 's'} to{' '}
+            Wrote {describeParts(result)} to{' '}
             <span className="code">{result.folder}/{folderName}</span>.
             {result.samplerParts > 0 && (
             <>
               {' '}
-              {result.samplerParts} of them {result.samplerParts === 1 ? 'is a pattern' : 'are patterns'} striking{' '}
-              {result.samplesShared} sample{result.samplesShared === 1 ? '' : 's'} in{' '}
-              <span className="code">Resources/</span> — one kick for every song that fires it.
+              {result.samplerParts === 1 ? 'The pattern strikes' : 'The patterns strike'} {result.samplesShared} sample
+              {result.samplesShared === 1 ? '' : 's'} in <span className="code">Resources/</span> — one kick for every
+              song that fires it.
             </>
           )}
           {result.records.length > 0 && (
