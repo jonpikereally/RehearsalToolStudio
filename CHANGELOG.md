@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Say when the stems were made, and when the submixes were**
+
+A prepared song said when its audio was rendered and nothing more, so a band looking at a song could not tell how fresh it was in the two ways it can be. Preparing the stems and preparing the submixes are separate jobs — a member added has every stem beside their new submix exactly right — so a song can honestly hold stems from Tuesday and submixes from Friday, and one date could not say that.
+
 **Cover the run-finished count with a test**
 
 Six checks over the counting the sync bar now leans on: a run's end counted once, two overlapping runs counted once when the last of them finishes, something writing the folder outside a run saying so itself, and nobody told after they have stopped listening.

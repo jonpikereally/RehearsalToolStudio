@@ -213,13 +213,15 @@ export function songInfoFor(
     parts?: PreparedSongInfo['parts'];
     audioKey?: string;
     renderedAt?: string;
+    submixesAt?: string;
   },
 ): PreparedSongInfo {
-  const { folder, firstBarOffsetSec, parts, audioKey, renderedAt } = carried;
+  const { folder, firstBarOffsetSec, parts, audioKey, renderedAt, submixesAt } = carried;
   return {
     folder,
     title: song.title,
     renderedAt,
+    submixesAt,
     tempo: Math.round(tempoOf(song, project) * 10) / 10,
     timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
     bars: song.endBar - song.startBar + 1,
@@ -383,6 +385,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       parts: standing.entry?.parts,
       audioKey: standing.entry?.audioKey,
       renderedAt: standing.entry?.renderedAt,
+      submixesAt: standing.entry?.submixesAt,
     });
     written.push(keepUnasked(standing.entry, entry, kinds));
     // The folder's own copy of the entry, refreshed with it.

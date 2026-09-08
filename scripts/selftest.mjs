@@ -2052,6 +2052,36 @@ group('writing only some of the info');
     JSON.stringify(keepUnasked(before, now, ALL_INFO)));
   check('and nothing prepared before has nothing to keep',
     JSON.stringify(keepUnasked(undefined, now, { info: false, sections: false, chords: false, lyrics: false, patches: false })) === JSON.stringify(now));
+
+  /*
+   * When the files were made is a fact about the files, so a run over the
+   * words must carry it rather than re-derive or drop it: the stems' date,
+   * the submixes' own date, and the parts with theirs.
+   */
+  const { songInfoFor } = await import('../src/lib/updatePrepared.ts');
+  const song = {
+    title: 'One', startBar: 1, endBar: 32, key: 'C', notes: '', sections: [], chords: [], lanes: [],
+    tempoChanges: [], keyChanges: [], stems: [], slateBars: [], tags: [], flags: {}, raw: 'One',
+  };
+  const project = { timeSigNum: 4, timeSigDen: 4, tempo: 120, songs: [song], creator: 'test', warnings: [] };
+  const carried = songInfoFor(song, project, '/set.als', {
+    folder: 'One (2026-09-06)',
+    firstBarOffsetSec: 0.026,
+    parts: [{ label: 'bass', name: 'bass', renderedAt: '2026-09-06T08:31:12.000Z' }],
+    audioKey: 'v1.a.b.c.d',
+    renderedAt: '2026-09-06T08:31:12.000Z',
+    submixesAt: '2026-09-08T15:44:09.484Z',
+  });
+  check('a words run carries the stems\' date and the submixes\' own',
+    carried.renderedAt === '2026-09-06T08:31:12.000Z' && carried.submixesAt === '2026-09-08T15:44:09.484Z',
+    `${carried.renderedAt} | ${carried.submixesAt}`);
+  check('and each part keeps when it was written',
+    carried.parts[0].renderedAt === '2026-09-06T08:31:12.000Z');
+  check('a song with no submixes has no date for them',
+    songInfoFor(song, project, '/set.als', { folder: 'One (2026-09-06)', firstBarOffsetSec: 0 }).submixesAt === undefined);
+  check('and the dates survive a run over the sections',
+    keepUnasked(carried, { ...carried, markers: [{ bar: 1, name: 'VERSE' }] }, { info: false, sections: true, chords: false, lyrics: false, patches: false })
+      .submixesAt === '2026-09-08T15:44:09.484Z');
 }
 
 group('what the browser keeps');

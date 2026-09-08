@@ -916,6 +916,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             order: wroteParts.length,
             samples,
             notes: built.notes,
+            renderedAt,
           });
           samplerHere++;
           partsWritten++;
@@ -1020,6 +1021,9 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         const info = {
           ...partInfoFor(song.title, part.name, part.reference),
           ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate),
+          // When this file was written. Every part of a full render carries
+          // the same moment; a submix written on its own carries its own.
+          renderedAt,
           // How far a sum had to come down to fit: said, because a submix a
           // decibel under the parts it stands for is a submix somebody will
           // otherwise wonder about.
@@ -1071,13 +1075,21 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
        * key left alone — the audio is what it was.
        */
       const before = existing?.songs.find((e) => sameSong(e.folder, folderName));
+      // Whether this song came out of the run with submixes on it, and so
+      // whether the date of them is this moment or whatever it already was.
+      const mixedNow = wroteParts.some((p) => p.submixOf);
       written.push(opts.submixesOnly && before ? {
         ...before,
+        ...(mixedNow ? { submixesAt: renderedAt } : {}),
         parts: [...(before.parts ?? []).filter((p) => !p.submixOf), ...wroteParts],
       } : {
         folder: folderName,
         title: song.title,
         renderedAt,
+        // A full render writes the song's folder afresh, submixes and all, so
+        // there is no older date to keep: either they were written now or the
+        // song has none.
+        ...(mixedNow ? { submixesAt: renderedAt } : {}),
         tempo: Math.round(tempoOf(song, project) * 10) / 10,
         timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
         bars: song.endBar - song.startBar + 1,

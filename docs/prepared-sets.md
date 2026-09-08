@@ -258,6 +258,7 @@ way a hand-made folder would.
       "folder": "Cruel Summer (2026-09-06)",
       "title": "Cruel Summer",
       "renderedAt": "2026-09-06T08:31:12.000Z",
+      "submixesAt": "2026-09-08T15:44:09.484Z",
       "tempo": 85,
       "timeSignature": "4/4",
       "bars": 96,
@@ -273,7 +274,10 @@ way a hand-made folder would.
           "file": "Cruel Summer [ref song].mp3", "sources": ["REF SONG"], "frozen": true,
           "shifted": { "semitones": -2, "speed": 1 }, "covers": { "fromBar": 1, "toBar": 96 },
           "sizeBytes": 4351020, "bitrate": 128, "sampleRate": 48000 },
-        { "label": "ref drums", "name": "drums", "reference": true, "file": "Cruel Summer [ref drums].mp3", "sources": ["REF DRUMS"] },
+        { "label": "ref drums", "name": "drums", "reference": true, "file": "Cruel Summer [ref drums].mp3", "sources": ["REF DRUMS"],
+          "renderedAt": "2026-09-06T08:31:12.000Z" },
+        { "label": "alex gtr vox", "name": "alex gtr vox", "file": "submixes/Cruel Summer [alex gtr vox].mp3", "hidden": true,
+          "submixFor": ["Alex"], "submixOf": ["gtr", "lead vox"], "renderedAt": "2026-09-08T15:44:09.484Z" },
         { "label": "bass", "name": "bass", "file": "Cruel Summer [bass].mp3", "sources": ["Bass"], "gainDb": -3.5,
           "covers": { "fromBar": 9, "toBar": 96 } },
         { "label": "click", "name": "click", "kind": "sampler",
@@ -310,7 +314,8 @@ way a hand-made folder would.
 | `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order |
 | `songs[].folder` | yes | the song folder's name, relative to the set folder, as it is now; how the entry is matched to the scanned song, case-insensitively |
 | `songs[].title` | no | the song's title, in case the folder name had to be cleaned. Prefer it to the folder name |
-| `songs[].renderedAt` | no | when the song's audio was last rendered, ISO; the folder name carries the day |
+| `songs[].renderedAt` | no | when the song's **stems** were last rendered, ISO; the folder name carries the day. A submix pass does not move it |
+| `songs[].submixesAt` | no | when the song's **submixes** were last written, ISO; absent when it has none. Its own date because it is its own work: the band changes, a member's submix is written again, and every stem beside it is untouched — so a song can honestly hold stems from Tuesday and submixes from Friday |
 | `songs[].tempo` | no | the tempo at the song's start, to one decimal — what the folder name used to carry. `tempoMap` has the rest |
 | `songs[].timeSignature` | no | the meter, as `4/4` |
 | `songs[].bars` | no | the song's length in bars |
@@ -323,7 +328,7 @@ way a hand-made folder would.
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
 | `songs[].audioKey` | no | the Studio's own note of what the song's audio was made from, so its next prepare can skip a song whose audio has not changed. Opaque text; ignore it |
-| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. An audio part may also say what it was made from: `file` (its name in the folder), `sources` (the Live tracks it was rendered from; several for a combined part), `frozen` (rendered from Live's own freeze, devices included), `shifted: {semitones, speed}` (transposed or stretched from its file in the render), `covers: {fromBar, toBar}` (the bars of the song it has audio in, 1-based, inclusive), `gainDb` (the fader level it was rendered at; absent at unity), `sizeBytes`, `bitrate`, `sampleRate`. Facts to show, not to act on. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
+| `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. An audio part may also say what it was made from: `file` (its name in the folder), `sources` (the Live tracks it was rendered from; several for a combined part), `frozen` (rendered from Live's own freeze, devices included), `shifted: {semitones, speed}` (transposed or stretched from its file in the render), `covers: {fromBar, toBar}` (the bars of the song it has audio in, 1-based, inclusive), `gainDb` (the fader level it was rendered at; absent at unity), `renderedAt` (when that file itself was written, ISO — the part's own answer where the song's two dates are the summary), `sizeBytes`, `bitrate`, `sampleRate`. Facts to show, not to act on. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?, source?}, lengthBars?, endPatch?, member?, name?}`. `bar` is 1-based and may be fractional; `program` and `bank` are the bytes sent (bank = MSB × 128 + LSB), `controls` a list of `{cc, value}`. `member` is whose rig it is, from a track named `RIG <member> (<rig>)` in the set; `name` the clip's name. Send a change a quarter-second before its bar: bank, then program, then the CCs, on `channel` |
 
 Rules the reader follows, and a writer can rely on:
@@ -364,6 +369,7 @@ are sure to be there:
   "folder": "Cruel Summer (2026-09-06)",
   "title": "Cruel Summer",
   "renderedAt": "2026-09-06T08:31:12.000Z",
+  "submixesAt": "2026-09-08T15:44:09.484Z",
   "tempo": 85,
   "timeSignature": "4/4",
   "bars": 96,
@@ -501,6 +507,13 @@ saying who wrote last.
 11. **Show a set's songs in its running order, never alphabetically**: the
    library's `set:` setlist for it, or `set.json`'s `songs[]`, which agree.
    The alphabet is for a search box.
+12. Say how fresh a song's audio is from `renderedAt` (its stems) and
+   `submixesAt` (its submixes), and a part's own from its `renderedAt`. They
+   are separate dates for separate work and may differ by days; show what is
+   there and say nothing where a date is absent — an older set carries none,
+   and a song with no submixes has no `submixesAt` to show. Dates to display,
+   never to decide anything by: what is stale is the Studio's question, and
+   the set the band is given is always the whole answer.
 
 ## Rigs: patch changes from the band
 

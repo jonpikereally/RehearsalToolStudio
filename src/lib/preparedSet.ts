@@ -51,8 +51,20 @@ export interface PreparedSongInfo {
   /** The song's folder name, relative to the set: `<Title> (<date rendered>)`. */
   folder: string;
   title: string;
-  /** When the song's audio was last rendered, in full; its folder carries the day. */
+  /**
+   * When the song's stems were last rendered, in full; its folder carries the
+   * day. A submix pass leaves this alone: the stems are what they were.
+   */
   renderedAt?: string;
+  /**
+   * When this song's submixes were last written, when it has any.
+   *
+   * Its own date because it is its own work: the band changes, a member's
+   * submix is written again, and every stem beside it is untouched — so a
+   * folder can honestly hold stems from Tuesday and submixes from Friday, and
+   * anything showing the band how fresh a song is should be able to say so.
+   */
+  submixesAt?: string;
   /** The tempo at the song's start, to one decimal, and its meter as `4/4`. */
   tempo?: number;
   timeSignature?: string;
@@ -187,6 +199,12 @@ export interface PreparedPart {
   covers?: { fromBar: number; toBar: number };
   /** The fader level the part was rendered at, in dB; absent at unity. */
   gainDb?: number;
+  /**
+   * When this file was written. A song's parts are usually all of one moment,
+   * and a submix written later is not — this is the part's own answer, where
+   * the song's `renderedAt` and `submixesAt` are the two halves in summary.
+   */
+  renderedAt?: string;
   sizeBytes?: number;
   bitrate?: number;
   sampleRate?: number;
@@ -260,6 +278,7 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
     }
     if (song.originalKey !== undefined && typeof song.originalKey !== 'string') bad('"originalKey" must be text');
     if (song.renderedAt !== undefined && typeof song.renderedAt !== 'string') bad('"renderedAt" must be text');
+    if (song.submixesAt !== undefined && typeof song.submixesAt !== 'string') bad('"submixesAt" must be text');
     if (song.tempo !== undefined && typeof song.tempo !== 'number') bad('"tempo" must be a number');
     if (song.timeSignature !== undefined && !/^\d+\/\d+$/.test(String(song.timeSignature))) bad('"timeSignature" must be like "4/4"');
     if (song.bars !== undefined && typeof song.bars !== 'number') bad('"bars" must be a number');
@@ -376,6 +395,7 @@ export function manifestFromSongs(
       const before = previous?.songs.find((e) => e.folder.toLowerCase() === info.folder.toLowerCase());
       if (before?.parts?.length) info.parts = before.parts;
       if (before?.renderedAt) info.renderedAt = before.renderedAt;
+      if (before?.submixesAt) info.submixesAt = before.submixesAt;
       if (before?.audioKey) info.audioKey = before.audioKey;
       if (before?.bars) info.bars = before.bars;
       if (before?.durationSec) info.durationSec = before.durationSec;
