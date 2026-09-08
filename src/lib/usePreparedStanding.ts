@@ -25,6 +25,12 @@ export interface PreparedStanding {
   /** Songs whose audio is as it was but whose words, sections or notes are not. */
   words: number;
   total: number;
+  /** The songs whose stems want writing again, by title. */
+  stemsBehind: string[];
+  /** The songs whose submixes don't match the band, by title, and why. */
+  submixesBehind: string[];
+  /** One song's reason, for saying what is behind rather than how many. */
+  whySubmixes: string | null;
 }
 
 export type PreparedLookup =
@@ -72,6 +78,9 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
             unchanged: count('unchanged'),
             words: titles.filter((t) => standing.standing.get(t)?.state === 'unchanged' && standing.words.has(t)).length,
             total: titles.length,
+            stemsBehind: titles.filter((t) => standing.standing.get(t)?.state !== 'unchanged'),
+            submixesBehind: titles.filter((t) => !!standing.submixes.get(t)),
+            whySubmixes: titles.map((t) => standing.submixes.get(t)).find(Boolean) ?? null,
           },
         });
       } catch {

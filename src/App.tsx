@@ -18,6 +18,7 @@ import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
 import BandView from './ui/BandView';
 import AutoUpdate from './ui/AutoUpdate';
+import SyncBar from './ui/SyncBar';
 
 /**
  * Whether the studio has moved on from what this window is running.
@@ -451,6 +452,8 @@ export default function App() {
       )}
       {/* Live saved the set: what is being done about it, wherever you are. */}
       <AutoUpdate />
+      {/* And how far the band's folder is behind, in the two ways it can be. */}
+      {section !== 'song' && <SyncBar />}
       {/*
         A run is held in memory and governs Previous and Next, so it says so
         wherever you are — state that changes what buttons do should never be

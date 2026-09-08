@@ -2645,6 +2645,93 @@ input[type='range'] {
   overflow-y: auto;
 }
 
+/* --------------------------- how far behind ------------------------------- */
+
+/*
+ * The two ways the band's folder can be behind the set, side by side under
+ * the set bar: the stems, which follow the arrangement, and the submixes,
+ * which follow the band.
+ */
+.syncbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.syncbar-where {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.sync-chip .sync-count {
+  color: var(--text-faint);
+}
+
+/* Behind: worth a colour and a click. Up to date: worth saying, quietly. */
+.sync-chip.behind {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.sync-chip.behind .sync-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sync-chip .sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.sync-chip.behind .sync-dot {
+  background: var(--accent);
+}
+
+/* It went up while nobody was looking: say so, briefly. */
+.sync-chip.flash {
+  animation: sync-flash 0.8s ease-in-out 3;
+}
+
+@keyframes sync-flash {
+  0%, 100% {
+    background: none;
+  }
+  50% {
+    background: var(--accent-dim);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-chip.flash {
+    animation: none;
+    background: var(--accent-dim);
+  }
+}
+
 /* ------------------------------ the band ---------------------------------- */
 
 /* A page of its own now, so it carries its own padding. */

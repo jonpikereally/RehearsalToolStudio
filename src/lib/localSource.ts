@@ -168,6 +168,11 @@ export async function forgetFolder(slot: FolderSlot = 'songs'): Promise<void> {
   await call('forget', { slot });
 }
 
+/** Take away a submix nobody needs. The server refuses anything else. */
+export async function removeSubmix(folder: FolderHandle, root: string, path: string): Promise<void> {
+  await call('remove-submix', { dir: open(folder).dir, path: below(root, path) });
+}
+
 /** A folder a set's samples may be read from, outside its own project. */
 export interface ResourceFolder {
   /** Its path, which is also how it is forgotten. */

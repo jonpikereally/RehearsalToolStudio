@@ -1807,6 +1807,11 @@ group('preparing a set');
    */
   const folder = songFolderName(song, '2026-09-06');
   check('the folder is the title and the day it was rendered', folder === 'Fix You (2026-09-06)', folder);
+  // The day where the person is: an evening prepare filed its songs under
+  // tomorrow while the stamp was read off UTC.
+  const { renderStamp } = await import('../src/lib/prepare.ts');
+  const evening = new Date(2026, 8, 7, 21, 30);
+  check('and the day is the local one, not Greenwich\'s', renderStamp(evening) === '2026-09-07', renderStamp(evening));
 
   const meta = parseNameMeta(folder);
   check('and File mode reads the title back without the date', meta.title === 'Fix You', JSON.stringify(meta));

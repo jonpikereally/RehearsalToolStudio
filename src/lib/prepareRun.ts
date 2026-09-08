@@ -79,6 +79,37 @@ export async function bandMembers(band: local.FolderHandle): Promise<MemberMix[]
   return readMembers(band).catch(() => []);
 }
 
+/**
+ * Take away the submixes a song holds that nobody's list asks for now.
+ *
+ * Not moved aside like a song folder: a submix is a sum of files that are all
+ * still in the folder, so nothing is lost with it, and a folder that keeps
+ * every list anybody ever had is one the band downloads twice over.
+ */
+async function clearSpareSubmixes(
+  band: local.FolderHandle,
+  setFolder: string,
+  titles: string[],
+  members: MemberMix[],
+): Promise<void> {
+  let manifest: PreparedManifest | null = null;
+  try {
+    const { bytes } = await local.readBytes(band, '', `${setFolder}/${MANIFEST_NAME}`);
+    manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
+  } catch {
+    return; // nothing prepared here to clear
+  }
+  const wanted = new Set(titles.map((t) => t.toLowerCase()));
+  for (const entry of manifest.songs) {
+    if (!entry.parts?.length || !wanted.has((entry.title ?? '').toLowerCase())) continue;
+    const spare = new Set(spareSubmixes(entry.parts, members));
+    for (const part of entry.parts) {
+      if (!part.file || !spare.has(part.name)) continue;
+      await local.removeSubmix(band, '', `${setFolder}/${entry.folder}/${part.file}`).catch(() => undefined);
+    }
+  }
+}
+
 /** Who is missing a submix in this song, or what is there for nobody: else null. */
 function submixesFor(parts: PreparedPart[], members: MemberMix[]): string | null {
   const missing = members.filter((m) => submixState(parts, m) === 'missing').map((m) => m.member);
@@ -93,8 +124,14 @@ function submixesFor(parts: PreparedPart[], members: MemberMix[]): string | null
 }
 
 export interface Standing {
-  /** Where each song stands against the manifest, by title. */
+  /** Where each song's audio stands against the manifest, by title. */
   standing: Map<string, AudioStanding>;
+  /**
+   * Why each song's submixes are behind the band, by title, or null when they
+   * are not. Separate work from the audio: a member added leaves every stem
+   * exactly right and every submix of theirs unwritten.
+   */
+  submixes: Map<string, string | null>;
   /** Songs whose words, sections, chords, notes or key differ from their entry, by title. */
   words: Set<string>;
   /** Each song's audio key as it is now, by title, for the manifest. */
@@ -144,22 +181,19 @@ export async function standingFor(
    */
   const members = (await bandMembers(band)).filter((m) => !m.off);
   const standing = new Map<string, AudioStanding>();
+  const submixes = new Map<string, string | null>();
   const words = new Set<string>();
   for (const song of project.songs) {
     if (standing.has(song.title)) continue;
     const name = songFolderBase(song);
     const entry = manifest?.songs.find((e) => sameSong(e.folder, name));
-    const state = audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry);
-    const behind = entry?.parts?.length ? submixesFor(entry.parts, members) : null;
-    standing.set(
-      song.title,
-      state.state === 'unchanged' && behind
-        ? { state: 'changed', why: `the band's submixes have changed — ${behind}` }
-        : state,
-    );
+    standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
+    // Whether the submixes match the band is its own question, and its own
+    // work: the stems being right says nothing about them, or the other way.
+    submixes.set(song.title, entry?.parts?.length ? submixesFor(entry.parts, members) : null);
     if (entry && wordsChanged(entry, song, project, setPath)) words.add(song.title);
   }
-  return { standing, words, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
+  return { standing, submixes, words, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
 }
 
 export interface RunOptions {
@@ -171,6 +205,15 @@ export interface RunOptions {
   folderName: string;
   /** Titles to write out again. Empty writes no audio: the rest is still refreshed. */
   selected: string[];
+  /**
+   * Titles whose submixes want writing, the stems being right already.
+   *
+   * Its own pass, after the audio: preparing the stems and preparing the
+   * submixes are separate work, and a band that has changed does not make a
+   * song's stems wrong. A song in both lists gets its submixes from the audio
+   * pass and is not written twice.
+   */
+  submixes?: string[];
   standing: Map<string, AudioStanding> | null;
   /**
    * Songs whose words, sections, chords, notes or key differ from their
@@ -199,6 +242,8 @@ export interface RunOptions {
 export interface RunOutcome {
   /** What the prepare wrote; null when no song was chosen to write. */
   result: PrepareResult | null;
+  /** What the submix pass wrote, when one ran. */
+  submixes: PrepareResult | null;
   /** Words and sections refreshed for the unchanged songs left alone, and which. */
   refreshed: { count: number; songs: string[]; error?: string } | null;
   published: PublishResult;
@@ -231,6 +276,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
 
     const titles = titlesOf(project);
     const selected = new Set(o.selected);
+    const members = o.members ?? (await bandMembers(band));
     const setFolder = `${SETS_FOLDER}/${folderName}`;
     // Where the session is, for the manifest to remember; a lone set has no folder to say.
     const sessionPath = await absolutePath(setPath).catch(() => undefined);
@@ -264,7 +310,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           root: '',
           setName: folderName,
           // One submix per member per song, of everything they don't keep.
-          members: o.members ?? (await bandMembers(band)),
+          members,
           resolvePath: (relative) => resolveStemPath(setPath, relative),
           readFile: async (path) => (await readBytes(path)).bytes,
           readSlice: async (path, start, end) => {
@@ -299,6 +345,68 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
             }),
           parallelShifts: shiftLanes(),
           audioKeys: keys,
+          songOrder,
+          sessionPath,
+          onProgress,
+          signal,
+        });
+      } finally {
+        void ctx.close();
+      }
+    }
+
+    /*
+     * Then the submixes of songs whose stems were already right. Written into
+     * the folders as they stand — nothing is moved aside, since nothing of
+     * theirs is being written over — and the entries keep everything the last
+     * prepare said, their submix parts swapped for these.
+     */
+    const wantSubmixes = (o.submixes ?? []).filter((title) => !selected.has(title));
+    let submixResult: PrepareResult | null = null;
+    if (wantSubmixes.length) {
+      // A submix nobody's list asks for now is taken away rather than left to
+      // be downloaded: everything in it is still there as its own part.
+      await clearSpareSubmixes(band, setFolder, wantSubmixes, members);
+      const ctx = new AudioContext();
+      try {
+        submixResult = await prepareSet({
+          project,
+          alsPath: setPath,
+          only: wantSubmixes,
+          submixesOnly: true,
+          readManifest: async () => {
+            try {
+              const { bytes: raw } = await local.readBytes(band, '', `${setFolder}/${MANIFEST_NAME}`);
+              return JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
+            } catch {
+              return null;
+            }
+          },
+          root: '',
+          setName: folderName,
+          members,
+          resolvePath: (relative) => resolveStemPath(setPath, relative),
+          readFile: async (path) => (await readBytes(path)).bytes,
+          readSlice: async (path, start, end) => {
+            const got = await readBytes(path, undefined, undefined, { start, end });
+            return { bytes: got.bytes, size: got.size };
+          },
+          writeFile,
+          decode: (raw) => ctx.decodeAudioData(raw.slice(0)),
+          sampleRate: ctx.sampleRate,
+          shift: ({ buffer, semitones, speed, source, prime, onProgress: onShift }) =>
+            (prime ? primeShiftedRender : getShiftedBuffer)({
+              ctx,
+              path: source,
+              rev: `prepare:${buffer.length}@${buffer.sampleRate}`,
+              semitones,
+              tempo: speed,
+              source: buffer,
+              budgetBytes: o.cacheBudgetGB * 1e9,
+              onProgress: onShift,
+              signal,
+            }),
+          parallelShifts: shiftLanes(),
           songOrder,
           sessionPath,
           onProgress,
@@ -361,7 +469,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
       }
     }
     const published = await publishLibrary(band);
-    return { result, refreshed, published };
+    return { result, submixes: submixResult, refreshed, published };
   } finally {
     releaseAwake();
     markPrepareRunning(false);

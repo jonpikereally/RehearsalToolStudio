@@ -114,6 +114,17 @@ export interface PrepareOptions {
    */
   members?: MemberMix[];
   /**
+   * Write only the members' submixes, leaving every stem where it is.
+   *
+   * Preparing the stems and preparing the submixes are separate work: the
+   * stems come from the set and take the minutes, the submixes come from the
+   * stems and follow whoever is in the band. A song whose audio is right but
+   * whose submixes are not wants this, and nothing else — the song folder is
+   * written into rather than replaced, and its entry keeps everything the
+   * last prepare said about it.
+   */
+  submixesOnly?: boolean;
+  /**
    * The manifest already in the destination, when there is one.
    *
    * Preparing part of a set writes into the same folder as the rest of it, and
@@ -349,7 +360,14 @@ function safeName(text: string): string {
 
 /** The day, as a folder name carries it: `2026-09-06`. */
 export function renderStamp(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
+  /*
+   * The day here, not the day in Greenwich. An evening prepare used to file
+   * its songs under tomorrow — `toISOString` is UTC — so a set prepared after
+   * eight o'clock came out in folders dated the next day, and every song
+   * looked as though it had moved.
+   */
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
 /** The song's name as a folder would carry it: the title, made safe. What a song is known by in a prepared set. */
@@ -734,7 +752,13 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
     const bpm = tempoOf(song, project);
     const durationSec = barToSeconds(song.endBar - song.startBar + 1, bpm, project);
-    const folderName = songFolderName(song, stamp);
+    /*
+     * Today's folder for a song being rendered; the folder it already has for
+     * a submix-only run, which is not a new render of the song and must land
+     * beside the stems rather than in a folder of its own with none.
+     */
+    const already = existing?.songs.find((e) => sameSong(e.folder, songFolderName(song, stamp)))?.folder;
+    const folderName = opts.submixesOnly && already ? already : songFolderName(song, stamp);
     const songFolder = `${folder}/${folderName}`;
     // The folder this song had before, when the day has moved its name on.
     const previousFolder = existing?.songs.find((e) => sameSong(e.folder, folderName))?.folder;
@@ -745,8 +769,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     let samplerHere = 0;
 
     const own = partsFor(song, opts.plan?.[song.title]);
-    // A member's submix is one more part to write, and is written like one.
-    const parts = [...own, ...submixPartsFor(song, own, opts.members ?? [])];
+    const submixes = submixPartsFor(song, own, opts.members ?? []);
+    // A member's submix is one more part to write, and is written like one —
+    // unless the submixes are all that was asked for, when they are the lot.
+    const parts = opts.submixesOnly ? submixes : [...own, ...submixes];
 
     /*
      * Every clip of this song that Live plays transposed or at another speed,
@@ -978,7 +1004,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           onProgress: (r) => report('encoding', r),
         });
 
-        if (!wroteAny) {
+        /*
+         * The song's folder as it was, kept aside for undo — but never when
+         * only the submixes are being written: moving the folder aside would
+         * take the stems with it, and they are the part that is right.
+         */
+        if (!wroteAny && !opts.submixesOnly) {
           await opts.beforeSong?.(folderName, previousFolder && previousFolder !== folderName ? previousFolder : undefined);
         }
         report('writing', 1);
@@ -1033,7 +1064,17 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
        * chords would all be thrown away in the writing, and the encoder's
        * lead-in would go unmentioned and put every song fractionally late.
        */
-      written.push({
+      /*
+       * A submix-only run has written no stems, so its entry must not describe
+       * the song as if it had: the entry the folder already carries stands,
+       * with its submix parts swapped for the ones just written and its audio
+       * key left alone — the audio is what it was.
+       */
+      const before = existing?.songs.find((e) => sameSong(e.folder, folderName));
+      written.push(opts.submixesOnly && before ? {
+        ...before,
+        parts: [...(before.parts ?? []).filter((p) => !p.submixOf), ...wroteParts],
+      } : {
         folder: folderName,
         title: song.title,
         renderedAt,

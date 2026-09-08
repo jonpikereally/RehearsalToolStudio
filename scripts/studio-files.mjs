@@ -535,6 +535,24 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       return {};
     },
 
+    /**
+     * Remove a submix nobody needs any more.
+     *
+     * The one thing the studio deletes rather than moves aside, and only
+     * this: a submix is a sum of files that are all still there, so nothing
+     * is lost with it, and a folder that keeps every list anybody ever had is
+     * a folder the band downloads twice over. The name has to say it is one —
+     * the rule is here, under every caller, so no page can widen it.
+     */
+    async 'remove-submix'({ dir, path }) {
+      const full = inside(dir, path, { file: true });
+      if (!/\[\s*submix\b[^\]]*\]/i.test(basename(full))) {
+        throw new Refusal(400, `${basename(full)} is not a submix; the studio deletes nothing else`);
+      }
+      await rm(full, { force: true });
+      return { removed: basename(full) };
+    },
+
     /** Every folder samples may be read from, in the order they were allowed. */
     async resources() {
       const out = [];

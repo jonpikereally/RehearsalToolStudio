@@ -42,11 +42,17 @@ export default function PrepareSetDialog({
   onClose,
   preselect,
   order,
+  only,
 }: {
   onClose: () => void;
   preselect?: string[];
   /** The running order to write, by title, when a setlist's own; else the set's. */
   order?: string[];
+  /**
+   * `submixes` writes the members' submixes and nothing else — the stems in
+   * those folders stay as they are. Preparing the two is separate work.
+   */
+  only?: 'submixes';
 }) {
   const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
@@ -192,7 +198,10 @@ export default function PrepareSetDialog({
         setPath,
         band: folder,
         folderName,
-        selected: [...selected],
+        // The submix pass takes its songs in its own list; the stems' pass in
+        // the other, and a run is only ever asked for one of them here.
+        selected: only === 'submixes' ? [] : [...selected],
+        submixes: only === 'submixes' ? [...selected] : undefined,
         standing,
         words,
         keys,
@@ -207,14 +216,17 @@ export default function PrepareSetDialog({
       setPublished(out.published);
       // By hand, but the same thing happened to the band's folder, so it goes
       // in the same log as the saves the studio answered on its own.
+      const wrote = (out.result?.songsWritten ?? 0) + (out.submixes?.songsWritten ?? 0);
       note({
-        kind: out.result?.songsWritten || out.refreshed?.count ? 'updated' : 'nothing',
+        kind: wrote || out.refreshed?.count ? 'updated' : 'nothing',
         session: setPath.split('/').pop() ?? setPath,
         set: folderName,
         songs: [...selected],
-        text: `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
-          out.refreshed?.count ? `, ${out.refreshed.count} refreshed` : ''
-        }. The band sees ${out.published.songs}.`,
+        text: only === 'submixes'
+          ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}. The band sees ${out.published.songs}.`
+          : `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
+              out.refreshed?.count ? `, ${out.refreshed.count} refreshed` : ''
+            }. The band sees ${out.published.songs}.`,
       });
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
@@ -288,14 +300,19 @@ export default function PrepareSetDialog({
         aria-label="Prepare for Rehearsal Tool"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>{lastPrepared ? 'Update' : 'Prepare'} {alsName ?? 'the set'} for Rehearsal Tool</h3>
+        <h3>
+          {only === 'submixes'
+            ? `Write the band's submixes for ${alsName ?? 'the set'}`
+            : `${lastPrepared ? 'Update' : 'Prepare'} ${alsName ?? 'the set'} for Rehearsal Tool`}
+        </h3>
         {/* The form, until a run has finished: then what happened is all that's shown. */}
         {!result && (
           <>
         {!setPath && <p className="dialog-note">No set is open. Choose one from the Songs tab first.</p>}
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
-        Reads the set's current arrangement and writes each song out as small files anyone can
-        play — phones included, with no Ableton needed at the other end.
+        {only === 'submixes'
+          ? "Writes each member's submix from the set's own audio, and nothing else: the stems already in the folder stay exactly as they are."
+          : `Reads the set's current arrangement and writes each song out as small files anyone can play — phones included, with no Ableton needed at the other end.`}
       </div>
 
       <div className="field">
@@ -530,16 +547,18 @@ export default function PrepareSetDialog({
               disabled={busy || !setPath || (selected.size === 0 && !refreshable)}
             >
               {busy
-                ? 'Preparing…'
+                ? only === 'submixes' ? 'Writing the submixes…' : 'Preparing…'
                 : selected.size === 0
-                  ? refreshable
+                  ? refreshable && only !== 'submixes'
                     ? `Refresh words and sections of ${refreshable} unchanged song${refreshable === 1 ? '' : 's'}`
                     : 'Nothing chosen'
-                  : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
-                      selected.size === titles.length && titles.length
-                        ? 'the whole setlist'
-                        : `${selected.size} song${selected.size === 1 ? '' : 's'}`
-                    }`}
+                  : only === 'submixes'
+                    ? `Write the submixes of ${selected.size} song${selected.size === 1 ? '' : 's'}`
+                    : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
+                        selected.size === titles.length && titles.length
+                          ? 'the whole setlist'
+                          : `${selected.size} song${selected.size === 1 ? '' : 's'}`
+                      }`}
             </button>
             <button
               className={busy ? 'btn danger' : 'btn'}

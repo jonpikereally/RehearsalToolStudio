@@ -167,6 +167,14 @@ length of the song, and is meant to be played alongside the others.
   `submixes/` folder is a folder of one song's parts, never a song: anything
   scanning the band's folder has to read it as belonging to the folder above.
 
+  Preparing the stems and preparing the submixes are separate work. The stems
+  follow the arrangement; the submixes follow the band, and a member added
+  leaves every stem exactly right and every submix of theirs unwritten. A
+  submix-only run writes into the song folders as they stand, leaves their
+  audio keys alone, and takes away a submix no member's list asks for any
+  more — the only file the studio deletes rather than moves aside, since
+  everything in it is still there as its own part.
+
   A whole song is never in a submix — the record the band play against, or
   their own full bounce — since one summed in puts everything in it twice.
   Neither is the click or the cues, whoever the submix is for and whether

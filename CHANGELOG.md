@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Say in the bar how far behind each half is, and let them be prepared apart**
+
+Preparing the stems and preparing the submixes are separate work — the stems follow the arrangement, the submixes follow the band — so they are two questions now, asked continuously and answered separately in a bar under the set: "Stems 1 behind · Submixes 7 behind", or up to date. A count that goes up flashes, because it changes while nobody is looking: the studio sits beside Live for hours.
+
 **Ask the folder about submixes instead of hashing them into the audio key**
 
 Putting the band's submixes into a song's audio key was wrong twice over. A key is a hash, so it could only ever say that something was different, never what — and it went stale on things that change no audio at all: renaming submixes for their contents rather than their member made every song in every folder look changed, when every file in them was already right.
