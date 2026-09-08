@@ -60,7 +60,7 @@ export default function SetToolsView() {
   const [lyricsUrl, setLyricsUrl] = useState<string | null | undefined>(undefined);
   const lyricsUp = lyricsUrl === undefined ? null : lyricsUrl !== null;
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const { library, currentSet, publishFolder, pickPublishFolder } = useStore();
+  const { library, currentSet, setSaved, publishFolder, pickPublishFolder } = useStore();
   const [tool, setTool] = useState<
     'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
@@ -128,6 +128,8 @@ export default function SetToolsView() {
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
+  /** When the set file was last written, as of the parse in hand. */
+  const readAt = useRef<number | null>(null);
 
   const connectHelpers = async () => {
     const found = await helperVoices();
@@ -188,10 +190,70 @@ export default function SetToolsView() {
     try {
       const { bytes } = await local.readBytes(from.handle, '', path);
       setProject(await parseAls(bytes));
+      readAt.current = await modifiedAt(from, path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const modifiedAt = async (from: local.LocalFolder, path: string): Promise<number | null> => {
+    try {
+      return (await local.statFile(from.handle, '', path)).modified;
+    } catch {
+      return null;
+    }
+  };
+
+  /*
+   * The set as it is now, not as it was when this tab was opened.
+   *
+   * Every tool here reads the set: which songs have chords, what key each is
+   * in, what the info clips say. Somebody adds a key in Live, saves, comes
+   * back — and was told the song still has no key, because the parse was an
+   * hour old. So it is read again whenever Live saves it and whenever the
+   * window comes back to the front, and only when the file has actually
+   * moved: a stat is nothing, a parse of a big set is not.
+   */
+  const freshen = async () => {
+    if (!folder || !setPath || progress) return;
+    const at = await modifiedAt(folder, setPath);
+    if (at === null || at === readAt.current) return;
+    try {
+      const { bytes } = await local.readBytes(folder.handle, '', setPath);
+      const read = await parseAls(bytes);
+      readAt.current = at;
+      setProject(read);
+      // Keys typed in for songs the set didn't name are the set's now, if it
+      // names them; anything still missing stays as it was typed.
+      const named = new Set(read.songs.filter((sg) => sg.key).map((sg) => sg.title));
+      setKeyFor((was) => {
+        const kept = { ...was };
+        for (const title of named) delete kept[title];
+        return kept;
+      });
+      // A song the set now names a key for is no longer being asked about;
+      // with none left to ask, the prompt goes.
+      setAskKeys((was) => {
+        if (!was) return was;
+        const left = was.filter((title) => !named.has(title));
+        return left.length ? left : null;
+      });
+    } catch {
+      /* the parse in hand is still the best there is */
+    }
+  };
+
+  useEffect(() => {
+    void freshen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSaved?.at, folder, setPath, progress]);
+
+  useEffect(() => {
+    const back = () => void freshen();
+    window.addEventListener('focus', back);
+    return () => window.removeEventListener('focus', back);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder, setPath, progress]);
 
   const chooseVoice = (name: string) => {
     setVoice(name);
