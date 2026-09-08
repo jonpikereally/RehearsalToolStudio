@@ -2477,6 +2477,22 @@ group('writing a chord track');
   const names = chordClipsFor(project, {}, undefined, 'names');
   check('a song that already has the chosen kind is left alone and named',
     names.clips.length === 0 && names.alreadyHad.join() === 'One,Two', JSON.stringify(names));
+  // Several kinds at once: a track apiece in one copy, and only those tracks.
+  const { keepOnlyAdded: keepAdded } = await import('../src/lib/alsEdit.ts');
+  let both = project.xml ?? null;
+  if (!both) {
+    const first = chordClipsFor(project, {}, undefined, 'numbers');
+    const second = chordClipsFor(project, {}, undefined, 'roman');
+    if (first.clips.length && second.clips.length) {
+      const one = addChordTrack(xml, first.clips, first.trackName, project);
+      const two = addChordTrack(one.xml, second.clips, second.trackName, project);
+      const kept = keepAdded(two.xml, [one.trackName, two.trackName]);
+      const names = [...kept.xml.matchAll(/<EffectiveName Value="([^"]*)"/g)].map((m) => m[1]).filter((n) => /ADD THIS/.test(n));
+      check('two kinds of chords make two tracks in one copy, and nothing else',
+        names.length === 2 && names.includes(one.trackName) && names.includes(two.trackName), names.join(' | '));
+    }
+  }
+
   const { chordNotationsIn } = await import('../src/lib/chordTrack.ts');
   const seen = chordNotationsIn(project);
   check('the set says which notations it has', seen.withChords === 3 && seen.have.names === 3 && seen.have.numbers === 0 && seen.have.roman === 0, JSON.stringify(seen));

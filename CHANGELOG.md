@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Let the chords go out in more than one kind at once**
+
+A band reading Nashville numbers and somebody reading classical names want the same set, and the tool made you choose: pick a kind, write a copy, pick the other, write over it. The kinds are ticks now — any of the three — and each becomes a track of its own in the one copy, converted from whatever the set has, each song in its own key.
+
 **Say in green when the submixes are written, and never lose the saying of it**
 
 A submix run finished into silence: the dialog only knew how to show what a stems prepare had written, so a run that wrote nothing else left the form sitting there as though nothing had happened. It has its own word now, in the same green as a prepare's — how many submixes, into which folder, and that the stems were not touched.

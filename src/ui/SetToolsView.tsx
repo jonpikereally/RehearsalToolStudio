@@ -94,14 +94,26 @@ export default function SetToolsView() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [askKeys, setAskKeys] = useState<string[] | null>(null);
   const [keyFor, setKeyFor] = useState<Record<string, string>>({});
-  /** Which of the three chord notations to write; remembered. */
-  const [chordTarget, setChordTarget] = useState<ChordNotation>(() => {
-    const saved = localStorage.getItem('ls.settools.chordTarget');
-    return saved === 'names' || saved === 'numbers' || saved === 'roman' ? saved : 'numbers';
+  /**
+   * Which chord notations to write; remembered. More than one is allowed and
+   * makes a track apiece in the one copy — a band that reads numbers and a
+   * player who reads names want the same set, and dragging two tracks across
+   * once beats preparing the same copy twice.
+   */
+  const [chordTargets, setChordTargets] = useState<ChordNotation[]>(() => {
+    const saved = (localStorage.getItem('ls.settools.chordTargets') ?? localStorage.getItem('ls.settools.chordTarget') ?? '')
+      .split(',')
+      .filter((k): k is ChordNotation => k === 'names' || k === 'numbers' || k === 'roman');
+    return saved.length ? saved : ['numbers'];
   });
-  const pickChordTarget = (t: ChordNotation) => {
-    setChordTarget(t);
-    localStorage.setItem('ls.settools.chordTarget', t);
+  const toggleChordTarget = (kind: ChordNotation) => {
+    // Never none: the button would have nothing to write.
+    const next = chordTargets.includes(kind)
+      ? chordTargets.filter((k) => k !== kind)
+      : [...chordTargets, kind];
+    const kept = next.length ? next : [kind];
+    setChordTargets(kept);
+    localStorage.setItem('ls.settools.chordTargets', kept.join(','));
   };
   const [progress, setProgress] = useState<string | null>(null);
   /* The lyrics tab: which song, which of its tracks, and how finely to cut the words. */
@@ -325,26 +337,31 @@ export default function SetToolsView() {
     setError(null);
     setDone(null);
     try {
-      const { clips, trackName, converted, withoutKey, alreadyHad } = chordClipsFor(
-        project,
-        keyFor,
-        [...selected],
-        chordTarget,
-      );
+      /*
+       * One conversion per kind asked for, and one track apiece in the same
+       * copy: the set is read once, the copy is written once, and a band that
+       * reads numbers while somebody else reads names drags two tracks over
+       * together.
+       */
+      const asked = chordTargets.map((kind) => ({ kind, ...chordClipsFor(project, keyFor, [...selected], kind) }));
 
       /*
        * A song whose locator never named a key can still be converted — the
        * key just has to come from somewhere, and the person looking at the set
        * knows it. Asked for once, rather than the song being dropped quietly.
        */
+      const withoutKey = [...new Set(asked.flatMap((a) => a.withoutKey))];
       if (withoutKey.length && !force) {
         setAskKeys(withoutKey);
         return;
       }
-      if (!clips.length) {
+      const writing = asked.filter((a) => a.clips.length);
+      if (!writing.length) {
+        const had = [...new Set(asked.flatMap((a) => a.alreadyHad))];
         setError(
-          alreadyHad.length
-            ? `Nothing to write — ${alreadyHad.length === 1 ? 'the song' : `all ${alreadyHad.length} songs`} with chords already ${alreadyHad.length === 1 ? 'has' : 'have'} ${NOTATION_LABEL[chordTarget].toLowerCase()}.`
+          had.length
+            ? `Nothing to write — ${had.length === 1 ? 'the song' : `all ${had.length} songs`} with chords already ${had.length === 1 ? 'has' : 'have'} ` +
+              `${chordTargets.map((k) => NOTATION_LABEL[k].toLowerCase()).join(' and ')}.`
             : 'Nothing to convert — these songs have no chord track.',
         );
         return;
@@ -353,16 +370,25 @@ export default function SetToolsView() {
       setProgress('Working out the chords…');
 
       const { dir, prefix, base } = await destination();
-      const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
-      const only = keepOnlyAdded(result.xml, [result.trackName]);
+      let xml = await inflateAls(await setBytes());
+      const wrote: { trackName: string; clipsWritten: number; songs: number }[] = [];
+      for (const one of writing) {
+        const result = addChordTrack(xml, one.clips, one.trackName, project);
+        xml = result.xml;
+        wrote.push({ trackName: result.trackName, clipsWritten: result.clipsWritten, songs: one.converted.length });
+      }
+      const only = keepOnlyAdded(xml, wrote.map((w) => w.trackName));
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (chords).als`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
 
+      const songs = Math.max(...wrote.map((w) => w.songs));
       setDone(
-        `${result.clipsWritten} chords on a “${result.trackName}” track across ${converted.length} song` +
-          `${converted.length === 1 ? '' : 's'} in ${copyPath.split('/').pop()} — a copy holding only that track, ` +
-          `on the set's own timeline and locators. Open it beside the set and drag the track across. The original is untouched.` +
+        `${wrote.map((w) => `${w.clipsWritten} chords on “${w.trackName}”`).join(', ')} across ${songs} song` +
+          `${songs === 1 ? '' : 's'} in ${copyPath.split('/').pop()} — a copy holding only ` +
+          `${wrote.length === 1 ? 'that track' : `those ${wrote.length} tracks`}, ` +
+          `on the set's own timeline and locators. Open it beside the set and drag ` +
+          `${wrote.length === 1 ? 'the track' : 'them'} across. The original is untouched.` +
           (withoutKey.length
             ? ` ${withoutKey.length} song${withoutKey.length === 1 ? '' : 's'} skipped for want of a key: ${withoutKey.slice(0, 4).join(', ')}.`
             : ''),
@@ -924,8 +950,9 @@ export default function SetToolsView() {
                     <label>
                       Chords to write
                       <span className="hint">
-                        Converted from whichever chords the set has, each song in its own key. A song that
-                        already has the chosen kind is left alone.
+                        Converted from whichever chords the set has, each song in its own key. Tick as many
+                        kinds as you want: each becomes a track of its own in the one copy. A song that
+                        already has a chosen kind is left out of that kind's track.
                       </span>
                     </label>
                     <div className="controls flush" style={{ gap: 8 }}>
@@ -938,10 +965,10 @@ export default function SetToolsView() {
                           return (
                             <button
                               key={kind}
-                              className={chordTarget === kind ? 'chip on' : 'chip'}
-                              aria-pressed={chordTarget === kind}
+                              className={chordTargets.includes(kind) ? 'chip on' : 'chip'}
+                              aria-pressed={chordTargets.includes(kind)}
                               disabled={!!progress}
-                              onClick={() => pickChordTarget(kind)}
+                              onClick={() => toggleChordTarget(kind)}
                               title={has === seen.withChords && seen.withChords ? 'Every chosen song with chords has these already' : undefined}
                             >
                               {NOTATION_LABEL[kind]}
@@ -954,7 +981,9 @@ export default function SetToolsView() {
                   </div>
                   <div className="btn-row">
                     <button className="btn primary" disabled={!!progress} onClick={() => void addChords()}>
-                      {`Write ${NOTATION_LABEL[chordTarget].toLowerCase()}, ${wholeSet ? 'whole set' : `${selected.size} song${selected.size === 1 ? '' : 's'}`}`}
+                      {`Write ${chordTargets.map((k) => NOTATION_LABEL[k].toLowerCase()).join(' and ')}, ${
+                        wholeSet ? 'whole set' : `${selected.size} song${selected.size === 1 ? '' : 's'}`
+                      }`}
                     </button>
                   </div>
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
@@ -964,7 +993,7 @@ export default function SetToolsView() {
                     {project && chordNotationsIn(project, [...selected]).mixed > 0
                       ? ` ${chordNotationsIn(project, [...selected]).mixed} of the chosen songs mix kinds on one track.`
                       : ''}{' '}
-                    Written as a +LYRICS track in a copy of the set.
+                    Written as a +LYRICS track per kind, in one copy of the set.
                   </div>
                 </>
               )}
