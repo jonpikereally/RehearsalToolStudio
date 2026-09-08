@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Tell the website how a submix is named**
+
+A prompt of its own for the naming, since it has just changed: the parts in alphabetical order, lowercased and joined with +, never the member's name, a long list cut short with four letters of its own hash — and the one thing that matters more than any of it, that the name is not the identity. A submix is matched by `submixOf`, as a set, so a song prepared before the order was fixed carries its parts in the arrangement's order and plays exactly as it did; nothing on disk needs renaming and the site must not rename it.
+
 **Notice a part that came out silent, and offer to take it away**
 
 A track can sound in a song's bars and still be silent — a clip of an empty file, a fader all the way down, a take that was never recorded — and nothing in the arrangement says so. Only the audio does, and the audio is in hand at the moment the part is encoded, so each part's peak is measured there. Under -70 dBFS is quieter than anything recorded: an empty file, dither, or a fader at the bottom.

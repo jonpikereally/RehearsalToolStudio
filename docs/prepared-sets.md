@@ -125,13 +125,16 @@ length of the song, and is meant to be played alongside the others.
   would clip, and left alone otherwise. How far it was pulled down is written
   as `gainDb` on its entry.
 - **A submix** is a combined part chosen for a member rather than typed, and
-  named for what is in it rather than for them:
-  `submixes/<Title> [submix drums+bass+keys].mp3` inside the song's folder,
-  everything that member does not keep on a fader of their own, summed at
-  unity. Named that way, one file serves everybody who keeps the same things
-  — it is written once and downloaded once — and a long list is cut short
-  with four letters of its own hash on the end, so two lists never share a
-  name. It is a part like any other — same lead-in, same 192 kbps, same rate
+  named for what is in it rather than for them, its parts in alphabetical
+  order: `submixes/<Title> [submix bass+drums+keys].mp3` inside the song's
+  folder, everything that member does not keep on a fader of their own, summed
+  at unity. Named that way, one file serves everybody who keeps the same
+  things — it is written once and downloaded once — and named in order, the
+  same combination is the same name in every song rather than following each
+  arrangement. A long list is cut short with four letters of its own hash on
+  the end, so two lists never share a name. The name is not the identity: a
+  submix is matched by `submixOf`, as a set, so a song prepared before the
+  order was fixed still matches and still plays. It is a part like any other — same lead-in, same 192 kbps, same rate
   — and the only one that does not sit in the song folder itself: a song
   folder of eight stems and four submixes is one nobody can read at a glance.
   Its `file` carries the path from the song folder, `submixes/…`, where every
@@ -140,13 +143,13 @@ length of the song, and is meant to be played alongside the others.
 
   ```json
   {
-    "label": "submix drums+bass+keys+ref vox",
-    "name": "submix drums+bass+keys+ref vox",
-    "file": "submixes/Cruel Summer [submix drums+bass+keys+ref vox].mp3",
+    "label": "submix bass+drums+keys+ref vox",
+    "name": "submix bass+drums+keys+ref vox",
+    "file": "submixes/Cruel Summer [submix bass+drums+keys+ref vox].mp3",
     "role": "stem",
     "hidden": true,
     "submixFor": ["Alex", "Casey"],
-    "submixOf": ["drums", "bass", "keys", "ref vox"]
+    "submixOf": ["bass", "drums", "keys", "ref vox"]
   }
   ```
 
@@ -276,7 +279,8 @@ way a hand-made folder would.
           "sizeBytes": 4351020, "bitrate": 128, "sampleRate": 48000 },
         { "label": "ref drums", "name": "drums", "reference": true, "file": "Cruel Summer [ref drums].mp3", "sources": ["REF DRUMS"],
           "renderedAt": "2026-09-06T08:31:12.000Z" },
-        { "label": "alex gtr vox", "name": "alex gtr vox", "file": "submixes/Cruel Summer [alex gtr vox].mp3", "hidden": true,
+        { "label": "submix gtr+lead vox", "name": "submix gtr+lead vox",
+          "file": "submixes/Cruel Summer [submix gtr+lead vox].mp3", "hidden": true,
           "submixFor": ["Alex"], "submixOf": ["gtr", "lead vox"], "renderedAt": "2026-09-08T15:44:09.484Z" },
         { "label": "bass", "name": "bass", "file": "Cruel Summer [bass].mp3", "sources": ["Bass"], "gainDb": -3.5,
           "covers": { "fromBar": 9, "toBar": 96 } },

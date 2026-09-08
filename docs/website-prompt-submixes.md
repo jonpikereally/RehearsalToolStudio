@@ -29,7 +29,7 @@ Sets/YBWM Set 2026.09.06/
     Opalite [ref vox].mp3
     …
     submixes/
-      Opalite [submix drums+bass+other+piano].mp3
+      Opalite [submix bass+drums+other+piano].mp3
 ```
 
 **contract**
@@ -37,10 +37,14 @@ Sets/YBWM Set 2026.09.06/
 - A submix is a part like any other: same lead-in, 192 kbps MP3, the source's
   rate, the source's channel count up to stereo. It starts at the same instant
   as every other part of the song, sample for sample.
-- It is **named for what is in it**, not for whose it is. One list of parts is
-  one file, however many people want it: two members who keep the same things
-  share it. A list too long for a name is cut short with four letters of its
-  own hash on the end, so two lists can never come out alike.
+- It is **named for what is in it**, not for whose it is, with its parts in
+  alphabetical order. One list of parts is one file, however many people want
+  it: two members who keep the same things share it. A list too long for a
+  name is cut short with four letters of its own hash on the end, so two lists
+  can never come out alike. Match a submix by `submixOf` and never by its
+  name — see `docs/website-prompt-submix-names.md`, and note that a set
+  prepared before the order was fixed carries its parts in the arrangement's
+  order and plays exactly as it did.
 - A `submixes/` folder holds parts of the song above it. **It is not a song.**
   Anything that walks the band's folder has to read it as belonging to its
   parent, or a nineteen-song set reads as thirty-eight, half of them called
@@ -53,9 +57,9 @@ part entry with three fields more:
 
 ```json
 {
-  "label": "submix drums+bass+other+piano",
-  "name": "submix drums+bass+other+piano",
-  "file": "submixes/Opalite [submix drums+bass+other+piano].mp3",
+  "label": "submix bass+drums+other+piano",
+  "name": "submix bass+drums+other+piano",
+  "file": "submixes/Opalite [submix bass+drums+other+piano].mp3",
   "role": "stem",
   "hidden": true,
   "submixFor": ["Alex", "Robin"],
