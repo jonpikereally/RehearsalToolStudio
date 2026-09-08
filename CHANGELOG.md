@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Let the submix job arrive with its songs already chosen**
+
+Clicking "Submixes 7 behind" opened the dialog with nothing ticked and nothing to press. The songs were chosen and then unchosen a moment later: the dialog unticks every song whose audio is unchanged, which is every song a submix run is for — their stems are right, that is the point of the pass.
+
 **Count the words and sections apart from the stems that carry them**
 
 "Stems 1 behind" was the whole story a song could tell, so a set whose sections and chords had moved said nothing about them — and a song whose audio had also moved by a hair looked like nothing but a re-render.

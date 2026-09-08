@@ -70,6 +70,8 @@ export default function PrepareSetDialog({
    * when there is no band's folder to look in yet.
    */
   const [standing, setStanding] = useState<Map<string, AudioStanding> | null>(null);
+  /** Why each song's submixes are behind the band, when they are. */
+  const [submixStanding, setSubmixStanding] = useState<Map<string, string | null> | null>(null);
   /** Songs whose words, sections or notes differ from their prepared entry. */
   const [words, setWords] = useState<Set<string>>(new Set());
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -143,12 +145,18 @@ export default function PrepareSetDialog({
       if (!live) return;
       setKeys(found.keys);
       setStanding(found.standing);
+      setSubmixStanding(found.submixes);
       setWords(found.words);
       setLastPrepared(found.lastPrepared);
       const next = found.standing;
       const manifest = found.manifest;
-      // Unchanged songs start unticked; anything ticked by hand already is kept.
-      if (manifest) {
+      /*
+       * Unchanged songs start unticked; anything ticked by hand already is
+       * kept. Never when the job is the submixes: their songs are unchanged
+       * by definition — that is the whole point of the pass — and unticking
+       * them would leave the dialog offering nothing.
+       */
+      if (manifest && only !== 'submixes') {
         setChosen((was) => {
           const base = was ?? new Set(project.songs.map((s) => s.title));
           return new Set([...base].filter((t) => next.get(t)?.state !== 'unchanged'));
@@ -367,7 +375,18 @@ export default function PrepareSetDialog({
               {liveOrder.note}
             </div>
           )}
-          {standing && lastPrepared && (
+          {only === 'submixes' && submixStanding && (
+            <div className="hint" style={{ marginBottom: 6 }}>
+              {(() => {
+                const behind = titles.filter((t) => submixStanding.get(t));
+                return behind.length
+                  ? `${behind.length} song${behind.length === 1 ? '' : 's'} ${behind.length === 1 ? 'wants' : 'want'} submixes the folder hasn't got. ` +
+                    'Their stems stay exactly as they are — only the submixes are written.'
+                  : 'Every song already has the submixes the band asks for.';
+              })()}
+            </div>
+          )}
+          {only !== 'submixes' && standing && lastPrepared && (
             <div className="hint" style={{ marginBottom: 6 }}>
               {(() => {
                 const same = titles.filter((t) => standing.get(t)?.state === 'unchanged').length;
@@ -410,17 +429,23 @@ export default function PrepareSetDialog({
                   onChange={() => toggle(title)}
                 />
                 <span style={{ fontSize: 14 }}>{title}</span>
-                {standing?.get(title) && lastPrepared && (
+                {only === 'submixes' ? (
                   <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto', textAlign: 'right' }}>
-                    {(() => {
-                      const s = standing.get(title)!;
-                      return s.state === 'new'
-                        ? 'new'
-                        : s.state === 'unchanged'
-                          ? words.has(title) ? 'audio unchanged — words or sections changed' : 'unchanged'
-                          : `changed — ${s.why}`;
-                    })()}
+                    {submixStanding?.get(title) ?? 'has the submixes the band asks for'}
                   </span>
+                ) : (
+                  standing?.get(title) && lastPrepared && (
+                    <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto', textAlign: 'right' }}>
+                      {(() => {
+                        const s = standing.get(title)!;
+                        return s.state === 'new'
+                          ? 'new'
+                          : s.state === 'unchanged'
+                            ? words.has(title) ? 'audio unchanged — words or sections changed' : 'unchanged'
+                            : `changed — ${s.why}`;
+                      })()}
+                    </span>
+                  )
                 )}
               </label>
             ))}
