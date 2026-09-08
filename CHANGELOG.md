@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Cover the run-finished count with a test**
+
+Six checks over the counting the sync bar now leans on: a run's end counted once, two overlapping runs counted once when the last of them finishes, something writing the folder outside a run saying so itself, and nobody told after they have stopped listening.
+
 **Ask again the moment a run ends, rather than looking every two seconds**
 
 The sync bar went on saying four songs were behind after they had been written. It watched `prepareRunning()` on a two-second timer and took true-then-false for a run having ended — and refreshing four songs' words takes a second or two, so the whole run began and ended between two looks. Nothing asked again, and the bar kept its stale count until the page was reloaded.

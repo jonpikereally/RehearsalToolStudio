@@ -5092,5 +5092,39 @@ group('patch changes to and from the band');
     JSON.stringify(board("Ben's board").rigPatches.map((r) => r.track)));
 }
 
+/* --------------------- runs, and who is told about them -------------------- */
+
+group('when a run has finished');
+{
+  const { markPrepareRunning, prepareRunning, prepareFinished, preparesFinished, watchPrepares } =
+    await import('../src/lib/prepareState.ts');
+
+  let told = 0;
+  const stop = watchPrepares(() => told++);
+  const from = preparesFinished();
+
+  markPrepareRunning(true);
+  check('a run says it is running', prepareRunning() && told === 0);
+  markPrepareRunning(false);
+  check('and its end is counted, once', !prepareRunning() && told === 1 && preparesFinished() === from + 1);
+
+  // Two runs at once — a save answered while a prepare is still writing —
+  // count as one finish, when the last of them is done.
+  markPrepareRunning(true);
+  markPrepareRunning(true);
+  markPrepareRunning(false);
+  check('overlapping runs end once, when the last one does', prepareRunning() && told === 1);
+  markPrepareRunning(false);
+  check('and then they are counted', !prepareRunning() && told === 2);
+
+  // Anything else that writes the folder says so itself; undo does.
+  prepareFinished();
+  check('something else writing the folder is told of too', told === 3 && preparesFinished() === from + 3);
+
+  stop();
+  prepareFinished();
+  check('and nobody is told after they have stopped listening', told === 3);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);
