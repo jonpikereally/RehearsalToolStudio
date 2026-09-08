@@ -4,7 +4,7 @@ import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
-import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
+import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
 import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
 import { note } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
@@ -115,6 +115,8 @@ export default function PrepareSetDialog({
   /** What the last run moved aside, and into which folder it ran, so it can be undone. */
   const aside = useRef<{ folder: string; songs: Aside[] } | null>(null);
   const [undone, setUndone] = useState<string | null>(null);
+  /** What came of taking the silent parts away, once that has been asked for. */
+  const [silentGone, setSilentGone] = useState<string | null>(null);
 
   const setPath = currentSet;
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
@@ -350,6 +352,37 @@ export default function PrepareSetDialog({
     }
   };
   const undoable = !busy && !!aside.current?.songs.length;
+
+  /** Every part this run found silent, whichever pass wrote it. */
+  const silent = [...(result?.silent ?? []), ...(submixResult?.silent ?? [])];
+
+  /**
+   * Take the silent parts away, having been asked to.
+   *
+   * Offered rather than done: a part that came out empty is usually a track
+   * nobody meant to print, and sometimes a stem whose file has gone quiet by
+   * mistake — which is worth seeing before it is thrown away. Nothing is
+   * lost either way; the next prepare writes it back if it has anything in it.
+   */
+  const dropSilent = async () => {
+    if (!silent.length || !setPath) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const folder = (await publishFolder()) ?? (await pickPublishFolder());
+      const folderName = safeSetName(setName) || defaultSetName(setPath);
+      const out = await removeSilentParts(folder, folderName, silent);
+      setSilentGone(
+        `${out.removed} silent part${out.removed === 1 ? '' : 's'} removed. The band now sees ${out.published.songs} song${out.published.songs === 1 ? '' : 's'}.`,
+      );
+      setResult((was) => (was ? { ...was, silent: [] } : was));
+      setSubmixResult((was) => (was ? { ...was, silent: [] } : was));
+    } catch (err) {
+      setError(`The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const start = async (kind: Job = job) => {
     try {
@@ -593,6 +626,34 @@ export default function PrepareSetDialog({
               {result.skipped.length > 1 ? `, and ${result.skipped.length - 1} more.` : ''}
             </>
           )}
+        </div>
+      )}
+
+      {/*
+        Parts with nothing in them. Named, with how loud the loudest sample
+        was, and taken away only if somebody says so.
+      */}
+      {silent.length > 0 && (
+        <div className="notice" role="status">
+          <strong>
+            {silent.length} part{silent.length === 1 ? '' : 's'} came out silent.
+          </strong>{' '}
+          {silent
+            .slice(0, 4)
+            .map((p) => `${p.part} in ${p.song}${p.peak > 0 ? ` (peaks at ${Math.round(20 * Math.log10(p.peak))} dB)` : ''}`)
+            .join(', ')}
+          {silent.length > 4 ? `, and ${silent.length - 4} more` : ''}. They are written, and the band would download
+          files with nothing in them.
+          <div className="btn-row" style={{ marginTop: 8 }}>
+            <button className="btn" disabled={busy} onClick={() => void dropSilent()}>
+              Remove the silent part{silent.length === 1 ? '' : 's'}
+            </button>
+          </div>
+        </div>
+      )}
+      {silentGone && (
+        <div className="notice done" role="status">
+          {silentGone}
         </div>
       )}
 

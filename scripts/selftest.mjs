@@ -3757,6 +3757,34 @@ group('the file API');
   check('but a file that is nowhere is simply missing, allowed folder or not',
     (await ask('exists', { dir: songs, path: 'abs:/nowhere/at/all.wav' })).exists === false);
 
+  /*
+   * Taking one part away — a part that came out silent. Only what a prepare
+   * writes: a `[label].mp3` under a `Sets/` folder, and nothing else, since
+   * this is the one thing besides a spare submix that the studio deletes.
+   */
+  const setSong = join(songs, 'Sets', 'YBWM 2026.09.06', 'Yellow (2026-09-06)');
+  await mkdir(join(setSong, 'submixes'), { recursive: true });
+  await writeFile(join(setSong, 'Yellow [drums].mp3'), 'silence');
+  await writeFile(join(setSong, 'submixes', 'Yellow [submix bass+drums].mp3'), 'silence');
+  await writeFile(join(setSong, 'song.json'), '{}');
+  await writeFile(join(songs, 'Band', 'Yellow', 'Yellow [keys].mp3'), 'keeper');
+  const dropPart = (path) => call('remove-part', { dir: songs, path });
+  check('a part outside a prepared set is refused',
+    (await dropPart('Band/Yellow/Yellow [keys].mp3')).status === 400);
+  check('so is a file that is not a part',
+    (await dropPart('Sets/YBWM 2026.09.06/Yellow (2026-09-06)/song.json')).status === 400);
+  check('and one with no label in its name',
+    (await dropPart('Sets/YBWM 2026.09.06/Yellow (2026-09-06)/Yellow.mp3')).status === 400);
+  check('a part of a prepared song goes',
+    (await (await dropPart('Sets/YBWM 2026.09.06/Yellow (2026-09-06)/Yellow [drums].mp3')).json()).removed
+      === 'Yellow [drums].mp3');
+  check('and is gone from the folder',
+    !(await ask('exists', { dir: songs, path: 'Sets/YBWM 2026.09.06/Yellow (2026-09-06)/Yellow [drums].mp3' })).exists);
+  check('a submix of one goes the same way',
+    (await dropPart('Sets/YBWM 2026.09.06/Yellow (2026-09-06)/submixes/Yellow [submix bass+drums].mp3')).status === 200);
+  check('and the file it was refused for is still there',
+    (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow [keys].mp3' })).exists);
+
   // A new server, the way tomorrow's launch makes one: the folder is still there.
   server.close();
   server = await serve(fileApi({ stateFile, pick }));

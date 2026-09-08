@@ -553,6 +553,33 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       return { removed: basename(full) };
     },
 
+    /**
+     * Remove one part of a prepared song, after somebody has looked at it.
+     *
+     * Only a part the studio itself wrote: a file with a `[label]` in its
+     * name, ending in `.mp3`, under a `Sets/` folder. That is the shape of
+     * everything a prepare makes and of nothing a person keeps, so a page
+     * asking for anything else — a stem in the project, a set, a folder — is
+     * refused here, under every caller, where no page can widen it.
+     *
+     * Used for a part that came out silent. Nothing is lost that the set
+     * cannot make again: the source is still in the arrangement, and the next
+     * prepare writes it back if it has something in it.
+     */
+    async 'remove-part'({ dir, path }) {
+      const full = inside(dir, path, { file: true });
+      const name = basename(full);
+      const relative = String(path ?? '').replace(/^\/+/, '');
+      if (!/^sets\//i.test(relative)) {
+        throw new Refusal(400, 'only a part of a prepared set can be removed');
+      }
+      if (!/\.mp3$/i.test(name) || !/\[[^\]]+\]/.test(name)) {
+        throw new Refusal(400, `${name} is not a part the studio wrote`);
+      }
+      await rm(full, { force: true });
+      return { removed: name };
+    },
+
     /** Every folder samples may be read from, in the order they were allowed. */
     async resources() {
       const out = [];

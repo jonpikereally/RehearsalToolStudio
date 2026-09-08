@@ -5,9 +5,9 @@ import { holdAwake } from './keepAwake';
 import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
-import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
+import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult, type SilentPart } from './prepare';
 import { markPrepareRunning, prepareFinished } from './prepareState';
-import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest, type PreparedPart } from './preparedSet';
+import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedPart } from './preparedSet';
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
@@ -108,6 +108,75 @@ async function clearSpareSubmixes(
       await local.removeSubmix(band, '', `${setFolder}/${entry.folder}/${part.file}`).catch(() => undefined);
     }
   }
+}
+
+/**
+ * Take away the parts a run found silent, once somebody has said to.
+ *
+ * The files first, then the entries that name them, then the band's library —
+ * in that order, so at no point does anything point at a file that has gone.
+ * Nothing is lost: the track is still in the arrangement, and the next
+ * prepare writes the part back if it has anything in it by then.
+ */
+export async function removeSilentParts(
+  band: local.FolderHandle,
+  folderName: string,
+  parts: SilentPart[],
+): Promise<{ removed: number; published: PublishResult }> {
+  const setFolder = `${SETS_FOLDER}/${folderName}`;
+  let removed = 0;
+  for (const part of parts) {
+    try {
+      await local.removePart(band, '', `${setFolder}/${part.folder}/${part.file}`);
+      removed++;
+    } catch {
+      // Already gone, or refused: the entry goes anyway, since a part the
+      // manifest names and the folder lacks is worse than neither.
+    }
+  }
+
+  const gone = new Map<string, Set<string>>();
+  for (const part of parts) {
+    const key = part.folder.toLowerCase();
+    if (!gone.has(key)) gone.set(key, new Set());
+    gone.get(key)!.add(part.file.toLowerCase());
+  }
+
+  let manifest: PreparedManifest | null = null;
+  try {
+    const { bytes } = await local.readBytes(band, '', `${setFolder}/${MANIFEST_NAME}`);
+    manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
+  } catch {
+    manifest = null;
+  }
+  if (manifest) {
+    for (const entry of manifest.songs) {
+      const drop = gone.get(entry.folder.toLowerCase());
+      if (!drop || !entry.parts?.length) continue;
+      entry.parts = entry.parts.filter((p) => !p.file || !drop.has(p.file.toLowerCase()));
+      // The song folder's own copy of the entry, kept in step with the set's.
+      await local
+        .writeFile(
+          band,
+          '',
+          `${setFolder}/${entry.folder}/${SONG_FILE_NAME}`,
+          new Blob([JSON.stringify(songFileFor(entry, folderName, manifest.fromSet), null, 2)], {
+            type: 'application/json',
+          }),
+        )
+        .catch(() => undefined);
+    }
+    await local.writeFile(
+      band,
+      '',
+      `${setFolder}/${MANIFEST_NAME}`,
+      new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }),
+    );
+  }
+
+  const published = await publishLibrary(band);
+  prepareFinished();
+  return { removed, published };
 }
 
 /** Who is missing a submix in this song, or what is there for nobody: else null. */

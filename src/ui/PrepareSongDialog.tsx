@@ -17,7 +17,7 @@ import { setNameFor } from '../lib/setName';
 import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
-import { bandMembers } from '../lib/prepareRun';
+import { bandMembers, removeSilentParts } from '../lib/prepareRun';
 
 /**
  * One song, prepared for the band.
@@ -119,6 +119,34 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const folderName = alsSong ? songFolderName(alsSong) : '';
 
   const stop = () => running.current?.abort();
+
+  /** What came of taking the silent parts away, once that has been asked for. */
+  const [silentGone, setSilentGone] = useState<string | null>(null);
+
+  /**
+   * Take the silent parts away, having been asked to. Offered rather than
+   * done: an empty part is usually a track nobody meant to print, and
+   * sometimes a stem whose file has gone quiet by mistake — worth seeing
+   * before it is thrown away, and written again by the next prepare if it
+   * has anything in it.
+   */
+  const dropSilent = async () => {
+    if (!result?.silent.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const folder = (await publishFolder()) ?? (await pickPublishFolder());
+      const out = await removeSilentParts(folder, setName.replace(/[\\/:*?"<>|]/g, ''), result.silent);
+      setSilentGone(
+        `${out.removed} silent part${out.removed === 1 ? '' : 's'} removed. The band now sees ${out.published.songs} song${out.published.songs === 1 ? '' : 's'}.`,
+      );
+      setResult((was) => (was ? { ...was, silent: [] } : was));
+    } catch (err) {
+      setError(`The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const go = async () => {
     if (!alsSong || !project || !song.setPath) return;
@@ -393,6 +421,30 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
                 {result.skipped.length > 1 ? `, and ${result.skipped.length - 1} more.` : '.'}
               </>
             )}
+          </div>
+        )}
+        {/* Parts with nothing in them: named, and taken away only if asked. */}
+        {result && result.silent.length > 0 && (
+          <div className="notice" role="status">
+            <strong>
+              {result.silent.length} part{result.silent.length === 1 ? '' : 's'} came out silent.
+            </strong>{' '}
+            {result.silent
+              .slice(0, 4)
+              .map((p) => `${p.part}${p.peak > 0 ? ` (peaks at ${Math.round(20 * Math.log10(p.peak))} dB)` : ''}`)
+              .join(', ')}
+            {result.silent.length > 4 ? `, and ${result.silent.length - 4} more` : ''}. They are written, and the band
+            would download files with nothing in them.
+            <div className="btn-row" style={{ marginTop: 8 }}>
+              <button className="btn" disabled={busy} onClick={() => void dropSilent()}>
+                Remove the silent part{result.silent.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        )}
+        {silentGone && (
+          <div className="notice done" role="status">
+            {silentGone}
           </div>
         )}
         {published && (

@@ -170,6 +170,7 @@ export default function AutoUpdate() {
         const written = outcome.result?.songsWritten ?? 0;
         const mixed = outcome.submixes?.songsWritten ?? 0;
         const refreshed = outcome.refreshed?.count ?? 0;
+        const quiet = (outcome.result?.silent.length ?? 0) + (outcome.submixes?.silent.length ?? 0);
         const did = [
           written ? `${written} song${written === 1 ? '' : 's'} written again` : '',
           mixed ? `submixes written for ${mixed} song${mixed === 1 ? '' : 's'}` : '',
@@ -182,6 +183,7 @@ export default function AutoUpdate() {
           songs: [...new Set([...selected, ...behind])],
           text: did.length
             ? `${written || mixed ? '' : 'No audio had changed; '}${did.join(', ')}.` +
+              (quiet ? ` ${quiet} part${quiet === 1 ? '' : 's'} came out silent.` : '') +
               (outcome.published ? ` The band sees ${outcome.published.songs}.` : ` The band's library could not be written: ${outcome.publishError}`)
             : 'Nothing had changed.',
         });
@@ -336,6 +338,18 @@ export default function AutoUpdate() {
               {phase.outcome.result
                 ? `${phase.outcome.result.songsWritten} song${phase.outcome.result.songsWritten === 1 ? '' : 's'} written again (${phase.selected.join(', ')})`
                 : 'no audio had changed'}
+              {(phase.outcome.result?.silent.length ?? 0) + (phase.outcome.submixes?.silent.length ?? 0) > 0 && (
+                <>
+                  {' '}
+                  {(phase.outcome.result?.silent.length ?? 0) + (phase.outcome.submixes?.silent.length ?? 0)} of the
+                  parts came out silent —{' '}
+                  {[...(phase.outcome.result?.silent ?? []), ...(phase.outcome.submixes?.silent ?? [])]
+                    .slice(0, 3)
+                    .map((p) => `${p.part} in ${p.song}`)
+                    .join(', ')}
+                  ; prepare {phase.selected.length === 1 ? 'that song' : 'those songs'} by hand to look at them.
+                </>
+              )}
               {phase.outcome.submixes?.songsWritten
                 ? `; submixes written for ${phase.outcome.submixes.songsWritten} song${phase.outcome.submixes.songsWritten === 1 ? '' : 's'}`
                 : ''}

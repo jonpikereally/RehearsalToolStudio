@@ -364,6 +364,16 @@ export interface PrepareResult {
    * no submixes, and "10 parts" says neither.
    */
   submixesWritten: number;
+  /**
+   * Parts that came out with nothing in them.
+   *
+   * A track can sound in a song's bars and still be silent — a clip of an
+   * empty file, a fader all the way down, a take that was never recorded —
+   * and no amount of reading the arrangement says so; only the audio does.
+   * They are written like any other part and named here, for whoever ran the
+   * prepare to decide whether the band should have them.
+   */
+  silent: SilentPart[];
   /** Parts that could not be prepared, with why. */
   skipped: { song: string; part: string; reason: string }[];
   /** Parts written as patterns striking samples, rather than as files. */
@@ -380,6 +390,26 @@ export interface PrepareResult {
    */
   records: { song: string; part: string }[];
 }
+
+/** One part that came out silent, and where it is. */
+export interface SilentPart {
+  song: string;
+  /** The song's folder under the set, so the file can be found again. */
+  folder: string;
+  /** What the part is called on screen. */
+  part: string;
+  /** The file inside the song's folder — `submixes/…` for a member's submix. */
+  file: string;
+  /** How loud its loudest sample was, 0 to 1. Zero is digital silence. */
+  peak: number;
+}
+
+/**
+ * Below this a part has nothing in it worth carrying: -70 dBFS is quieter
+ * than the noise floor of anything recorded, so what is under it is an empty
+ * file, a fader at the bottom, or dither.
+ */
+export const SILENT_PEAK = 10 ** (-70 / 20);
 
 /**
  * What a run wrote, said as the three kinds of part it writes.
@@ -688,6 +718,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   let partsWritten = 0;
   /** Of those, the ones written as a member's submix rather than as a stem. */
   let submixesWritten = 0;
+  /** Parts that came out with nothing in them, for the run to report. */
+  const silent: SilentPart[] = [];
   let samplerParts = 0;
 
   /*
@@ -1039,9 +1071,15 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
          * has nowhere to put it. A combined part that clips is pulled down
          * as a whole — quieter, but faithful — and left alone otherwise.
          */
+        /*
+         * How loud the part actually came out. Measured here, where the audio
+         * is, because nothing in the arrangement can say it: a clip of an
+         * empty file is a region like any other.
+         */
+        const peak = peakOf(flat);
+
         let pulledDb = 0;
         if (part.combined) {
-          const peak = peakOf(flat);
           if (peak > 1) {
             const gain = 0.99 / peak;
             pulledDb = Math.round(20 * Math.log10(gain) * 10) / 10;
@@ -1085,6 +1123,9 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         };
         wroteParts.push(info);
         if (info.record) records.push({ song: song.title, part: info.label });
+        if (peak <= SILENT_PEAK && info.file) {
+          silent.push({ song: song.title, folder: folderName, part: info.name, file: info.file, peak });
+        }
         partsWritten++;
         if (part.submix) submixesWritten++;
         wroteAny = true;
@@ -1201,7 +1242,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, skipped, paddingSec, records };
+  return { folder, songsWritten, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */

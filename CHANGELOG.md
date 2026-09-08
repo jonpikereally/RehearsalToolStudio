@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Notice a part that came out silent, and offer to take it away**
+
+A track can sound in a song's bars and still be silent — a clip of an empty file, a fader all the way down, a take that was never recorded — and nothing in the arrangement says so. Only the audio does, and the audio is in hand at the moment the part is encoded, so each part's peak is measured there. Under -70 dBFS is quieter than anything recorded: an empty file, dither, or a fader at the bottom.
+
 **Leave out a track that sounds nowhere, and name a submix in order**
 
 Two things about what a prepare writes.

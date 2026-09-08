@@ -173,6 +173,15 @@ export async function removeSubmix(folder: FolderHandle, root: string, path: str
   await call('remove-submix', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/**
+ * Take away one part of a prepared song — a part that came out silent, once
+ * somebody has said so. The server allows it only for a `[label].mp3` under
+ * `Sets/`, which is the shape of what a prepare writes.
+ */
+export async function removePart(folder: FolderHandle, root: string, path: string): Promise<void> {
+  await call('remove-part', { dir: open(folder).dir, path: below(root, path) });
+}
+
 /** A folder a set's samples may be read from, outside its own project. */
 export interface ResourceFolder {
   /** Its path, which is also how it is forgotten. */
