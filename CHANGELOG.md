@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Share the band's file with the website rather than owning it**
+
+members.json already sat where it belongs — the root of the band's folder, beside Sets/ and Resources/, the band's own file rather than any one set's. What it lacked was room for a second writer. A studio that wrote it whole on every save would have taken a member added on the website out again the next time somebody ticked a box on a laptop.
+
 **Say the session before the folder it fills**
 
 The bar named the folder first and the session it came from after, which is the work backwards and the other way round from how the chooser asks for them. It reads the way it runs now: this session fills that folder.

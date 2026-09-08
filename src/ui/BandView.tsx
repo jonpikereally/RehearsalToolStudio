@@ -38,25 +38,47 @@ export default function BandView() {
   const [word, setWord] = useState<Record<string, string>>({});
   /** What the prepared set is missing, worked out after a save. */
   const [behind, setBehind] = useState<{ title: string; who: string[] }[] | null>(null);
+  /** Members somebody else changed while this was being edited. */
+  const [alsoChanged, setAlsoChanged] = useState<string[]>([]);
   const [dialog, setDialog] = useState<string[] | null>(null);
 
+  /*
+   * The file is the band's, and the website writes it too — so it is read
+   * again whenever this page is looked at afresh, and anything typed here is
+   * left alone rather than being overwritten by what came in.
+   */
   useEffect(() => {
-    void (async () => {
+    let live = true;
+    const read = async () => {
       try {
         const band = await publishFolder();
-        if (!band) {
-          setSaved([]);
+        if (!band || !live) {
+          if (live) setSaved([]);
           return;
         }
         const list = await readMembers(band);
+        if (!live) return;
         setSaved(list);
-        setDraft(list);
+        // Only when there is nothing half-typed to lose.
+        setDraft((held) => (held.length === 0 || JSON.stringify(held) === JSON.stringify(saved ?? []) ? list : held));
         setKnown(await membersFromRigs(band).catch(() => []));
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setSaved([]);
+        if (live) {
+          setError(err instanceof Error ? err.message : String(err));
+          setSaved([]);
+        }
       }
-    })();
+    };
+    void read();
+    const again = () => document.visibilityState === 'visible' && void read();
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', again);
+      document.removeEventListener('visibilitychange', again);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publishFolder, publishFolderName]);
 
   /** Every part label in the set that is open, for ticking rather than typing. */
@@ -92,12 +114,15 @@ export default function BandView() {
     try {
       const band = await publishFolder();
       if (!band) throw new Error("The band's folder is not to hand.");
-      await writeMembers(band, draft);
-      setSaved(draft);
+      // Merged with whatever is on disk: the website writes this file too.
+      const written = await writeMembers(band, draft, saved ?? []);
+      setSaved(written.members);
+      setDraft(written.members);
+      setAlsoChanged(written.alsoChanged);
       if (outputSet) {
         const { bytes } = await local.readBytes(band, '', `${outputSet.folder}/${MANIFEST_NAME}`);
         const manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
-        setBehind(submixesBehind(manifest.songs ?? [], draft));
+        setBehind(submixesBehind(manifest.songs ?? [], written.members));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -288,6 +313,13 @@ export default function BandView() {
             : 'Saved to members.json in the band’s folder.'}
         </span>
       </div>
+
+      {alsoChanged.length > 0 && (
+        <div className="notice quiet">
+          {alsoChanged.join(', ')} {alsoChanged.length === 1 ? 'was' : 'were'} changed elsewhere while this was open —
+          on the website, or in another window — and that change was kept.
+        </div>
+      )}
 
       {/* What the save means for what is already in the folder. */}
       {behind && (

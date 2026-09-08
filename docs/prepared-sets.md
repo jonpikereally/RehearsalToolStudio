@@ -412,6 +412,43 @@ name, `songIds` the library ids of its songs in the order to play them,
 `updatedAt` the prepare's time. Rebuilt on every publish; a setlist whose id
 does not start with `set:` is somebody's own and is left as it was.
 
+## `members.json`
+
+At the root of the band's folder, beside `Sets/` and `Resources/` — the band's
+own file, not any one set's, because the band outlives the sets they play. It
+says who they are and what each of them keeps on a fader of their own; the
+Studio writes one submix per member per song from it (see **The parts**).
+
+```json
+{
+  "writtenBy": "rehearsaltool",
+  "writtenAt": "2026-09-07T17:57:32.457Z",
+  "members": [
+    { "member": "Alex", "keeps": ["guitar", "ref gtr"], "contains": ["vox"] },
+    { "member": "Robin", "keeps": ["bgvs"], "off": true }
+  ]
+}
+```
+
+- **`member`** is their name, spelled as their rig file spells it: that is how
+  the two are matched — trimmed, case ignored.
+- **`keeps`** names parts outright, by the same names the parts carry.
+- **`contains`** keeps any part whose name holds that word. A set spells one
+  instrument several ways — `gtr`, `guitar`, `guitar pop`, `ref gtr` — and one
+  word covers them all, in this set and in the next one.
+- **`off`** leaves a member in the band with no submix written for them.
+- The record, a full mix, the click and the cues are never in a submix, so
+  they need not — and should not — be listed; the Studio drops them from a
+  list that names them.
+
+**Both apps write this file.** The Studio never writes it blind: it reads what
+is on disk at the moment of saving and merges by member name, so a member the
+website added is kept, a member it changed that the Studio was not editing
+keeps that change, and only what was edited here wins over what it was edited
+from. Keys the Studio does not know are carried through untouched. A website
+writing it should do the same, and should leave `writtenBy` and `writtenAt`
+saying who wrote last.
+
 ## What the website is expected to do
 
 1. Find every folder called `Sets`, at whatever depth, and scan each folder

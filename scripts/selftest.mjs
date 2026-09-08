@@ -1937,6 +1937,25 @@ group('a member\'s submix');
     isSubmixFile('Cruel Summer [submix alex].mp3') && !isSubmixFile('Cruel Summer [drums].mp3'));
   check('keeps are matched however they are written', keepsPart({ member: 'x', keeps: ['Ref Vox'] }, 'ref vox'));
 
+  // Two writers on one file: the studio and the website both save the band.
+  const { mergeMembers } = await import('../src/lib/members.ts');
+  const base = [{ member: 'Alex', keeps: ['gtr'] }, { member: 'Robin', keeps: ['vox'] }];
+  const mineNow = [{ member: 'Alex', keeps: ['gtr', 'piano'] }, { member: 'Robin', keeps: ['vox'] }];
+  const theirsNow = [{ member: 'Alex', keeps: ['gtr'] }, { member: 'Robin', keeps: ['vox', 'bgvs'] }, { member: 'Sam', keeps: [] }];
+  const merged = mergeMembers(base, mineNow, theirsNow);
+  check('a save keeps what somebody else changed meanwhile',
+    JSON.stringify(merged.members) === JSON.stringify([
+      { member: 'Alex', keeps: ['gtr', 'piano'] },
+      { member: 'Robin', keeps: ['vox', 'bgvs'] },
+      { member: 'Sam', keeps: [] },
+    ]) && merged.alsoChanged.join() === 'Robin,Sam',
+    JSON.stringify(merged));
+  check('and a member taken out here is taken out, whatever they were doing',
+    mergeMembers(base, [base[0]], theirsNow).members.map((m) => m.member).join() === 'Alex,Sam',
+    mergeMembers(base, [base[0]], theirsNow).members.map((m) => m.member).join());
+  check('while an edit here wins over their copy of what it was edited from',
+    mergeMembers(base, mineNow, base).members[0].keeps.join() === 'gtr,piano');
+
   // A word instead of a list: one says every way a set spells an instrument.
   const { keptBy } = await import('../src/lib/members.ts');
   const byWord = { member: 'Casey', keeps: [], contains: ['gtr'] };

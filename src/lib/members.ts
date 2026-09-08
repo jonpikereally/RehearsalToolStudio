@@ -17,7 +17,15 @@ import { isPreparedSet } from './prints.ts';
  * theirs to say, so it is kept here, once per band, beside the sets.
  */
 
-/** At the root of the band's folder, beside Sets/ and Resources/. */
+/**
+ * At the root of the band's folder, beside Sets/ and Resources/ — the band's,
+ * not any one set's, since the band outlives the sets they play.
+ *
+ * Both this and the website write it, so neither may write it blind: what is
+ * on disk is read again at the moment of saving and merged by member name, so
+ * somebody added on a phone is not lost by somebody saving on a laptop.
+ * Anything in the file this doesn't know about is carried through untouched.
+ */
 export const MEMBERS_FILE = 'members.json';
 
 export interface MemberMix {
@@ -111,9 +119,60 @@ export async function readMembers(band: local.FolderHandle): Promise<MemberMix[]
   return doc?.data ? parseMembers(doc.data) : [];
 }
 
-export async function writeMembers(band: local.FolderHandle, members: MemberMix[]): Promise<void> {
-  const body = { writtenBy: 'rehearsaltool', writtenAt: new Date().toISOString(), members };
+/**
+ * Save the band, keeping whatever else has happened to the file.
+ *
+ * `base` is the list as it was read when the editing started. Anything on
+ * disk that differs from it is somebody else's change — the website's, or
+ * another window's — and is kept: a member they added stays added, a member
+ * they changed and this editor never touched keeps their change. What this
+ * editor did wins only over what it was looking at.
+ */
+export async function writeMembers(
+  band: local.FolderHandle,
+  members: MemberMix[],
+  base?: MemberMix[],
+): Promise<{ members: MemberMix[]; alsoChanged: string[] }> {
+  const theirs = base ? await readMembers(band).catch(() => base) : [];
+  const merged = base ? mergeMembers(base, members, theirs) : { members, alsoChanged: [] };
+  const raw = await local.readJson<Record<string, unknown>>(band, '', MEMBERS_FILE).catch(() => null);
+  const kept = raw?.data && typeof raw.data === 'object' ? raw.data : {};
+  const body = { ...kept, writtenBy: 'rehearsaltool', writtenAt: new Date().toISOString(), members: merged.members };
   await local.writeFile(band, '', MEMBERS_FILE, new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' }));
+  return merged;
+}
+
+/** Three lists by member name: what was read, what was edited, what is there now. */
+export function mergeMembers(
+  base: MemberMix[],
+  mine: MemberMix[],
+  theirs: MemberMix[],
+): { members: MemberMix[]; alsoChanged: string[] } {
+  const key = (m: MemberMix) => clean(m.member).toLowerCase();
+  const was = new Map(base.map((m) => [key(m), JSON.stringify(m)]));
+  const editedByMe = new Set(mine.filter((m) => was.get(key(m)) !== JSON.stringify(m)).map(key));
+  const removedByMe = new Set(base.filter((m) => !mine.some((mm) => key(mm) === key(m))).map(key));
+  const mineByKey = new Map(mine.map((m) => [key(m), m]));
+
+  const members: MemberMix[] = [];
+  const alsoChanged: string[] = [];
+  // Their list leads, so what they added stays where they put it.
+  for (const member of theirs) {
+    const k = key(member);
+    if (removedByMe.has(k)) continue;
+    const changedByThem = was.has(k) && was.get(k) !== JSON.stringify(member);
+    if (!was.has(k) || (changedByThem && !editedByMe.has(k))) {
+      members.push(member);
+      alsoChanged.push(member.member);
+      continue;
+    }
+    members.push(mineByKey.get(k) ?? member);
+  }
+  // Then whatever this editor added, which their list has never seen.
+  for (const member of mine) {
+    if (!members.some((m) => key(m) === key(member))) members.push(member);
+  }
+  return { members, alsoChanged };
 }
 
 /**

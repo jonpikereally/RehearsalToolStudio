@@ -130,11 +130,18 @@ the band's folder, written by the Studio's "The band" tab:
 word, which is how one line covers `vox`, `ref vox` and `bgvs vox` in this set
 and the next one.
 
-The site does not have to read it — everything it needs is in the manifest and
-the library — but it is the answer to "why is my submix that shape?", and if
-the site ever wants to let a member change what they keep, that is the file to
-write, in the same shape, with the same names as the rig files use. The Studio
-rewrites the submixes on the next prepare.
+**contract** — the site may write it, and is meant to: this is where band
+settings stay in step between the two. The Studio never writes it blind — it
+reads what is on disk at the moment of saving and merges by member name, so a
+member the site added is kept, a member it changed that the Studio was not
+editing keeps that change, and only what was edited in the Studio wins over
+what it was edited from. Keys the Studio does not know are carried through
+untouched. Write it the same way: read, merge by `member`, keep what you do
+not understand, and leave `writtenBy` and `writtenAt` saying who wrote last.
+
+The Studio rewrites the submixes on the next prepare, and its band page reads
+the file again whenever it is looked at, so a change made on the site shows up
+without anything being restarted.
 
 Three things are never in a submix, whoever it is for: the record (`ref song`)
 or any whole mix, the click, and the cues. A submix that would stand for fewer
