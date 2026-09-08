@@ -26,6 +26,10 @@ import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
  * them, encoded small, and written into the band's folder under a name their
  * app reads without help — tempo and key in the folder, the part in
  * brackets — with the manifest and the library updated beside it.
+ *
+ * Every track is printed unless somebody says otherwise, which is what a
+ * whole set does: a song prepared on its own and the same song prepared with
+ * its set should come out the same.
  */
 
 type Choice = 'print' | 'combine' | 'skip';
@@ -74,9 +78,17 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         if (!live) return;
         setProject(parsed);
         setAlsSong(mine);
-        // The band's own parts printed, the record's reference left out.
+        /*
+         * Every track printed, the record's reference tracks included.
+         *
+         * The references used to be left out here, where a whole set has
+         * always printed them — so the same song came out with different
+         * parts depending on which button was pressed, and a song prepared
+         * on its own quietly lost the reference the band plays against.
+         * Nothing is skipped unless somebody says to skip it.
+         */
         const initial: Record<string, Choice> = {};
-        for (const stem of mine.stems) initial[stem.name] = stem.reference ? 'skip' : 'print';
+        for (const stem of mine.stems) initial[stem.name] = 'print';
         setChoice(initial);
       } catch (err) {
         if (live) setError(err instanceof Error ? err.message : String(err));
@@ -261,9 +273,10 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         {alsSong && (
           <>
             <p className="dialog-note">
-              Each track of the song as the set plays it. <strong>Print</strong> makes it a part of
-              its own; <strong>Combine</strong> folds it into one part with the others marked the
-              same; <strong>Skip</strong> leaves it out.
+              Each track of the song as the set plays it, all of them printed unless you say
+              otherwise. <strong>Print</strong> makes it a part of its own; <strong>Combine</strong>{' '}
+              folds it into one part with the others marked the same; <strong>Skip</strong> leaves it
+              out.
             </p>
 
             <div className="prepare-tracks">

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Print every track of a song, unless told otherwise**
+
+Preparing one song came up with its reference tracks already set to Skip. Preparing a whole set has always printed them, so the same song came out with different parts depending on which button was pressed — and a song prepared on its own quietly lost the reference the band play against, which is the thing they check themselves by.
+
 **Say when the stems were made, and when the submixes were**
 
 A prepared song said when its audio was rendered and nothing more, so a band looking at a song could not tell how fresh it was in the two ways it can be. Preparing the stems and preparing the submixes are separate jobs — a member added has every stem beside their new submix exactly right — so a song can honestly hold stems from Tuesday and submixes from Friday, and one date could not say that.

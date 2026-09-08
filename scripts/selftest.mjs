@@ -3897,6 +3897,11 @@ group('a plan for one song');
 
   const all = partsFor(song);
   check('without a plan every track is a part of its own', all.length === 5 && all.every((p) => !p.combined));
+  // Nothing is left out by default, the record's own tracks included: a song
+  // prepared on its own must come out as it does with its set.
+  check('and the reference tracks are among them',
+    all.some((p) => p.name === 'REF SONG' && p.reference),
+    all.map((p) => p.name).join(', '));
 
   const parts = partsFor(song, { print: ['Vox'], combine: [{ name: 'band', stems: ['Drums', 'Bass', 'Keys'] }] });
   check('a plan prints what it names', parts[0].name === 'Vox' && parts[0].stems.length === 1);
