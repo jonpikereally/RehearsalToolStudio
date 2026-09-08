@@ -26,6 +26,13 @@ export interface AlsEvent {
   /** 1-based bar within the song. */
   bar: number;
   text: string;
+  /**
+   * How many bars the clip it came from runs, when the set said — a chord
+   * held for two bars is a two-bar clip. Kept so anything writing these back
+   * into a set can draw them as they were drawn; the library keeps only the
+   * bar and the text.
+   */
+  bars?: number;
 }
 
 export interface AlsSong {
@@ -1114,7 +1121,13 @@ function songLanes(
     items: clips
       .filter(within)
       .sort((a, b) => a.beat - b.beat)
-      .map((c) => ({ bar: relBar(c.beat), text: c.name })),
+      .map((c) => {
+        const bar = relBar(c.beat);
+        // relBar is a straight line from beats to bars, so the difference is
+        // the clip's length in bars; a set that didn't say leaves it out.
+        const bars = Number.isFinite(c.endBeat) ? Math.round((relBar(c.endBeat) - bar) * 1000) / 1000 : NaN;
+        return bars > 0 ? { bar, text: c.name, bars } : { bar, text: c.name };
+      }),
   }));
   const merge = (kind: AlsLane['kind']) =>
     lanes

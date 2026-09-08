@@ -21,7 +21,7 @@ export interface ChordClip {
   /** Bars from the start of the set, 1-based, as Live's ruler counts. */
   bar: number;
   text: string;
-  /** How many bars the clip runs; one, as a chord clip is drawn, without. */
+  /** How many bars the clip runs; a bar, as a chord clip is drawn, without. */
   bars?: number;
 }
 
@@ -83,6 +83,13 @@ export function chordClipsFor(
     }
 
     let added: { name: string; items: { bar: number; text: string }[] } | undefined;
+    /*
+     * The lane the new one is being read off. Its clips are the chart as
+     * somebody drew it — a chord held for two bars is a two-bar clip — and
+     * the copy should be drawn the same way, so their lengths are kept and
+     * matched back up by bar.
+     */
+    let from: { items: { bar: number; bars?: number }[] } | undefined;
     if (target) {
       /*
        * Chord by chord, not lane by lane. A track written mostly in numbers
@@ -104,6 +111,7 @@ export function chordClipsFor(
       const keyFor = (bar: number) => parseKey(keyAt(bar, key, changes)) ?? parsed;
       // Names are the surest source, since numbers and numerals both come from them.
       const source = lanes.find((l) => laneNotation(l) === 'names') ?? lanes[0];
+      from = source;
       added = {
         name: NOTATION_LANE[target],
         items: source.items.map((item) => ({
@@ -115,6 +123,8 @@ export function chordClipsFor(
       const grown = deriveChordLanes(lanes as ChartLane[], key, changes);
       added = grown.find((l) => !lanes.some((had) => had.id === l.id));
       if (!added) continue; // the set already wrote both languages for this song
+      // deriveChordLanes reads the song's first chord lane, item for item.
+      from = lanes[0];
 
       // One track for the set, so every song must be going the same way.
       const wantsNumbers = isNashvilleLane(added.name);
@@ -123,27 +133,31 @@ export function chordClipsFor(
     }
 
     converted.push(song.title);
+    const lengths = new Map((from?.items ?? []).map((i) => [i.bar, i.bars]));
     for (const item of added.items) {
       // Song-relative bars onto the set's own ruler.
       const bar = song.startBar + (item.bar - 1);
       const text = item.text.trim();
+      const bars = lengths.get(item.bar);
       // In brackets, as AbleSet reads a chord on a lyrics track: the parser
       // took them off on the way in, and a bare name would show as a word.
-      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]` });
+      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]`, ...(bars ? { bars } : {}) });
     }
   }
 
   clips.sort((a, b) => a.bar - b.bar);
   /*
-   * Each clip runs to the next chord, or a bar, whichever comes first. A
-   * chart that changes every half bar was getting bar-long clips that
-   * overlapped, and Live trimmed every one of them on load, saying so in
-   * its log line by line.
+   * Each clip is as long as the clip it was read from, so the copy is drawn
+   * like the chart it came from — a chord held for four bars stays a
+   * four-bar clip. Where the set didn't say, a bar. Never past the next
+   * chord: a chart that changes every half bar was getting bar-long clips
+   * that overlapped, and Live trimmed every one of them on load, saying so
+   * in its log line by line.
    */
   for (let i = 0; i < clips.length; i++) {
     const next = clips[i + 1];
-    const gap = next ? next.bar - clips[i].bar : 1;
-    clips[i].bars = Math.max(0.25, Math.min(1, gap));
+    const gap = next ? next.bar - clips[i].bar : Infinity;
+    clips[i].bars = Math.max(0.25, Math.min(clips[i].bars ?? 1, gap));
   }
   return {
     clips,
