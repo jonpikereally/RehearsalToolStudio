@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-08
+
+**Mark a minor one way: m on a name, lower case on a numeral**
+
+A set marks its minors however whoever typed them marks them — Am, A-, Amin, "A minor" — and the dash went straight through the conversion: a classical track came out reading A- where a chart says Am, and a Roman one came out VI- where the numeral's own case is what says minor. Neither was read as minor at all, so a seventh on it came out attached to a major chord.
+
 ## 2026-09-07
 
 **Let the chords go out in more than one kind at once**

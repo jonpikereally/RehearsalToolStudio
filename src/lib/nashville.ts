@@ -94,6 +94,15 @@ export function parseKey(key: string | null | undefined): Key | null {
   return { tonic, flats: name.includes('b') || FLAT_KEYS.has(minor ? `${root}m` : root) };
 }
 
+/** A chord as it stands, with its minor marked the one way: `A-` → `Am`. */
+function tidyMinor(chord: string): string {
+  const [head, bass] = splitSlash(chord);
+  const root = NOTE.exec(head.trim())?.[0] ?? /^[b#♭♯]?[1-7]/.exec(head.trim())?.[0];
+  if (!root) return chord;
+  const tidied = `${root}${asMinorM(head.trim().slice(root.length))}`;
+  return bass ? `${tidied}/${bass}` : tidied;
+}
+
 /** `C#m7/G#` → the number that chord is in the given key, e.g. `1m7/5`. */
 export function toNashville(chord: string, key: Key): string | null {
   const text = chord.trim();
@@ -102,7 +111,7 @@ export function toNashville(chord: string, key: Key): string | null {
   const root = pitchOf(head);
   if (root === null) return null;
 
-  const suffix = head.replace(NOTE, '');
+  const suffix = asMinorM(head.replace(NOTE, ''));
   const degree = LABEL[(root - key.tonic + 12) % 12];
   const bassPart = bass ? bassNumber(bass, key) : '';
   return `${degree}${suffix}${bassPart}`;
@@ -124,9 +133,10 @@ export function fromNashville(number: string, key: Key): string | null {
   if (!degree) return null;
 
   const names = spellingFor(degree.accidental, key);
-  const quality = degree.minorByCase && !/^(m(?!aj)|min|dim|°|ø|o)/.test(degree.suffix) ? 'm' : '';
+  const suffix = asMinorM(degree.suffix);
+  const quality = degree.minorByCase && !MINOR_SUFFIX.test(suffix) ? 'm' : '';
   const bassPart = bass ? bassName(bass, key) : '';
-  return `${names[(key.tonic + degree.semis + 12) % 12]}${quality}${degree.suffix}${bassPart}`;
+  return `${names[(key.tonic + degree.semis + 12) % 12]}${quality}${suffix}${bassPart}`;
 }
 
 /** Whether a lane's text reads as numbers rather than names. */
@@ -161,7 +171,19 @@ export const NOTATION_LANE: Record<ChordNotation, string> = {
 const ROMAN_UPPER = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 
 /** How a chord's suffix says it is minor or diminished, which a numeral says by its case instead. */
-const MINOR_SUFFIX = /^(m(?!aj)|min(?!or)?|dim|°|ø|o(?![a-z]))/;
+const MINOR_SUFFIX = /^\s*(minor|min|m(?!aj)|-|dim|°|ø|o(?![a-z]))/;
+
+/**
+ * A minor written the way this app writes it: `m`.
+ *
+ * A set marks its minors however whoever typed them marks them — `Am`, `A-`,
+ * `Amin`, `A minor` — and a jazz dash read back out as a dash gave `A-` where
+ * a chart says `Am`. Read as minor either way; written the one way, so a
+ * converted track reads as one hand wrote it.
+ */
+function asMinorM(suffix: string): string {
+  return suffix.replace(/^\s*(?:-|minor|min|m(?!aj))/i, 'm');
+}
 
 /**
  * `Dm7` in C → `ii7`; `Bb` in C → `bVII`; `Bdim` → `vii°`. The numeral's
@@ -184,7 +206,7 @@ export function toRoman(chord: string, key: Key): string | null {
   const accidental = label.startsWith('b') ? 'b' : '';
   const numeral = ROMAN_UPPER[Number(label.replace(/^b/, '')) - 1];
   const minor = MINOR_SUFFIX.test(suffix);
-  const rest = minor ? suffix.replace(/^(m(?!aj)|min(?!or)?)/, '') : suffix;
+  const rest = minor ? suffix.replace(/^\s*(?:minor|min|m(?!aj)|-)/i, '') : suffix;
   const bassPart = bass ? bassNumber(bass, key) : '';
   return `${accidental}${minor ? numeral.toLowerCase() : numeral}${rest}${bassPart}`;
 }
@@ -215,7 +237,13 @@ export function convertChord(chord: string, to: ChordNotation, key: Key): string
   const text = chord.trim();
   if (!text) return null;
   const from = notationOf([{ text }]);
-  if (from === to) return text;
+  /*
+   * Already the kind asked for — but not necessarily written the way this
+   * app writes it. A minor marked with a dash or spelled out is still tidied
+   * to `m`, so a converted track reads as one hand wrote it whether or not
+   * anything was converted.
+   */
+  if (from === to) return to === 'roman' ? (toRoman(fromNashville(text, key) ?? text, key) ?? text) : tidyMinor(text);
   const name = from === 'names' ? text : fromNashville(text, key);
   if (name === null) return null;
   if (to === 'names') return name;

@@ -2493,6 +2493,25 @@ group('writing a chord track');
     }
   }
 
+  // A minor is marked one way in what comes out, however it was marked going
+  // in: `m` on a name or a number, and a lower-case numeral in Roman.
+  const { convertChord: convert, parseKey: readKey } = await import('../src/lib/nashville.ts');
+  const inC = readKey('C');
+  const ways = ['A-', 'Am', 'Amin', 'A minor', 'vi', 'VI-', '6-', '6m'];
+  check('a minor is written m as a name, whichever way it was written',
+    ways.every((w) => convert(w, 'names', inC) === 'Am'),
+    ways.map((w) => `${w}→${convert(w, 'names', inC)}`).join(' '));
+  check('and lower case as a Roman numeral',
+    ways.every((w) => convert(w, 'roman', inC) === 'vi'),
+    ways.map((w) => `${w}→${convert(w, 'roman', inC)}`).join(' '));
+  check('and m as a Nashville number',
+    ways.every((w) => convert(w, 'numbers', inC) === '6m'),
+    ways.map((w) => `${w}→${convert(w, 'numbers', inC)}`).join(' '));
+  check('what is on the chord stays with it',
+    convert('D-7', 'names', inC) === 'Dm7' && convert('A-9/E', 'names', inC) === 'Am9/E'
+      && convert('Cmaj7', 'names', inC) === 'Cmaj7' && convert('vii°', 'names', inC) === 'B°',
+    [convert('D-7', 'names', inC), convert('A-9/E', 'names', inC), convert('vii°', 'names', inC)].join(' '));
+
   const { chordNotationsIn } = await import('../src/lib/chordTrack.ts');
   const seen = chordNotationsIn(project);
   check('the set says which notations it has', seen.withChords === 3 && seen.have.names === 3 && seen.have.numbers === 0 && seen.have.roman === 0, JSON.stringify(seen));
