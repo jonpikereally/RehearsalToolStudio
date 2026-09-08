@@ -87,11 +87,13 @@ export interface Settings {
   /** Read from the chosen folder on this machine. */
   useLocal: boolean;
   /**
-   * Prepare the set again, where it changed, whenever Live saves it — with
-   * nobody asked. Off until it is turned on: writing the band's folder is
-   * something to choose.
+   * What is brought up to date on its own whenever Live saves the set, with
+   * nobody asked. Three separate jobs, each its own switch: the stems are an
+   * hour of rendering, the submixes minutes, the words and sections seconds,
+   * and which of those a person wants happening behind them differs. All off
+   * until they are turned on: writing the band's folder is something to choose.
    */
-  autoUpdate: boolean;
+  autoUpdate: AutoUpdate;
   /**
    * The output device to play out of, where the browser lets a page choose.
    * Kept with its label as well as its id: ids are opaque, and a device that
@@ -100,6 +102,25 @@ export interface Settings {
   outputDevice: { id: string; label: string } | null;
 }
 
+/**
+ * The three jobs a save can set going on its own.
+ *
+ * They are the same three the sync bar counts and the prepare dialog offers,
+ * and they are independent: a song's stems can be right while its submixes
+ * are behind the band, and its words behind the arrangement.
+ */
+export interface AutoUpdate {
+  /** Render again the songs whose audio has changed. */
+  stems: boolean;
+  /** Write the submixes of the songs that lack one the band asks for. */
+  submixes: boolean;
+  /** Refresh words, sections, chords, notes and key where they have moved. */
+  info: boolean;
+}
+
+/** Is anything set to happen on a save? */
+export const autoUpdates = (a: AutoUpdate): boolean => a.stems || a.submixes || a.info;
+
 const DEFAULT_SETTINGS: Settings = {
   root: '',
   cacheBudgetGB: 1,
@@ -107,16 +128,21 @@ const DEFAULT_SETTINGS: Settings = {
   jumpSizes: [1, 4, 8, 16],
   keepAwake: true,
   useLocal: false,
-  autoUpdate: false,
+  autoUpdate: { stems: false, submixes: false, info: false },
   outputDevice: null,
 };
 
 /** Settings saved by earlier builds, which named their source differently. */
-function migrateSettings(raw: Partial<Settings> & { sourceKind?: string }): Partial<Settings> {
-  if (raw.sourceKind && raw.useLocal === undefined) {
-    return { ...raw, useLocal: raw.sourceKind === 'local' };
-  }
-  return raw;
+function migrateSettings(raw: Partial<Settings> & { sourceKind?: string; autoUpdate?: unknown }): Partial<Settings> {
+  const out: Partial<Settings> = { ...(raw as Partial<Settings>) };
+  if (raw.sourceKind && raw.useLocal === undefined) out.useLocal = raw.sourceKind === 'local';
+  // Auto-update was one switch for all three jobs; whichever way it was set,
+  // that is what the person asked for, so all three take it.
+  const auto = raw.autoUpdate;
+  if (typeof auto === 'boolean') out.autoUpdate = { stems: auto, submixes: auto, info: auto };
+  else if (auto && typeof auto === 'object') out.autoUpdate = { ...DEFAULT_SETTINGS.autoUpdate, ...(auto as Partial<AutoUpdate>) };
+  else delete out.autoUpdate;
+  return out;
 }
 
 /**

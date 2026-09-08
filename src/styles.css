@@ -1587,6 +1587,24 @@ button {
   color: var(--text-dim);
 }
 
+/*
+ * The three jobs a save can do on its own, offered in the save bar itself:
+ * small chips beside the button that does the update by hand, so switching
+ * one on is the answer to the save that is showing.
+ */
+.auto-chips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.auto-chips .chip {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+
 .chip.on {
   border-color: var(--accent);
   color: var(--accent);

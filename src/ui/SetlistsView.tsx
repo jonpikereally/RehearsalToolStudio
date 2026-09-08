@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useStore } from '../lib/store';
+import { autoUpdates, useStore } from '../lib/store';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate, setlistUrl } from '../lib/router';
 import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 import { usePreparedStanding } from '../lib/usePreparedStanding';
+import { AUTO_JOBS } from './AutoUpdate';
 
 export default function SetlistsView() {
   const { library, createSetlist, currentSet, settings, saveSettings, publishFolderName, setSaved } = useStore();
@@ -98,21 +99,27 @@ export default function SetlistsView() {
       */}
       {currentSet && inSetCount > 0 && (
         <div className="panel" style={{ paddingTop: 0 }}>
-          <label className="switch-row">
-            <input
-              type="checkbox"
-              checked={settings.autoUpdate}
-              onChange={(e) => saveSettings({ autoUpdate: e.target.checked })}
-            />
-            <span>
-              <strong>Auto-update when Live saves the set</strong>
-              <span className="hint" style={{ display: 'block' }}>
-                {settings.autoUpdate
-                  ? `Watching ${currentSet.split('/').pop()} — each save prepares the songs whose audio changed again and refreshes the words and sections of the rest, into “${publishFolderName ?? 'the band’s folder'}”.`
-                  : 'Off: each save is noticed and offered as an update, and nothing is written until you say.'}
+          <div className="control-label">When Live saves the set, on its own</div>
+          <div className="hint" style={{ marginBottom: 8 }}>
+            {autoUpdates(settings.autoUpdate)
+              ? `Watching ${currentSet.split('/').pop()} — what is ticked below is written into “${publishFolderName ?? 'the band’s folder'}” without asking. The rest is offered in the bar.`
+              : 'Nothing: each save is noticed and offered as an update, and nothing is written until you say.'}
+          </div>
+          {AUTO_JOBS.map(({ key, label, hint }) => (
+            <label className="switch-row" key={key}>
+              <input
+                type="checkbox"
+                checked={settings.autoUpdate[key]}
+                onChange={(e) => saveSettings({ autoUpdate: { ...settings.autoUpdate, [key]: e.target.checked } })}
+              />
+              <span>
+                <strong>{label}</strong>
+                <span className="hint" style={{ display: 'block' }}>
+                  {hint}
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ))}
         </div>
       )}
       {preparing && <PrepareSetDialog onClose={() => setPreparing(false)} />}

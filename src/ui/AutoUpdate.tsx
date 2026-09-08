@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../lib/store';
+import { autoUpdates, useStore } from '../lib/store';
 import { parseAls } from '../lib/alsParser';
 import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
@@ -17,10 +17,11 @@ import { note } from '../lib/saveLog';
  * Keeping the prepared set current with the set as Live saves it.
  *
  * The studio sits beside Live; the store notices each save and reads the
- * folder again. This is what happens next. With auto-update on, the songs
- * whose audio changed are prepared again and the rest get their words and
- * sections refreshed, with nobody at a dialog — a bar says what is being
- * written and what was. With it off, the bar says the set was saved and
+ * folder again. This is what happens next. Three jobs can be set to happen on
+ * their own — the stems of the songs whose audio changed, the submixes of the
+ * songs behind the band, the words and sections of the rest — and only the
+ * ones switched on are done, with nobody at a dialog; a bar says what is being
+ * written and what was. With all three off, the bar says the set was saved and
  * offers the update, so nothing is ever written that wasn't asked for.
  *
  * A set never prepared under its name is not prepared on a save: that is
@@ -33,9 +34,17 @@ type Phase =
   | { kind: 'running'; at: number; stage: string; progress: PrepareProgress | null }
   | { kind: 'done'; at: number; outcome: RunOutcome; selected: string[] }
   | { kind: 'unprepared'; at: number }
+  | { kind: 'nothing'; at: number }
   | { kind: 'wholeSet'; at: number; folder: string; count: number }
   | { kind: 'error'; at: number; message: string }
   | { kind: 'undone'; at: number; restored: number; removed: number; songs: number };
+
+/** The three jobs a save can do on its own, as they are named on screen. */
+export const AUTO_JOBS: { key: 'stems' | 'submixes' | 'info'; label: string; hint: string }[] = [
+  { key: 'stems', label: 'Stems', hint: 'Render again the songs whose audio has changed' },
+  { key: 'submixes', label: 'Submixes', hint: "Write the submixes of songs that lack one the band asks for" },
+  { key: 'info', label: 'Words & sections', hint: 'Refresh words, sections, chords, notes and key where they have moved' },
+];
 
 const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -53,14 +62,16 @@ export default function AutoUpdate() {
 
   const setName = currentSet?.split('/').pop()?.replace(/\.als$/i, '') ?? 'The set';
 
+  const auto = settings.autoUpdate;
+
   useEffect(() => {
     if (!setSaved || !currentSet || setSaved.path !== currentSet) return;
     const at = setSaved.at;
-    // Once per save — except that turning auto-update on while a save waits
+    // Once per save — except that turning a job on while a save waits
     // in the bar is the answer to that save, and it goes ahead now.
-    if (acting.current === at && !(settings.autoUpdate && phase?.kind === 'saved')) return;
+    if (acting.current === at && !(autoUpdates(auto) && phase?.kind === 'saved')) return;
     acting.current = at;
-    if (!settings.autoUpdate) {
+    if (!autoUpdates(auto)) {
       setPhase({ kind: 'saved', at });
       return;
     }
@@ -90,7 +101,16 @@ export default function AutoUpdate() {
           return;
         }
         const titles = titlesOf(project);
-        const selected = titles.filter((t) => found.standing.get(t)?.state !== 'unchanged');
+        const changed = titles.filter((t) => found.standing.get(t)?.state !== 'unchanged');
+        // Only the jobs switched on. Each is asked its own question of the
+        // folder, and a job left off contributes nothing to the run.
+        const selected = auto.stems ? changed : [];
+        const behind = auto.submixes ? titles.filter((t) => found.submixes.get(t)) : [];
+        const refresh = auto.info ? 'auto' : 'none';
+        if (!selected.length && !behind.length && refresh === 'none') {
+          if (current()) setPhase({ kind: 'nothing', at });
+          return;
+        }
         /*
          * Every song changed is not a save, it is a wrong folder or a
          * studio that renders differently now — and a full render is an
@@ -108,13 +128,21 @@ export default function AutoUpdate() {
         }
         const touched: Aside[] = [];
         aside.current = { folder: folderName, songs: touched };
-        if (current()) setPhase({ kind: 'running', at, stage: selected.length ? '' : 'Refreshing words and sections…', progress: null });
+        if (current())
+          setPhase({
+            kind: 'running',
+            at,
+            stage: selected.length ? '' : behind.length ? 'Writing the submixes…' : 'Refreshing words and sections…',
+            progress: null,
+          });
         const outcome = await runPrepare({
           project,
           setPath: currentSet,
           band,
           folderName,
           selected,
+          submixes: behind,
+          refresh,
           standing: found.standing,
           words: found.words,
           keys: found.keys,
@@ -126,18 +154,22 @@ export default function AutoUpdate() {
           onProgress: (p) => current() && setPhase({ kind: 'running', at, stage: '', progress: p }),
         });
         const written = outcome.result?.songsWritten ?? 0;
+        const mixed = outcome.submixes?.songsWritten ?? 0;
         const refreshed = outcome.refreshed?.count ?? 0;
+        const did = [
+          written ? `${written} song${written === 1 ? '' : 's'} written again` : '',
+          mixed ? `submixes written for ${mixed} song${mixed === 1 ? '' : 's'}` : '',
+          refreshed ? `words and sections refreshed for ${refreshed} song${refreshed === 1 ? '' : 's'}` : '',
+        ].filter(Boolean);
         note({
-          kind: written || refreshed ? 'updated' : 'nothing',
+          kind: did.length ? 'updated' : 'nothing',
           session: setName,
           set: folderName,
-          songs: selected,
-          text: written
-            ? `${written} song${written === 1 ? '' : 's'} written again${refreshed ? `, ${refreshed} refreshed` : ''}.` +
+          songs: [...new Set([...selected, ...behind])],
+          text: did.length
+            ? `${written || mixed ? '' : 'No audio had changed; '}${did.join(', ')}.` +
               (outcome.published ? ` The band sees ${outcome.published.songs}.` : ` The band's library could not be written: ${outcome.publishError}`)
-            : refreshed
-              ? `No audio had changed; words and sections refreshed for ${refreshed} song${refreshed === 1 ? '' : 's'}.`
-              : 'Nothing had changed.',
+            : 'Nothing had changed.',
         });
         if (current()) setPhase({ kind: 'done', at, outcome, selected });
       } catch (err) {
@@ -166,7 +198,7 @@ export default function AutoUpdate() {
     // A newer save while this runs is answered once the run has ended: the
     // store holds it back until then, so nothing here need cancel anything.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setSaved, currentSet, settings.autoUpdate, phase?.kind]);
+  }, [setSaved, currentSet, auto.stems, auto.submixes, auto.info, phase?.kind]);
 
   const dismiss = () => {
     setPhase(null);
@@ -240,6 +272,9 @@ export default function AutoUpdate() {
               {phase.outcome.result
                 ? `${phase.outcome.result.songsWritten} song${phase.outcome.result.songsWritten === 1 ? '' : 's'} written again (${phase.selected.join(', ')})`
                 : 'no audio had changed'}
+              {phase.outcome.submixes?.songsWritten
+                ? `; submixes written for ${phase.outcome.submixes.songsWritten} song${phase.outcome.submixes.songsWritten === 1 ? '' : 's'}`
+                : ''}
               {phase.outcome.refreshed
                 ? phase.outcome.refreshed.error
                   ? `; the rest could not be refreshed: ${phase.outcome.refreshed.error}`
@@ -263,6 +298,12 @@ export default function AutoUpdate() {
               written again against “{phase.folder}” — none of them match what is there. Either that is not this set's
               folder, or something changed that every song is written from: the band's submixes, or how the studio
               renders. Not done on its own: locate the right folder in Settings, or prepare the whole set by hand.
+            </>
+          )}
+          {phase.kind === 'nothing' && (
+            <>
+              <strong>{setName}</strong> was saved at {clock(phase.at)} — nothing the studio is set to keep up to date had
+              changed{auto.stems && auto.submixes && auto.info ? '' : ' — of what is switched on here'}.
             </>
           )}
           {phase.kind === 'unprepared' && (
@@ -290,14 +331,30 @@ export default function AutoUpdate() {
             Undo this update
           </button>
         )}
-        {phase.kind === 'saved' && (
+        {(phase.kind === 'saved' || phase.kind === 'nothing') && (
           <>
             <button className="btn primary" onClick={() => setDialog(true)}>
               Update the prepared set
             </button>
-            <button className="btn" onClick={() => saveSettings({ autoUpdate: true })} title="From now on, every save of the set updates the prepared set on its own">
-              Auto-update from now on
-            </button>
+            {/*
+              The three jobs, as switches rather than one. Turning one on here
+              answers this save with it: the effect above takes a save still
+              sitting in the bar as the one being asked about.
+            */}
+            <span className="auto-chips">
+              <span className="control-label">On every save:</span>
+              {AUTO_JOBS.map(({ key, label, hint }) => (
+                <button
+                  key={key}
+                  className={auto[key] ? 'chip on' : 'chip'}
+                  aria-pressed={auto[key]}
+                  title={hint}
+                  onClick={() => saveSettings({ autoUpdate: { ...auto, [key]: !auto[key] } })}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
           </>
         )}
         {phase.kind === 'unprepared' && (
