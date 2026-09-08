@@ -299,11 +299,17 @@ export const SUBMIX_FOLDER = 'submixes';
  * A long list is cut short and marked with a few letters of its own hash, so
  * a song with a dozen parts still gets a name a file system and a person can
  * both hold, and two different lists can never come out alike.
+ *
+ * The parts are named in alphabetical order, whatever order they stand in on
+ * the timeline. The same combination is one file however it was arrived at,
+ * and a name that follows the arrangement makes `[submix bass+drums]` in one
+ * song and `[submix drums+bass]` in the next — two names for one thing, and
+ * nothing to read them by in a folder.
  */
 const LABEL_ROOM = 52;
 
 export function submixLabel(parts: string[]): string {
-  const names = parts.map((p) => clean(p).toLowerCase());
+  const names = parts.map((p) => clean(p).toLowerCase()).sort((a, b) => a.localeCompare(b));
   const full = names.join('+');
   if (full.length <= LABEL_ROOM) return `submix ${full}`;
   let short = '';

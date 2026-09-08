@@ -241,12 +241,31 @@ export interface PlannedPart {
   submix?: { for: string[]; of: string[] };
 }
 
+/**
+ * Whether a track makes any sound inside this song.
+ *
+ * A set is one timeline with every song on it, so most tracks are silent
+ * through most of it: a track can have no clip in this song's bars, have
+ * clips that are all deactivated, or be muted outright. Rendering one writes
+ * a silent file the band downloads, plays under a fader that does nothing,
+ * and wonders about — so it is not a part, and never was worth being one.
+ *
+ * `regions` is the parser's answer: null where a track plays throughout,
+ * a list of the stretches that sound otherwise, and empty where none do.
+ * Missing is read as null, since a set read before regions existed said
+ * nothing about them and every track of it played.
+ */
+export function soundsInSong(stem: Pick<AlsSong['stems'][number], 'regions'>): boolean {
+  return !stem.regions || stem.regions.length > 0;
+}
+
 /** The parts a song will be written as, given its plan — or all of it without one. */
 export function partsFor(song: AlsSong, plan?: SongPlan): PlannedPart[] {
+  const heard = song.stems.filter(soundsInSong);
   if (!plan) {
-    return song.stems.map((stem) => ({ name: stem.name, stems: [stem], reference: stem.reference, combined: false }));
+    return heard.map((stem) => ({ name: stem.name, stems: [stem], reference: stem.reference, combined: false }));
   }
-  const byName = new Map(song.stems.map((s) => [s.name.trim().toLowerCase(), s]));
+  const byName = new Map(heard.map((s) => [s.name.trim().toLowerCase(), s]));
   const find = (name: string) => byName.get(name.trim().toLowerCase());
   const out: PlannedPart[] = [];
   for (const name of plan.print) {
@@ -304,7 +323,9 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
       && !isClickOrCue(info.name) && !isClickOrCue(info.label)
       && !(part.stems.length === 1 && isSetStem(part.stems[0])));
     if (folded.length < 2) continue;
-    const of = folded.map(({ info }) => info.name);
+    // Alphabetical, as the name is: what a submix stands for is a set of
+    // parts, and the arrangement's order is not a fact about it.
+    const of = folded.map(({ info }) => info.name).sort((a, b) => a.localeCompare(b));
     const key = of.map((n) => n.toLowerCase()).join('|');
     const already = byList.get(key);
     if (already) {

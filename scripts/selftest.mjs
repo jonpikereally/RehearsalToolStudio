@@ -1886,20 +1886,20 @@ group('a member\'s submix');
   // The same for a whole song: the record, or the band's own full bounce.
   const withMix = { ...song, stems: [...song.stems, { ...song.stems[0], name: 'FULL MIX' }] };
   check('a whole song is never in a submix either, record or bounce',
-    submixPartsFor(withMix, partsFor(withMix), [{ member: 'Casey', keeps: [] }])[0].submix.of.join() === 'drums,bass,keys,gtr,vox',
+    submixPartsFor(withMix, partsFor(withMix), [{ member: 'Casey', keeps: [] }])[0].submix.of.join() === 'bass,drums,gtr,keys,vox',
     submixPartsFor(withMix, partsFor(withMix), [{ member: 'Casey', keeps: [] }])[0].submix.of.join());
   check('and keeping one is tidied away as well',
     parseMembers([{ member: 'Casey', keeps: ['ref song', 'Full Mix', 'gtr'] }])[0].keeps.join() === 'gtr',
     parseMembers([{ member: 'Casey', keeps: ['ref song', 'Full Mix', 'gtr'] }])[0].keeps.join());
   const [mix] = of(alex);
-  check('the submix folds in everything the member does not keep',
-    mix.submix.of.join(', ') === 'drums, bass, keys, vox', mix.submix.of.join(', '));
+  check('the submix folds in everything the member does not keep, in alphabetical order',
+    mix.submix.of.join(', ') === 'bass, drums, keys, vox', mix.submix.of.join(', '));
   check('and never the record itself', !mix.submix.of.some((n) => /song/i.test(n)), mix.submix.of.join());
   check('the click is left out: it is a pattern, not audio to sum',
     !mix.stems.some((s) => /click/i.test(s.name)), mix.stems.map((s) => s.name).join());
   check('it is named for what is in it, not for whose it is',
-    mix.name === 'submix drums+bass+keys+vox' && mix.submix.for.join() === 'Alex' && mix.combined && !mix.reference
-      && partFileName(song.title, mix.name) === 'Cruel Summer [submix drums+bass+keys+vox].mp3',
+    mix.name === 'submix bass+drums+keys+vox' && mix.submix.for.join() === 'Alex' && mix.combined && !mix.reference
+      && partFileName(song.title, mix.name) === 'Cruel Summer [submix bass+drums+keys+vox].mp3',
     partFileName(song.title, mix.name));
   check('and it sits in the song\'s submixes folder, which is what the manifest says',
     SUBMIX_FOLDER === 'submixes' && isSubmixFile(`${SUBMIX_FOLDER}/${partFileName(song.title, mix.name)}`));
@@ -1907,6 +1907,10 @@ group('a member\'s submix');
     submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }]).length === 1
       && submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }])[0].submix.for.join() === 'Alex,Casey',
     JSON.stringify(submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['gtr'] }]).map((p) => [p.name, p.submix.for])));
+  check('a name is alphabetical however the parts were given',
+    submixLabel(['vox', 'drums', 'bass']) === 'submix bass+drums+vox'
+      && submixLabel(['bass', 'vox', 'drums']) === submixLabel(['vox', 'drums', 'bass']),
+    submixLabel(['vox', 'drums', 'bass']));
   check('and a long list is cut short and marked, so two lists never share a name',
     submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'percussion']).length < 62
       && submixLabel(['drums', 'bass', 'keys', 'guitar', 'piano', 'strings', 'brass', 'percussion'])
@@ -1921,7 +1925,7 @@ group('a member\'s submix');
     of({ member: 'Sam', keeps: DEFAULT_KEEPS, off: true }).length === 0);
   check('two members who keep different things get one submix each',
     submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['keys'] }]).map((p) => p.name).join() ===
-      'submix drums+bass+keys+vox,submix drums+bass+gtr+vox',
+      'submix bass+drums+keys+vox,submix bass+drums+gtr+vox',
     submixPartsFor(song, parts, [alex, { member: 'Casey', keeps: ['keys'] }]).map((p) => p.name).join());
 
   // A submix sits in a folder inside its song's, which is a folder of parts,
@@ -1972,7 +1976,7 @@ group('a member\'s submix');
       && keptBy(byWord, 'bass') === null);
   const wordy = submixPartsFor(song, parts, [byWord])[0];
   check('so a submix holds everything the word does not name',
-    wordy.submix.of.join() === 'drums,bass,keys,vox', wordy.submix.of.join());
+    wordy.submix.of.join() === 'bass,drums,keys,vox', wordy.submix.of.join());
   check('and a list of words survives being read back',
     parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0].contains.join() === 'gtr,Vox',
     JSON.stringify(parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0]));
@@ -3891,7 +3895,7 @@ group('rig tracks');
 
 group('a plan for one song');
 {
-  const { partsFor } = await import('../src/lib/prepare.ts');
+  const { partsFor, soundsInSong } = await import('../src/lib/prepare.ts');
   const stem = (name, reference = false) => ({ name, reference, path: `${name}.wav`, regions: null, clips: [] });
   const song = { title: 'Yellow', stems: [stem('REF SONG', true), stem('Drums'), stem('Bass'), stem('Keys'), stem('Vox')] };
 
@@ -3909,6 +3913,25 @@ group('a plan for one song');
   check('leaving out what it skipped', parts.length === 2 && !parts.some((p) => p.name === 'REF SONG'));
   check('a name is matched however it was typed', partsFor(song, { print: ['drums '], combine: [] })[0]?.name === 'Drums');
   check('a group with nothing in it writes nothing', partsFor(song, { print: [], combine: [{ name: 'band', stems: ['Nope'] }] }).length === 0);
+
+  /*
+   * A set is one timeline: most tracks are silent through most of it. A track
+   * with nothing sounding in this song's bars — muted, or every clip
+   * deactivated, or no clip here at all — is not a part of it.
+   */
+  const silent = { ...stem('Strings'), regions: [] };
+  const partly = { ...stem('Horns'), regions: [{ startBar: 9, endBar: 17 }] };
+  check('a track that sounds nowhere in the song is one', !soundsInSong(silent));
+  check('one that sounds somewhere is not', soundsInSong(partly) && soundsInSong(stem('Drums')));
+  check('and a set read before regions existed is taken as playing', soundsInSong({ name: 'Old' }));
+  const quiet = { ...song, stems: [...song.stems, silent, partly] };
+  check('the silent one is left out of a prepare, the rest are not',
+    partsFor(quiet).map((p) => p.name).join() === 'REF SONG,Drums,Bass,Keys,Vox,Horns',
+    partsFor(quiet).map((p) => p.name).join());
+  check('and a plan cannot ask for it either',
+    partsFor(quiet, { print: ['Strings', 'Drums'], combine: [{ name: 'band', stems: ['Strings'] }] })
+      .map((p) => p.name).join() === 'Drums',
+    partsFor(quiet, { print: ['Strings', 'Drums'], combine: [{ name: 'band', stems: ['Strings'] }] }).map((p) => p.name).join());
 }
 
 /* ---------------------------- the mix, as the set has it ---------------------------- */

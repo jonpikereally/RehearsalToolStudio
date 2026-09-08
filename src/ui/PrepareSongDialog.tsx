@@ -5,7 +5,7 @@ import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchSe
 import { holdAwake } from '../lib/keepAwake';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
-import { describeParts, overallProgress, partFileName, prepareSet, songFolderName, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
+import { describeParts, overallProgress, partFileName, prepareSet, songFolderName, soundsInSong, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import { readBytes } from '../lib/source';
 import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
@@ -89,7 +89,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
          * Nothing is skipped unless somebody says to skip it.
          */
         const initial: Record<string, Choice> = {};
-        for (const stem of mine.stems) initial[stem.name] = 'print';
+        for (const stem of mine.stems.filter(soundsInSong)) initial[stem.name] = 'print';
         setChoice(initial);
       } catch (err) {
         if (live) setError(err instanceof Error ? err.message : String(err));
@@ -108,7 +108,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, busy]);
 
-  const stems = alsSong?.stems ?? [];
+  // Only the tracks that make a sound in this song: the rest cannot be
+  // printed, and offering a choice over them is offering nothing.
+  const stems = (alsSong?.stems ?? []).filter(soundsInSong);
   const printing = stems.filter((s) => choice[s.name] === 'print');
   const combining = stems.filter((s) => choice[s.name] === 'combine');
   const partCount = printing.length + (combining.length ? 1 : 0);
