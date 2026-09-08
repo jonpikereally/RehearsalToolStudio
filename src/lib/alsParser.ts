@@ -191,6 +191,12 @@ interface RawClip {
   fadeOutSec: number;
   /** Beats of the file per second of it, or null when the clip isn't warped. */
   warpBps: number | null;
+  /**
+   * The beat of the clip's own timeline that sits at the file's first sample.
+   * Usually 0; a freeze clip that begins off the bar line counts its beats
+   * from the bar line, so its file starts part way into them.
+   */
+  fileStartBeat: number;
   sampleRate: number | null;
   /** The clip's own transposition, in semitones, as set in Live. */
   semitones: number;
@@ -872,6 +878,7 @@ function rawClipsIn(chunk: string, frozen: boolean): RawClip[] {
       fadeInSec: fades && !Number.isNaN(fadeIn) ? fadeIn : 0,
       fadeOutSec: fades && !Number.isNaN(fadeOut) ? fadeOut : 0,
       warpBps: warpRate(body),
+      fileStartBeat: fileStartBeat(body),
       sampleRate: num(/<DefaultSampleRate Value="(\d+)"/) || null,
       gain: (() => {
         const g = num(/<SampleVolume Value="([-\d.]+)"/);
@@ -930,12 +937,39 @@ function warpRate(body: string): number | null {
  * Ableton keeps the offset in the file's own beats, so a warped clip converts
  * through the rate its markers imply; an unwarped one is already in seconds.
  * `trimmedBeats` covers a clip that begins before the song does — only the part
- * inside the song is wanted, so the offset moves along with it.
+ * inside the song is wanted, so the offset moves along with it. The beats are
+ * counted from where the markers put the file's start, which is not always
+ * beat zero — see `fileStartBeat`.
  */
 function sourceStartSec(clip: RawClip, trimmedBeats: number): number {
   const beats = clip.sourceStartBeat + trimmedBeats;
-  if (clip.warpBps && clip.warpBps > 0) return beats / clip.warpBps;
+  if (clip.warpBps && clip.warpBps > 0) return (beats - clip.fileStartBeat) / clip.warpBps;
   return beats;
+}
+
+/**
+ * The beat of a warped clip's timeline that its file begins at.
+ *
+ * Live's freeze writes a file that starts exactly where the clip does, but
+ * counts the clip's beats from the bar line before it: a clip beginning a
+ * quarter-beat early gets a first marker of "second 0 is beat 3.75", and a
+ * LoopStart of 3.75 to match. Read as beats from the file's start, 3.75 beats
+ * would skip nearly a bar of the file — every stem of the song then played
+ * that much early against the click. So the marker at the file's first
+ * second says where the beats begin. Unwarped, or without markers, it is
+ * beat zero, as it always was.
+ */
+function fileStartBeat(body: string): number {
+  if (!/<IsWarped Value="true"/.test(body)) return 0;
+  const markers = [...body.matchAll(/<WarpMarker Id="\d+" SecTime="([-\d.]+)" BeatTime="([-\d.]+)"/g)]
+    .map((m) => ({ sec: parseFloat(m[1]), beat: parseFloat(m[2]) }))
+    .sort((a, b) => a.sec - b.sec);
+  if (!markers.length) return 0;
+  const first = markers[0];
+  const rate = warpRate(body);
+  // A first marker a little past the file's start: walk back to second zero at the clip's rate.
+  const beat = rate ? first.beat - first.sec * rate : first.beat;
+  return Number.isFinite(beat) ? beat : 0;
 }
 
 /** True when the track's activator is off, so it sounds nowhere. */
@@ -1229,10 +1263,13 @@ export function parseAlsXml(xml: string): AlsProject {
 
   /**
    * Where in a frozen clip's file a beat of the set falls, in seconds. The
-   * file's own start is the clip's start less whatever the clip skips.
+   * file's own start is the clip's start less whatever the clip skips —
+   * counted from where the markers put the file's first sample, not from
+   * beat zero, or a freeze clip that begins off the bar line reads its file
+   * from most of a bar in.
    */
   const frozenSourceSec = (c: RawClip, atBeat: number): number =>
-    secondsBetween(c.startBeat - c.sourceStartBeat, atBeat);
+    secondsBetween(c.startBeat - (c.sourceStartBeat - c.fileStartBeat), atBeat);
 
   const sections = clipsOf(trackByFlag(tracks, /\+\s*SECTIONS\b|^sections\b/i)?.chunk ?? '', 'MidiClip');
 

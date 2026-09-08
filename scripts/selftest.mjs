@@ -4735,6 +4735,35 @@ group('frozen tracks');
   check('at pitch, at speed, and marked', bass.clips[0].semitones === 0 && bass.clips[0].speed === 1 && bass.clips[0].frozen === true);
   check('with its own devices inside the render, so none listed', bass.devices.length === 0);
   check('an unfrozen track beside it keeps its clip and its transposition', keys?.frozen === false && /Stems\/Keys/.test(keys.clips[0].path) && keys.clips[0].semitones === -2);
+  {
+    /*
+     * Cruel Summer, as Live froze it: the record's clip begins a quarter-beat
+     * before bar 3, so its freeze file starts there too — but Live counts the
+     * clip's beats from the bar line, writing "second 0 is beat 3.75" and a
+     * LoopStart of 3.75. Read as beats into the file, that skipped nearly a
+     * bar, and every stem of the song played most of a bar early.
+     */
+    const early = (id, start, end, loopStart) => `
+        <AudioClip Id="${id}" Time="${start}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" />
+          <Loop><LoopStart Value="${loopStart}" /><LoopEnd Value="${loopStart + end - start}" /><StartRelative Value="0" /></Loop>
+          <Disabled Value="false" /><Fade Value="false" /><IsWarped Value="true" />
+          <SampleRef><FileRef><RelativePath Value="Samples/Processed/Freeze/Freeze Drums [y].wav" /></FileRef><DefaultSampleRate Value="48000" /></SampleRef>
+          <WarpMarkers><WarpMarker Id="0" SecTime="0" BeatTime="3.75" /><WarpMarker Id="1" SecTime="0.0125" BeatTime="3.78125" /></WarpMarkers>
+        </AudioClip>`;
+    const off = parseAlsXml(`<Ableton Creator="Live 12">
+      <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+      <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+      <Locator Id="1"><Time Value="0" /><Name Value="Cruel Summer" /></Locator>
+      <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+      <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Cruel Summer" /></GroupTrack>
+      ${track(11, 10, 'Drums', 'true', clip(1, 0, 64, 'Stems/Drums.wav'), early(0, 7.75, 60, 3.75) + early(1, 60, 60.25, 56))}
+    </Ableton>`);
+    const clips = off.songs[0].stems.find((s) => s.name === 'Drums')?.clips ?? [];
+    check('a freeze clip that begins off the bar line still reads its file from the top',
+      clips.length === 2 && Math.abs(clips[0].sourceStartSec) < 1e-9, JSON.stringify(clips.map((c) => c.sourceStartSec)));
+    check('and a stub of the same file later in the song reads from where that stretch sits',
+      clips.length === 2 && Math.abs(clips[1].sourceStartSec - (56 - 3.75) / 2) < 1e-9, JSON.stringify(clips.map((c) => c.sourceStartSec)));
+  }
   check('and the arrangement is not doubled', yellow.stems.every((s) => s.clips.length === 1));
 
   // A freeze file spanning the set: the song's stretch of it begins where the song does.

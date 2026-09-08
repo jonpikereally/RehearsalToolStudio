@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Read a freeze clip that begins off the bar line from the top of its file**
+
+Live's freeze writes a file that starts exactly where the clip does, but counts the clip's beats from the bar line before it: Cruel Summer's record begins a quarter-beat before bar 3, so its freeze clips carry a first warp marker of "second 0 is beat 3.89" and a LoopStart of 3.89 to match. The parser read that LoopStart as beats into the file and skipped 2.75 seconds of it, so every stem and submix of the song — locked to each other to the sample — played most of a bar early against the click, the cues and the words. Mean, whose record begins 0.79 seconds before its bar line, had the same. The marker at the file's first second now says where the beats begin, for frozen and for warped clips alike; a file whose markers start at beat zero reads exactly as before.
+
 **Tell the website how a submix is named**
 
 A prompt of its own for the naming, since it has just changed: the parts in alphabetical order, lowercased and joined with +, never the member's name, a long list cut short with four letters of its own hash — and the one thing that matters more than any of it, that the name is not the identity. A submix is matched by `submixOf`, as a set, so a song prepared before the order was fixed carries its parts in the arrangement's order and plays exactly as it did; nothing on disk needs renaming and the site must not rename it.
