@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Give the band's file its own prompt for the site**
+
+It was a section inside the submix prompt, which was right while the site only read it. The site is meant to write it now — a member setting what they keep without asking anybody to open a laptop — so the file that two apps write gets a page of its own: the shape, how names are matched, the merge both sides owe each other, and what a page for it could offer.
+
 **Say in the bar how far behind each half is, and let them be prepared apart**
 
 Preparing the stems and preparing the submixes are separate work — the stems follow the arrangement, the submixes follow the band — so they are two questions now, asked continuously and answered separately in a bar under the set: "Stems 1 behind · Submixes 7 behind", or up to date. A count that goes up flashes, because it changes while nobody is looking: the studio sits beside Live for hours.
