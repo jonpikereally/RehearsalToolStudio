@@ -534,12 +534,19 @@ folder, one file per member per prepared set:
   otherwise the leader's Cortex scene fires on the guitarist's Helix. A
   `member` on a set change says whose it is; one with none is the set's.
 - The Studio reads these files and writes them into a copy of the set as
-  MIDI clips, one `ADD THIS RIG <member> (<rig>)` track each. The leader
-  drags those tracks into the real set. The next prepare reads them back as
+  MIDI clips, one `ADD THIS RIG <member> (<rig>) +PATCH` track each. The
+  leader drags those tracks into the real set. The next prepare reads them back as
   the set's own, with `member` set from the track's name, and the loop is
   closed. A change that has come back this way needs no file any more; the
   website may keep the file for editing, and the Studio takes the file as
   the newer word whenever both exist.
+- Any track in the set that sends patch changes to a rig is marked `+PATCH`
+  on the end of its name — `RIG Alex (Quad Cortex) +PATCH`, `Ben's board
+  +PATCH` — the way AbleSet marks a text track `+LYRICS`. The Studio marks
+  what it writes, and reads a marked track as a rig track wherever it sits
+  and whatever else it is called; the flag is not part of the name, and is
+  stripped from everything the Studio shows or writes out. Tracks with no
+  mark are still guessed at from their names, as they always were.
 - Channels are the member's own: their laptop talks to their rig alone.
 
 Everything above is what the code in `src/lib/prepare.ts`, `src/lib/prints.ts`

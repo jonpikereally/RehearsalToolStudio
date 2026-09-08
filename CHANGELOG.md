@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Mark a track that sends patch changes +PATCH, and read it by that**
+
+A set says what a track is in its name — AbleSet reads a text track by its +LYRICS — but a track that drives a rig was only ever guessed at, from words like MIDI, PC or Cortex in its name and from sitting outside any song's group. A guess is wrong both ways: a track called "Program" that plays a pad is read as a rig, and one called "Ben's board" is not read at all.
+
 **Mark a minor the way its own notation marks it**
 
 Converting to Nashville numbers wrote `6m`, and a chart of numbers is written `6-`. That came of a rule meant for names: minors were being tidied to `m` everywhere, so the one notation that spells them with a dash was having its own convention taken off it.

@@ -4983,8 +4983,13 @@ group('patch changes to and from the band');
   const { parseAlsXml } = await import('../src/lib/alsParser.ts');
 
   check('a rig track names its member', JSON.stringify(rigTrackMember('RIG Alex (Quad Cortex)')) === '{"member":"Alex","rig":"Quad Cortex"}');
+  check('the mark on the end is not part of the name',
+    JSON.stringify(rigTrackMember('RIG Alex (Quad Cortex) +PATCH')) === '{"member":"Alex","rig":"Quad Cortex"}',
+    JSON.stringify(rigTrackMember('RIG Alex (Quad Cortex) +PATCH')));
   check('with or without the rig, and with ADD THIS in front', rigTrackMember('ADD THIS RIG Sam')?.member === 'Sam' && rigTrackMember('MIDI - Quad Cortex') === null);
-  check('and is named the same way back', rigTrackName('Alex', 'Quad Cortex') === 'RIG Alex (Quad Cortex)' && rigTrackName('Sam') === 'RIG Sam');
+  check('and is named the same way back, marked as sending patches',
+    rigTrackName('Alex', 'Quad Cortex') === 'RIG Alex (Quad Cortex) +PATCH' && rigTrackName('Sam') === 'RIG Sam +PATCH',
+    [rigTrackName('Alex', 'Quad Cortex'), rigTrackName('Sam')].join(' | '));
 
   const file = parseMemberRig({
     member: 'Alex', rig: 'Quad Cortex', updatedAt: '2026-09-05T23:40:00Z',
@@ -5040,10 +5045,10 @@ group('patch changes to and from the band');
   </Ableton>`;
   const out = addRigTracks(xml, [spec, { member: 'Studio', changes: [{ bar: 5, name: 'Helix snapshot', patch: { channel: 2, controls: [{ cc: 69, value: 1 }, { cc: 200, value: 1 }] } }] }], project);
   check('one track per member, named to say what to do with it',
-    out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | ') === 'ADD THIS RIG Alex (Quad Cortex):2 | ADD THIS RIG Studio:1', out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | '));
+    out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | ') === 'ADD THIS RIG Alex (Quad Cortex) +PATCH:2 | ADD THIS RIG Studio +PATCH:1', out.tracks.map((t) => `${t.name}:${t.clips}`).join(' | '));
   const first = out.xml.indexOf('<Tracks>');
   const firstName = out.xml.slice(first + out.xml.slice(first).search(/<MidiTrack /)).match(/<EffectiveName Value="([^"]*)"/)?.[1];
-  check('the first member\'s track comes first, above the set\'s own', firstName === 'ADD THIS RIG Alex (Quad Cortex)', firstName);
+  check('the first member\'s track comes first, above the set\'s own', firstName === 'ADD THIS RIG Alex (Quad Cortex) +PATCH', firstName);
   const alex = out.xml.slice(out.xml.indexOf('ADD THIS RIG Alex'), out.xml.indexOf('ADD THIS RIG Studio'));
   check('the program and bank go into the clip box as bytes', /<BankSelectCoarse Value="0" \/><BankSelectFine Value="2" \/><ProgramChange Value="3" \/>/.test(alex.replace(/\s+/g, ' ').replace(/> </g, '><')) || (alex.includes('<ProgramChange Value="3"') && alex.includes('<BankSelectFine Value="2"')));
   check('a change with no program says none', alex.includes('<ProgramChange Value="-1"'));
@@ -5063,6 +5068,28 @@ group('patch changes to and from the band');
   </Ableton>`);
   const yellow = back.songs[0];
   check('and the parser reads them back with the member on', yellow.rigPatches.some((r) => r.member === 'Alex' && r.rig === 'Quad Cortex' && r.program === 3 && r.controls?.[0]?.cc === 43), JSON.stringify(yellow.rigPatches));
+  check('the track is named without the mark', yellow.rigPatches.every((r) => !/\+\s*PATCH/i.test(r.track)),
+    [...new Set(yellow.rigPatches.map((r) => r.track))].join(' | '));
+
+  /*
+   * A track the word list would never have guessed at: no MIDI, no rig, no
+   * pedal in its name, and inside a song's group rather than out at the top.
+   * Marked, it is read; unmarked, the same track is not.
+   */
+  const board = (name) => parseAlsXml(`<Ableton Creator="Live 12"><Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator><Locator Id="3"><Time Value="128" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+    ${out.xml.slice(out.xml.indexOf('<MidiTrack Id='), out.xml.indexOf('<ReturnTrack'))
+      .replace(/<EffectiveName Value="ADD THIS RIG Alex \(Quad Cortex\) \+PATCH"/, `<EffectiveName Value="${name}"`)
+      .replace(/<TrackGroupId Value="-1" \/>/, '<TrackGroupId Value="10" />')}
+  </Ableton>`).songs[0];
+  check('a marked track is read wherever it sits and whatever it is called',
+    board("Ben's board +PATCH").rigPatches.some((r) => r.program === 3 && r.track === "Ben's board"),
+    JSON.stringify(board("Ben's board +PATCH").rigPatches.map((r) => r.track)));
+  check('and the same track unmarked is not',
+    !board("Ben's board").rigPatches.some((r) => r.track === "Ben's board"),
+    JSON.stringify(board("Ben's board").rigPatches.map((r) => r.track)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

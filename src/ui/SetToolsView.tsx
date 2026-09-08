@@ -1179,10 +1179,12 @@ export default function SetToolsView() {
                     </button>
                   </div>
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
-                    Patch changes as MIDI clips, in a copy of the set: one “ADD THIS RIG …” track per band
-                    member from the rig files the website writes under the prepared set’s rigs/ folder, and
-                    one for what was programmed in the player here. Drag the tracks into the set in Live;
-                    the next prepare reads them back as the set’s own.
+                    Patch changes as MIDI clips, in a copy of the set: one “ADD THIS RIG … +PATCH” track per
+                    band member from the rig files the website writes under the prepared set’s rigs/ folder,
+                    and one for what was programmed in the player here. Drag the tracks into the set in Live;
+                    the next prepare reads them back as the set’s own. Any track that sends patch changes is
+                    marked “+PATCH” on the end of its name — mark your own and they are read too, whatever
+                    they are called.
                   </div>
                 </>
               )}

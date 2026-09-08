@@ -41,14 +41,40 @@ export interface RigTrackResult {
   tracks: { name: string; clips: number; /** CCs the model track had no envelope target for. */ dropped: number }[];
 }
 
+/**
+ * `+PATCH`, on the end of the name of any track that sends patch changes.
+ *
+ * The set says what a track is in its name — AbleSet reads `+LYRICS` that
+ * way — and until now a track that drove a rig was only guessed at, from
+ * words like MIDI, Cortex or PC in its name. A guess is wrong both ways: a
+ * track called "Program" that plays a pad is read as a rig, and one called
+ * "Ben's board" is not read at all. Marked, there is nothing to guess.
+ *
+ * The mark goes at the end, after anything else the name carries, and the
+ * flag is not part of the name: what the app shows, and what a member's
+ * changes are filed under, is the name without it.
+ */
+export const PATCH_FLAG = '+PATCH';
+
+const PATCH_MARK = /\s*\+\s*PATCH(?:ES)?\b/i;
+
+/** Whether a track's name says it sends patch changes. */
+export const sendsPatches = (name: string): boolean => PATCH_MARK.test(name);
+
+/** The name without the mark, which is what anything but the set itself wants. */
+export const withoutPatchFlag = (name: string): string => name.replace(new RegExp(PATCH_MARK, 'gi'), '').trim();
+
+/** The name with the mark on the end, put there once however often this is asked. */
+export const withPatchFlag = (name: string): string => `${withoutPatchFlag(name)} ${PATCH_FLAG}`;
+
 /** The name a member's rig track carries, before ADD THIS is put in front. */
 export function rigTrackName(member: string, rig?: string): string {
-  return `RIG ${member.trim()}${rig?.trim() ? ` (${rig.trim()})` : ''}`;
+  return withPatchFlag(`RIG ${member.trim()}${rig?.trim() ? ` (${rig.trim()})` : ''}`);
 }
 
-/** Whose track a rig track is, from its name: `RIG Alex (Quad Cortex)`. */
+/** Whose track a rig track is, from its name: `RIG Alex (Quad Cortex) +PATCH`. */
 export function rigTrackMember(name: string): { member: string; rig?: string } | null {
-  const m = /^(?:ADD THIS\s+)?RIG\b[\s:\-–—]*([^()]*?)\s*(?:\(([^)]*)\))?\s*$/i.exec(name.trim());
+  const m = /^(?:ADD THIS\s+)?RIG\b[\s:\-–—]*([^()]*?)\s*(?:\(([^)]*)\))?\s*$/i.exec(withoutPatchFlag(name));
   if (!m || !m[1].trim()) return null;
   return { member: m[1].trim(), ...(m[2]?.trim() ? { rig: m[2].trim() } : {}) };
 }

@@ -13,7 +13,7 @@ import type { Bus, Device } from '../types';
  */
 
 import { isRigLocator } from './alsPatch.ts';
-import { rigTrackMember } from './rigTrack.ts';
+import { rigTrackMember, sendsPatches, withoutPatchFlag } from './rigTrack.ts';
 import { transposeKey } from './nashville.ts';
 
 export interface TempoChange {
@@ -1262,27 +1262,36 @@ export function parseAlsXml(xml: string): AlsProject {
   /*
    * The rig's tracks: what the set sends out rather than plays to the band.
    * A MIDI track to a pedalboard, a lighting desk or a tuner; a video or a
-   * timecode track. Known by their names, outside any song's group, and
-   * never one of the set's own text or click tracks.
+   * timecode track.
+   *
+   * A track marked `+PATCH` says outright that it sends patch changes, and
+   * is taken at its word wherever it sits and whatever else it is called.
+   * The rest are known as they always were — by the words in their names,
+   * outside any song's group, never one of the set's own text or click
+   * tracks — which is a guess, and the mark is how a set stops guessing.
    */
   const RIG_TRACK = /\b(midi|rig|patch(es)?|program|pc|video|vid|timecode|tc|ltc|smpte|light(s|ing)?|cortex|helix|kemper|axe|autotune|tuner)\b/i;
   const NOT_RIG = /^(song|arrangement|tempo track|click|cue|cues)$|\+\s*(lyrics|sections)\b|\bslates?\b/i;
   const VIDEO_FILE = /\.(mp4|mov|m4v|avi|mkv|webm)$/i;
   const rigTrackDefs = tracks
-    .filter((t) => (t.kind === 'MidiTrack' || t.kind === 'AudioTrack') && !NOT_RIG.test(t.name.trim()))
+    .filter((t) => t.kind === 'MidiTrack' || t.kind === 'AudioTrack')
     .filter((t) => {
+      if (sendsPatches(t.name)) return true;
+      if (NOT_RIG.test(t.name.trim())) return false;
       const parent = t.groupId === '-1' ? undefined : tracks.find((g) => g.id === t.groupId);
       const top = parent ? parent.groupId === '-1' && RIG_TRACK.test(parent.name) : true;
       return top && (RIG_TRACK.test(t.name) || (parent ? RIG_TRACK.test(parent.name) : false));
     })
     .map((t) => {
+      // The mark says what the track is; it is not part of what it is called.
+      const name = withoutPatchFlag(t.name);
       if (t.kind === 'MidiTrack') {
-        return { name: t.name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip', 'clip'), patches: midiPatchesOf(t) };
+        return { name, kind: 'midi' as const, clips: clipsOf(t.chunk, 'MidiClip', 'clip'), patches: midiPatchesOf(t) };
       }
       const raw = clipsOfTrack(t);
       const kind = raw.some((c) => VIDEO_FILE.test(c.path)) || /\b(video|vid)\b/i.test(t.name) ? 'video' as const : 'audio' as const;
       return {
-        name: t.name,
+        name,
         kind,
         clips: raw.map((c) => ({ beat: c.startBeat, endBeat: c.endBeat, name: c.path.split('/').pop() ?? c.path })),
       };
