@@ -2054,6 +2054,24 @@ group('writing only some of the info');
     JSON.stringify(keepUnasked(undefined, now, { info: false, sections: false, chords: false, lyrics: false, patches: false })) === JSON.stringify(now));
 }
 
+group('what the browser keeps');
+{
+  const { remember, remembered, forget } = await import('../src/lib/remember.ts');
+  // A store that refuses everything, as a full disk or a private window does.
+  const real = globalThis.localStorage;
+  let thrown = 0;
+  globalThis.localStorage = {
+    setItem() { thrown++; throw Object.assign(new Error('quota'), { name: 'QuotaExceededError' }); },
+    getItem() { return null; },
+    removeItem() { throw new Error('no'); },
+  };
+  let survived = true;
+  try { remember('k', { a: 1 }); forget('k'); } catch { survived = false; }
+  check('a store that refuses everything stops nothing', survived && thrown === 1);
+  check('and what was never kept reads as the fallback', remembered('k', 'fallback') === 'fallback');
+  globalThis.localStorage = real;
+}
+
 group('prepared set manifest');
 {
   const { applyManifest, isManifestName, setFolderOf } = await import('../src/lib/preparedSet.ts');

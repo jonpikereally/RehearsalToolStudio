@@ -32,6 +32,7 @@ import { useStore } from '../lib/store';
 import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
 import { locatePrepared } from '../lib/locatePrepared';
+import { remember } from '../lib/remember';
 
 /**
  * Set tools: everything the studio does *to* an Ableton set.
@@ -81,7 +82,7 @@ export default function SetToolsView() {
     setInfoFields((was) => {
       const next = { ...was, [key]: on };
       try {
-        localStorage.setItem(LS_INFO, JSON.stringify(next));
+        remember(LS_INFO, next);
       } catch {
         /* not remembered, then */
       }
@@ -113,7 +114,7 @@ export default function SetToolsView() {
       : [...chordTargets, kind];
     const kept = next.length ? next : [kind];
     setChordTargets(kept);
-    localStorage.setItem('ls.settools.chordTargets', kept.join(','));
+    remember('ls.settools.chordTargets', kept.join(','));
   };
   const [progress, setProgress] = useState<string | null>(null);
   /* The lyrics tab: which song, which of its tracks, and how finely to cut the words. */
@@ -195,7 +196,7 @@ export default function SetToolsView() {
   const chooseVoice = (name: string) => {
     setVoice(name);
     try {
-      localStorage.setItem(LS_VOICE, name);
+      remember(LS_VOICE, name);
     } catch {
       /* not worth failing over */
     }
@@ -895,7 +896,7 @@ export default function SetToolsView() {
                         disabled={!!progress}
                         onClick={() => {
                           setLyricFineness(f);
-                          localStorage.setItem('ls.settools.lyricFineness', f);
+                          remember('ls.settools.lyricFineness', f);
                         }}
                       >
                         {FINENESS_LABEL[f]}
@@ -1030,7 +1031,7 @@ export default function SetToolsView() {
                       onChange={(e) => {
                         setInfoTrack(e.target.value);
                         try {
-                          localStorage.setItem(LS_INFO_TRACK, e.target.value);
+                          remember(LS_INFO_TRACK, e.target.value);
                         } catch {
                           /* not remembered, then */
                         }
@@ -1061,7 +1062,7 @@ export default function SetToolsView() {
                           onClick={() => {
                             setInfoWholeSong(whole);
                             try {
-                              localStorage.setItem(LS_INFO_SPAN, whole ? 'song' : 'bar');
+                              remember(LS_INFO_SPAN, whole ? 'song' : 'bar');
                             } catch {
                               /* not remembered, then */
                             }

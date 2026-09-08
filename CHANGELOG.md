@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Keep a page open when the browser's storage is full**
+
+The studio died on a QuotaExceededError: nineteen songs with their words, chords, sections and patch changes came to four and a half megabytes, Safari allows five, and the write went off unguarded in the middle of drawing and took the page down with it.
+
 **Offer the four jobs a prepare is really made of, and let the info be chosen**
 
 One button did everything, which is fine when everything needs doing and wrong the rest of the time: a set whose sections have moved does not want twenty minutes of rendering, and a band that has changed does not want its stems written again. The window offers the four jobs instead — prepare all, the stems, the submixes, the info — each acting on the songs ticked, and the one the window was opened for leads.

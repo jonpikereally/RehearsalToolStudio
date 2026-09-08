@@ -1,3 +1,4 @@
+import { remember } from './remember.ts';
 /**
  * Calling the next section out loud, a bar before it arrives.
  *
@@ -39,7 +40,7 @@ export function cuesEnabled(): boolean {
 
 export function setCuesEnabled(on: boolean): void {
   try {
-    localStorage.setItem(LS_ENABLED, on ? '1' : '0');
+    remember(LS_ENABLED, on ? '1' : '0');
   } catch {
     /* not worth failing over */
   }
@@ -51,7 +52,7 @@ export function cueVoiceName(): string {
 
 export function setCueVoiceName(name: string): void {
   try {
-    localStorage.setItem(LS_VOICE, name);
+    remember(LS_VOICE, name);
   } catch {
     /* not worth failing over */
   }
@@ -64,7 +65,7 @@ export function cueLeadBars(): number {
 
 export function setCueLeadBars(bars: number): void {
   try {
-    localStorage.setItem(LS_LEAD, String(bars));
+    remember(LS_LEAD, String(bars));
   } catch {
     /* not worth failing over */
   }

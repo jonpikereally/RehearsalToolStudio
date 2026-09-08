@@ -18,6 +18,7 @@ import { rememberSession, type OutputSet } from './locatePrepared.ts';
 import { rememberRecentOutput, rememberRecentSession } from './recent.ts';
 import { note } from './saveLog.ts';
 import { navigate } from './router';
+import { remember } from './remember.ts';
 import { panelWindow } from './appWindow.ts';
 
 /**
@@ -55,7 +56,7 @@ function rememberRev(path: string, rev: string): void {
   try {
     const all = JSON.parse(localStorage.getItem(LS_WATCH_REV) ?? '{}') as Record<string, string>;
     all[path.toLowerCase()] = rev;
-    localStorage.setItem(LS_WATCH_REV, JSON.stringify(all));
+    remember(LS_WATCH_REV, all);
   } catch {
     /* a session that can't remember still watches */
   }
@@ -116,6 +117,31 @@ function migrateSettings(raw: Partial<Settings> & { sourceKind?: string }): Part
     return { ...raw, useLocal: raw.sourceKind === 'local' };
   }
   return raw;
+}
+
+/**
+ * The library as a shortcut to the first paint, not as a copy of itself.
+ *
+ * What the list needs is a song's name, its tempo and key, and how many parts
+ * it has. The words, the chords, the sections and the patch changes are what
+ * make a library megabytes, are wanted only once a song is opened, and are
+ * read again by the scan every launch — so they are left out of the copy kept
+ * here, and the folder remains the only place they live.
+ */
+function forFirstPaint(library: Library): Library {
+  const light = <T extends object>(of: T, drop: (keyof T)[]): T => {
+    const kept = { ...of };
+    for (const key of drop) delete kept[key];
+    return kept;
+  };
+  return {
+    ...library,
+    songs: library.songs.map((song) => ({
+      ...light(song, ['lanes', 'chords', 'patchClips', 'tempoMap']),
+      markers: [],
+      variants: song.variants.map((v) => light(v, ['clips', 'samples', 'notes'])),
+    })),
+  };
 }
 
 export type SyncState = 'idle' | 'syncing' | 'error' | 'disconnected';
@@ -329,7 +355,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     loadLocal(LS_SETS, []),
   );
   useEffect(() => {
-    localStorage.setItem(LS_SETS, JSON.stringify(knownSets));
+    remember(LS_SETS, knownSets);
   }, [knownSets]);
 
   const chooseSet = useCallback((path: string | null) => {
@@ -423,11 +449,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* ------------------------------ local persist ----------------------------- */
 
   useEffect(() => {
-    localStorage.setItem(LS_LIBRARY, JSON.stringify(library));
+    remember(LS_LIBRARY, forFirstPaint(library));
   }, [library]);
 
   useEffect(() => {
-    localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+    remember(LS_SETTINGS, settings);
   }, [settings]);
 
   /* ------------------------------ writing it back --------------------------- */
@@ -454,7 +480,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         if (result.ok) {
           revRef.current = result.rev;
-          localStorage.setItem(LS_REV, result.rev);
+          remember(LS_REV, result.rev);
           dirty.current = false;
           setSyncState('idle');
         } else {
@@ -515,7 +541,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           (await source.readJson<Library>(legacyLibraryPath(settings.root)));
         if (remote) {
           revRef.current = remote.rev;
-          if (remote.rev) localStorage.setItem(LS_REV, remote.rev);
+          if (remote.rev) remember(LS_REV, remote.rev);
           const theirs = setSongsOnly(remote.data);
           setLibrary((prev) => {
             if (replace) return theirs;

@@ -1,4 +1,5 @@
 import type { OutputSet } from './locatePrepared.ts';
+import { remember } from './remember.ts';
 
 /**
  * What the studio opened last, so a launch can offer it back.
@@ -28,7 +29,7 @@ export function recentOutput(): OutputSet | null {
 
 export function rememberRecentOutput(set: OutputSet): void {
   try {
-    localStorage.setItem(LS_OUTPUT, JSON.stringify(set));
+    remember(LS_OUTPUT, set);
   } catch {
     /* a machine that can't remember still opens; it just asks every time */
   }
@@ -45,7 +46,7 @@ export function recentSession(): string | null {
 
 export function rememberRecentSession(alsPath: string): void {
   try {
-    localStorage.setItem(LS_SESSION, alsPath);
+    remember(LS_SESSION, alsPath);
   } catch {
     /* as above */
   }
@@ -83,7 +84,7 @@ export function setAlwaysOpen(patch: Partial<AlwaysOpen>): AlwaysOpen {
       [LS_ALWAYS_OUTPUT, now.output],
       [LS_ALWAYS_SESSION, now.session],
     ] as const) {
-      if (on) localStorage.setItem(key, '1');
+      if (on) remember(key, '1');
       else localStorage.removeItem(key);
     }
   } catch {

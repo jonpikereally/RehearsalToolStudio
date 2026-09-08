@@ -16,6 +16,7 @@ import {
 } from '../lib/slates';
 import { buildZip } from '../lib/zip';
 import SettingsSection from './SettingsSection';
+import { remember } from '../lib/remember';
 
 const LS_VOICE = 'ls.slates.voice';
 
@@ -61,7 +62,7 @@ export default function SlatesPanel() {
   const chooseVoice = (name: string) => {
     setVoice(name);
     try {
-      localStorage.setItem(LS_VOICE, name);
+      remember(LS_VOICE, name);
     } catch {
       /* not worth failing over */
     }

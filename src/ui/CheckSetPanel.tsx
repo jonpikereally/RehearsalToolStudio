@@ -4,6 +4,7 @@ import { songIdFor } from '../lib/alsImport';
 import { navigate, songUrl } from '../lib/router';
 import { checkSet, TOPIC_LABEL, TOPIC_ORDER, type Finding, type Severity, type Topic } from '../lib/setReview';
 import { useStore } from '../lib/store';
+import { remember } from '../lib/remember';
 
 /**
  * The preflight, arranged so a long report can be worked through.
@@ -81,7 +82,7 @@ export default function CheckSetPanel({
     setViewState((current) => {
       const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
       try {
-        localStorage.setItem(LS_VIEW, JSON.stringify(next));
+        remember(LS_VIEW, next);
       } catch {
         /* the arrangement simply won't persist */
       }
