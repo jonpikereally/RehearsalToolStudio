@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Ask the folder about submixes instead of hashing them into the audio key**
+
+Putting the band's submixes into a song's audio key was wrong twice over. A key is a hash, so it could only ever say that something was different, never what — and it went stale on things that change no audio at all: renaming submixes for their contents rather than their member made every song in every folder look changed, when every file in them was already right.
+
 **Write down that an inversion is a slash chord here, not figured bass**
 
 `I6` is ambiguous between the two readings — the I chord with a sixth on it, and first inversion — and this reads it the first way, as every other notation in the app does. Said where the conversion is, so the next person to meet it knows it was chosen rather than missed.

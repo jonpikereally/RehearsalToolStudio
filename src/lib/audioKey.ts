@@ -1,6 +1,5 @@
 import type { AlsProject, AlsSong } from './alsParser';
-import { partsFor, submixPartsFor, type SongPlan } from './prepare.ts';
-import type { MemberMix } from './members.ts';
+import { partsFor, type SongPlan } from './prepare.ts';
 
 /**
  * A song's audio, as a key: everything that decides what its parts sound
@@ -29,14 +28,21 @@ export interface AudioKeyInputs {
   bitrate: number;
   sampleRate: number;
   plan?: SongPlan;
-  /**
-   * The band's submixes. A member added, or one of them keeping a different
-   * part separate, changes what is written for this song — so it changes the
-   * key, and the song is rendered again rather than left with a submix that
-   * no longer describes anybody.
-   */
-  members?: MemberMix[];
 }
+
+/*
+ * The band's submixes are deliberately not in here.
+ *
+ * They were, and it was wrong twice over: the key is a hash, so it could only
+ * say "something about the submixes is different", never what — and it went
+ * stale on things that change no audio at all. Renaming submixes for their
+ * contents rather than their member made every song in every folder look
+ * changed, when every file in them was already right.
+ *
+ * What is written is in the manifest, part by part, so whether a song's
+ * submixes match the band is a question the folder can answer outright. That
+ * is standingFor's job, beside this one.
+ */
 
 /** 64 bits of FNV-1a as sixteen hex digits: enough to notice a change with. */
 function fnv(text: string): string {
@@ -109,10 +115,7 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
     files: files.join('\n'),
     arrangement: `${tempo}\n${arrangement.join('\n')}`,
     mix: mix.join('\n'),
-    settings: [
-      `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`,
-      ...submixPartsFor(song, parts, inputs.members ?? []).map((p) => `${p.name} of ${p.submix?.of.join(', ')}`),
-    ].join('\n'),
+    settings: `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`,
   };
 }
 

@@ -1971,14 +1971,18 @@ group('a member\'s submix');
   check('and a list of words survives being read back',
     parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0].contains.join() === 'gtr,Vox',
     JSON.stringify(parseMembers([{ member: 'Casey', keeps: [], contains: ['gtr', ' Vox ', 'gtr'] }])[0]));
+  /*
+   * The band is not in the audio key: a key is a hash, and a hash can only
+   * say that something is different, never what. Whether a song's submixes
+   * match the band is read off the manifest instead — see submixState — so
+   * changing the band cannot make a song's audio look stale.
+   */
   const { audioKeyFor } = await import('../src/lib/audioKey.ts');
   const inputs = { fileRev: () => 'r1', bitrate: 192, sampleRate: 48000 };
   const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [song] };
-  const keyWith = (members) => audioKeyFor(song, project, { ...inputs, members });
-  check('a song is stale when the band\'s submixes change, and not otherwise',
-    keyWith([]) !== keyWith([alex]) && keyWith([alex]) === keyWith([{ ...alex }])
-      && keyWith([alex]) !== keyWith([{ member: 'Alex', keeps: ['click', 'cues'] }]),
-    [keyWith([]), keyWith([alex])].join(' | '));
+  check('the band is no part of a song\'s audio key',
+    audioKeyFor(song, project, inputs) === audioKeyFor(song, project, { ...inputs, members: [alex] }),
+    audioKeyFor(song, project, inputs));
 
   // What a save has to work out: which prepared songs are behind the band.
   const { submixState, submixesBehind, spareSubmixes, expectedSubmixOf } = await import('../src/lib/members.ts');

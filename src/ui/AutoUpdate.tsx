@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { parseAls } from '../lib/alsParser';
 import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
-import { audioKeysFor, bandMembers, runPrepare, standingFor, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
+import { audioKeysFor, runPrepare, standingFor, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
@@ -81,7 +81,7 @@ export default function AutoUpdate() {
         if (current()) setPhase({ kind: 'running', at, stage: 'Looking at what changed…', progress: null });
         // The folder this set already has in the band's folder, whatever
         // either is called now: known by the songs in it.
-        const keys = await audioKeysFor(project, currentSet, await bandMembers(band));
+        const keys = await audioKeysFor(project, currentSet);
         const folderName = outputSet?.name ?? (await preparedNameFor(band, currentSet, keys.byName));
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {

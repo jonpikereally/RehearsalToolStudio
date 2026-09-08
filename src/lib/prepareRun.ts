@@ -7,13 +7,13 @@ import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
 import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult } from './prepare';
 import { markPrepareRunning } from './prepareState';
-import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest } from './preparedSet';
+import { MANIFEST_NAME, folderBaseOf, sameSong, type PreparedManifest, type PreparedPart } from './preparedSet';
 import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
 import { absolutePath, readBytes, statFile } from './source';
 import { updatePrepared, wordsChanged } from './updatePrepared';
-import { readMembers, type MemberMix } from './members.ts';
+import { readMembers, spareSubmixes, submixState, type MemberMix } from './members.ts';
 
 /**
  * A prepare, from the set as it stands to the band's folder — the run itself,
@@ -38,7 +38,7 @@ export interface AudioKeys {
  * for before a folder is even chosen, since the keys are also how a set's
  * folder is recognised among the band's when its name has changed.
  */
-export async function audioKeysFor(project: AlsProject, setPath: string, members: MemberMix[] = []): Promise<AudioKeys> {
+export async function audioKeysFor(project: AlsProject, setPath: string): Promise<AudioKeys> {
   const revs = new Map<string, string | null>();
   const paths = new Set<string>();
   for (const song of project.songs) for (const stem of song.stems) for (const clip of stem.clips) {
@@ -62,7 +62,6 @@ export async function audioKeysFor(project: AlsProject, setPath: string, members
     fileRev: (path: string) => revs.get(resolveStemPath(setPath, path).toLowerCase()) ?? null,
     bitrate: DEFAULT_BITRATE,
     sampleRate: 48000,
-    members,
   };
   const byTitle: Record<string, string> = {};
   const byName: Record<string, string> = {};
@@ -78,6 +77,19 @@ export async function audioKeysFor(project: AlsProject, setPath: string, members
 /** The band as the folder has them; an unreadable list is no members at all. */
 export async function bandMembers(band: local.FolderHandle): Promise<MemberMix[]> {
   return readMembers(band).catch(() => []);
+}
+
+/** Who is missing a submix in this song, or what is there for nobody: else null. */
+function submixesFor(parts: PreparedPart[], members: MemberMix[]): string | null {
+  const missing = members.filter((m) => submixState(parts, m) === 'missing').map((m) => m.member);
+  const spare = spareSubmixes(parts, members);
+  if (!missing.length && !spare.length) return null;
+  return [
+    missing.length ? `nothing yet for ${missing.join(', ')}` : '',
+    spare.length ? `${spare.length} nobody needs now` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
 export interface Standing {
@@ -122,16 +134,29 @@ export async function standingFor(
   } catch {
     manifest = null; // never prepared under this name: every song is new
   }
-  // The band's own submixes are part of what a song is written as, so a
-  // member added or a list changed makes the songs stale like anything else.
-  const keys = known ?? (await audioKeysFor(project, setPath, await bandMembers(band)));
+  const keys = known ?? (await audioKeysFor(project, setPath));
+  /*
+   * The submixes are a separate question from the audio, and one the folder
+   * can answer outright: the manifest says which submixes each song holds and
+   * what went into them, so a member added — or one of them keeping something
+   * different — makes the songs that lack their submix stale, and nothing
+   * else. Read once for the whole set.
+   */
+  const members = (await bandMembers(band)).filter((m) => !m.off);
   const standing = new Map<string, AudioStanding>();
   const words = new Set<string>();
   for (const song of project.songs) {
     if (standing.has(song.title)) continue;
     const name = songFolderBase(song);
     const entry = manifest?.songs.find((e) => sameSong(e.folder, name));
-    standing.set(song.title, audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry));
+    const state = audioStanding(keys.byTitle[song.title], entry?.audioKey, !!entry);
+    const behind = entry?.parts?.length ? submixesFor(entry.parts, members) : null;
+    standing.set(
+      song.title,
+      state.state === 'unchanged' && behind
+        ? { state: 'changed', why: `the band's submixes have changed — ${behind}` }
+        : state,
+    );
     if (entry && wordsChanged(entry, song, project, setPath)) words.add(song.title);
   }
   return { standing, words, keys: keys.byTitle, lastPrepared: manifest?.preparedAt ?? null, manifest };
