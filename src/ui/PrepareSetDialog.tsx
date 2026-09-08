@@ -5,6 +5,7 @@ import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
+import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
 import { note } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
@@ -49,10 +50,12 @@ export default function PrepareSetDialog({
   /** The running order to write, by title, when a setlist's own; else the set's. */
   order?: string[];
   /**
-   * `submixes` writes the members' submixes and nothing else — the stems in
-   * those folders stay as they are. Preparing the two is separate work.
+   * The job this window was opened for, when it was opened for one: the bar
+   * offers each on its own. It picks the button that leads, and keeps the
+   * songs the caller chose — they are chosen for that job, not for the audio's
+   * sake, so the usual unticking of unchanged songs must not touch them.
    */
-  only?: 'submixes';
+  only?: 'stems' | 'submixes' | 'info';
 }) {
   const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
@@ -60,6 +63,15 @@ export default function PrepareSetDialog({
   const [published, setPublished] = useState<PublishResult | null>(null);
   /** What a submix run wrote, which is its own kind of finished. */
   const [submixResult, setSubmixResult] = useState<PrepareResult | null>(null);
+  /**
+   * Which job the press asks for. `all` is the whole thing — the stems of the
+   * songs ticked, the submixes anybody is missing, and the words of the rest.
+   * The other three are that work taken apart, since a set is usually behind
+   * in one way at a time.
+   */
+  const [job, setJob] = useState<'all' | 'stems' | 'submixes' | 'info'>(only ?? 'all');
+  /** Which facts an info run writes. */
+  const [infoKinds, setInfoKinds] = useState<InfoKinds>(ALL_INFO);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<AlsProject | null>(null);
@@ -158,7 +170,7 @@ export default function PrepareSetDialog({
        * by definition — that is the whole point of the pass — and unticking
        * them would leave the dialog offering nothing.
        */
-      if (manifest && only !== 'submixes') {
+      if (manifest && !only) {
         setChosen((was) => {
           const base = was ?? new Set(project.songs.map((s) => s.title));
           return new Set([...base].filter((t) => next.get(t)?.state !== 'unchanged'));
@@ -174,8 +186,6 @@ export default function PrepareSetDialog({
   const titles = project ? titlesOf(project) : [];
   // Nothing chosen yet means the whole set, which is what the button says.
   const selected = chosen ?? new Set(titles);
-  // Nothing ticked can still be a run: the unchanged songs' words and sections.
-  const refreshable = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged').length;
   const toggle = (title: string) => {
     const next = new Set(selected);
     if (next.has(title)) next.delete(title);
@@ -189,7 +199,7 @@ export default function PrepareSetDialog({
    * already granted — a picker opened after an await is a picker the browser
    * refuses.
    */
-  const go = async (folder: local.FolderHandle) => {
+  const go = async (folder: local.FolderHandle, kind: 'all' | 'stems' | 'submixes' | 'info' = job) => {
     if (!setPath) return;
     running.current = new AbortController();
     setBusy(true);
@@ -203,15 +213,23 @@ export default function PrepareSetDialog({
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       const touched: Aside[] = [];
       aside.current = { folder: folderName, songs: touched };
+      const ticked = [...selected];
+      const behind = titles.filter((t) => submixStanding?.get(t));
       const out = await runPrepare({
         project: full,
         setPath,
         band: folder,
         folderName,
-        // The submix pass takes its songs in its own list; the stems' pass in
-        // the other, and a run is only ever asked for one of them here.
-        selected: only === 'submixes' ? [] : [...selected],
-        submixes: only === 'submixes' ? [...selected] : undefined,
+        /*
+         * Each job says which of the three passes it wants. The stems' songs
+         * go in one list, the submixes' in another, and what the words do is
+         * `refresh` — so "prepare the submixes" writes nothing but submixes,
+         * and "prepare the info" reads no audio at all.
+         */
+        selected: kind === 'all' || kind === 'stems' ? ticked : [],
+        submixes: kind === 'all' ? behind : kind === 'submixes' ? ticked : undefined,
+        refresh: kind === 'stems' || kind === 'submixes' ? 'none' : kind === 'info' ? ticked : 'auto',
+        infoKinds: kind === 'info' ? infoKinds : undefined,
         standing,
         words,
         keys,
@@ -298,10 +316,10 @@ export default function PrepareSetDialog({
   };
   const undoable = !busy && !!aside.current?.songs.length;
 
-  const start = async () => {
+  const start = async (kind: 'all' | 'stems' | 'submixes' | 'info' = job) => {
     try {
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
-      await go(folder);
+      await go(folder, kind);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/abort/i.test(message)) setError(message);
@@ -320,7 +338,11 @@ export default function PrepareSetDialog({
         <h3>
           {only === 'submixes'
             ? `Write the band's submixes for ${alsName ?? 'the set'}`
-            : `${lastPrepared ? 'Update' : 'Prepare'} ${alsName ?? 'the set'} for Rehearsal Tool`}
+            : only === 'info'
+              ? `Write the words and sections of ${alsName ?? 'the set'}`
+              : only === 'stems'
+                ? `Render the stems of ${alsName ?? 'the set'}`
+                : `${lastPrepared ? 'Update' : 'Prepare'} ${alsName ?? 'the set'} for Rehearsal Tool`}
         </h3>
         {/* The form, until a run has finished: then what happened is all that's shown. */}
         {!result && !submixResult && (
@@ -329,7 +351,9 @@ export default function PrepareSetDialog({
       <div style={{ color: 'var(--text-dim)', fontSize: 14 }}>
         {only === 'submixes'
           ? "Writes each member's submix from the set's own audio, and nothing else: the stems already in the folder stay exactly as they are."
-          : `Reads the set's current arrangement and writes each song out as small files anyone can play — phones included, with no Ableton needed at the other end.`}
+          : only === 'info'
+            ? 'Writes the facts beside the audio — sections, chords, words, patch changes — into the folder. Nothing is rendered and no stem is touched.'
+            : `Reads the set's current arrangement and writes each song out as small files anyone can play — phones included, with no Ableton needed at the other end.`}
       </div>
 
       <div className="field">
@@ -598,25 +622,33 @@ export default function PrepareSetDialog({
                 Undo this prepare
               </button>
             )}
-            <button
-              className="btn primary"
-              onClick={() => void start()}
-              disabled={busy || !setPath || (selected.size === 0 && !refreshable)}
-            >
-              {busy
-                ? only === 'submixes' ? 'Writing the submixes…' : 'Preparing…'
-                : selected.size === 0
-                  ? refreshable && only !== 'submixes'
-                    ? `Refresh words and sections of ${refreshable} unchanged song${refreshable === 1 ? '' : 's'}`
-                    : 'Nothing chosen'
-                  : only === 'submixes'
-                    ? `Write the submixes of ${selected.size} song${selected.size === 1 ? '' : 's'}`
-                    : `${publishFolderName ? 'Prepare' : 'Choose a folder and prepare'} ${
-                        selected.size === titles.length && titles.length
-                          ? 'the whole setlist'
-                          : `${selected.size} song${selected.size === 1 ? '' : 's'}`
-                      }`}
-            </button>
+            {/*
+              Four jobs, because a set is usually behind in one way at a time:
+              everything, the stems alone, the submixes alone, or the words
+              and sections beside them, which read no audio at all.
+            */}
+            {/* Which facts an info run writes; all of them unless told otherwise. */}
+            {(
+              [
+                ['all', 'Prepare all', 'The stems of the songs ticked, the submixes anybody is missing, and the words of the rest'],
+                ['stems', 'Prepare stems', 'Render the ticked songs — their parts and their submixes. The slow one.'],
+                ['submixes', 'Prepare submixes', "Each member's submix of the ticked songs, from the audio already in the folder"],
+                ['info', 'Prepare info', 'The facts beside the audio: sections, chords, words, patch changes. Nothing is rendered.'],
+              ] as const
+            ).map(([kind, label, why]) => (
+              <button
+                key={kind}
+                className={kind === (only ?? 'all') ? 'btn primary' : 'btn'}
+                title={why}
+                disabled={busy || !setPath || selected.size === 0}
+                onClick={() => {
+                  setJob(kind);
+                  void start(kind);
+                }}
+              >
+                {busy && kind === job ? `${label}…` : label}
+              </button>
+            ))}
             <button
               className={busy ? 'btn danger' : 'btn'}
               onClick={() => (busy ? running.current?.abort() : onClose())}
@@ -627,6 +659,38 @@ export default function PrepareSetDialog({
           </>
         )}
       </div>
+      {/*
+        What "Prepare info" writes. All of it unless told otherwise — a set
+        whose chords have been redone and whose sections have not should be
+        able to send the chords without the sections following. What is left
+        unticked is not touched: the entry keeps what it had.
+      */}
+      {!result && !submixResult && (
+        <div className="info-kinds">
+          <span className="control-label">Info to write</span>
+          <button
+            className={Object.values(infoKinds).every(Boolean) ? 'chip on' : 'chip'}
+            disabled={busy}
+            onClick={() => setInfoKinds(ALL_INFO)}
+          >
+            All
+          </button>
+          {(Object.keys(INFO_LABEL) as (keyof InfoKinds)[]).map((kind) => (
+            <button
+              key={kind}
+              className={infoKinds[kind] ? 'chip on' : 'chip'}
+              disabled={busy}
+              onClick={() => {
+                const next = { ...infoKinds, [kind]: !infoKinds[kind] };
+                // Never none: the button would have nothing to write.
+                setInfoKinds(Object.values(next).some(Boolean) ? next : { ...ALL_INFO });
+              }}
+            >
+              {INFO_LABEL[kind]}
+            </button>
+          ))}
+        </div>
+      )}
       {!result && (
         <div style={{ color: '#6b7789', fontSize: 12.5 }}>
           Reads every stem the set points at, which is gigabytes, so it wants the machine those files

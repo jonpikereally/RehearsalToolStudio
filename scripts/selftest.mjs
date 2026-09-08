@@ -2020,6 +2020,40 @@ group('a member\'s submix');
       .map((m) => m.member).join() === 'Alex');
 }
 
+group('writing only some of the info');
+{
+  const { keepUnasked, ALL_INFO } = await import('../src/lib/updatePrepared.ts');
+  const before = {
+    folder: 'One (2026-09-06)', title: 'One', originalKey: 'C', notes: 'old note', tempo: 120,
+    markers: [{ bar: 1, name: 'INTRO' }], chords: [{ bar: 1, text: 'C' }], lanes: [], patchClips: [{ bar: 1 }],
+  };
+  const now = {
+    folder: 'One (2026-09-06)', title: 'One', originalKey: 'D', notes: 'new note', tempo: 124,
+    markers: [{ bar: 1, name: 'VERSE' }], chords: [{ bar: 1, text: 'D' }], lanes: [{ kind: 'lyrics', items: [] }],
+    patchClips: [{ bar: 5 }],
+  };
+  const only = (kinds) => keepUnasked(before, now, { info: false, sections: false, chords: false, lyrics: false, patches: false, ...kinds });
+
+  const sections = only({ sections: true });
+  check('a sections-only run writes the sections and leaves the rest',
+    sections.markers[0].name === 'VERSE' && sections.chords[0].text === 'C' && sections.originalKey === 'C'
+      && sections.notes === 'old note' && sections.patchClips[0].bar === 1,
+    JSON.stringify(sections));
+  const chords = only({ chords: true });
+  check('a chords-only run writes the chords and leaves the sections',
+    chords.chords[0].text === 'D' && chords.markers[0].name === 'INTRO');
+  const info = only({ info: true });
+  check('the song\'s own facts move together — key, notes, tempo',
+    info.originalKey === 'D' && info.notes === 'new note' && info.tempo === 124 && info.markers[0].name === 'INTRO');
+  const patches = only({ patches: true });
+  check('and the patch changes on their own', patches.patchClips[0].bar === 5 && patches.chords[0].text === 'C');
+  check('all of it is the new entry whole',
+    JSON.stringify(keepUnasked(before, now, ALL_INFO)) === JSON.stringify({ ...now, lanes: now.lanes }),
+    JSON.stringify(keepUnasked(before, now, ALL_INFO)));
+  check('and nothing prepared before has nothing to keep',
+    JSON.stringify(keepUnasked(undefined, now, { info: false, sections: false, chords: false, lyrics: false, patches: false })) === JSON.stringify(now));
+}
+
 group('prepared set manifest');
 {
   const { applyManifest, isManifestName, setFolderOf } = await import('../src/lib/preparedSet.ts');

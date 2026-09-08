@@ -100,6 +100,58 @@ export function setFor(
   return named[0] ?? null;
 }
 
+/**
+ * Which of the facts beside the audio to write.
+ *
+ * They come from one save and cost nothing to write, but they are not one
+ * thing: a set whose chords have been redone and whose sections have not
+ * should be able to send the chords without the sections following. Nothing
+ * unticked is touched — the entry keeps what it had.
+ */
+export interface InfoKinds {
+  /** Key, tempo, time signature, length, notes — the song's own facts. */
+  info: boolean;
+  sections: boolean;
+  /** The chords, and the .cho chart written from them. */
+  chords: boolean;
+  /** The lyric lanes, and the .lrc written from them. */
+  lyrics: boolean;
+  /** Patch changes, from the rig markers and rig clips. */
+  patches: boolean;
+}
+
+export const ALL_INFO: InfoKinds = { info: true, sections: true, chords: true, lyrics: true, patches: true };
+
+export const INFO_LABEL: Record<keyof InfoKinds, string> = {
+  info: 'Song info',
+  sections: 'Sections',
+  chords: 'Chords',
+  lyrics: 'Lyrics',
+  patches: 'Patch changes',
+};
+
+/** The new entry where a kind was asked for, the old one where it wasn't. */
+export function keepUnasked(before: PreparedSongInfo | null | undefined, now: PreparedSongInfo, kinds: InfoKinds): PreparedSongInfo {
+  if (!before) return now;
+  const pick = <K extends keyof PreparedSongInfo>(on: boolean, key: K) => (on ? now[key] : before[key]);
+  return {
+    ...now,
+    originalKey: pick(kinds.info, 'originalKey'),
+    notes: pick(kinds.info, 'notes'),
+    tempo: kinds.info ? now.tempo : before.tempo,
+    timeSignature: kinds.info ? now.timeSignature : before.timeSignature,
+    bars: kinds.info ? now.bars : before.bars,
+    durationSec: kinds.info ? now.durationSec : before.durationSec,
+    tempoMap: pick(kinds.info, 'tempoMap'),
+    markers: pick(kinds.sections, 'markers'),
+    chords: pick(kinds.chords, 'chords'),
+    // The lanes carry the words and the chords both, so they follow whichever
+    // of the two was asked for.
+    lanes: kinds.lyrics || kinds.chords ? now.lanes : before.lanes,
+    patchClips: pick(kinds.patches, 'patchClips'),
+  };
+}
+
 export interface UpdateOptions {
   project: AlsProject;
   /** The `.als` this set came from, recorded in the manifest. */
@@ -116,6 +168,8 @@ export interface UpdateOptions {
   songOrder?: string[];
   /** The session's absolute path, kept in the manifest. */
   sessionPath?: string;
+  /** Which facts to write; all of them when absent. */
+  kinds?: InfoKinds;
   writeFile: (path: string, data: Blob) => Promise<string>;
   onProgress?: (p: { title: string; index: number; count: number }) => void;
   signal?: AbortSignal;
@@ -305,17 +359,18 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
     const songFolder = `${setFolder}/${folderName}`;
     const base = safeName(song.title);
 
-    const words = lyricsFileFor(song, project);
+    const kinds = opts.kinds ?? ALL_INFO;
+    const words = kinds.lyrics ? lyricsFileFor(song, project) : null;
     if (words) {
       await writeFile(`${songFolder}/${base}.lrc`, words);
       lyricsWritten++;
-    } else if (standing.entry?.lanes?.some((lane) => lane.kind === 'lyrics' && lane.items.length)) {
+    } else if (kinds.lyrics && standing.entry?.lanes?.some((lane) => lane.kind === 'lyrics' && lane.items.length)) {
       // It had words when it was prepared and has none now. The file on disk
       // is the old ones, and nothing here can remove it.
       stale.push(`${folderName}/${base}.lrc`);
     }
 
-    const chart = chordProFor(song, project);
+    const chart = kinds.chords ? chordProFor(song, project) : null;
     if (chart) {
       await writeFile(`${songFolder}/${base}.cho`, new Blob([chart], { type: 'text/plain' }));
       chartsWritten++;
@@ -329,11 +384,11 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       audioKey: standing.entry?.audioKey,
       renderedAt: standing.entry?.renderedAt,
     });
-    written.push(entry);
+    written.push(keepUnasked(standing.entry, entry, kinds));
     // The folder's own copy of the entry, refreshed with it.
     await writeFile(
       `${songFolder}/${SONG_FILE_NAME}`,
-      new Blob([JSON.stringify(songFileFor(entry, setFolder.split('/').pop() ?? setFolder, alsPath), null, 2)], {
+      new Blob([JSON.stringify(songFileFor(written[written.length - 1], setFolder.split('/').pop() ?? setFolder, alsPath), null, 2)], {
         type: 'application/json',
       }),
     );

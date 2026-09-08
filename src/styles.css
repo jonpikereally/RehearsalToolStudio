@@ -2645,6 +2645,15 @@ input[type='range'] {
   overflow-y: auto;
 }
 
+/* What a "prepare the info" run writes: all of it, or the ticked kinds. */
+.info-kinds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
 /* --------------------------- how far behind ------------------------------- */
 
 /*

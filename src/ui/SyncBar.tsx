@@ -23,7 +23,7 @@ import PrepareSetDialog from './PrepareSetDialog';
 export default function SyncBar() {
   const { currentSet, outputSet, setSaved } = useStore();
   const [running, setRunning] = useState(0);
-  const [dialog, setDialog] = useState<{ titles: string[]; only?: 'submixes' } | null>(null);
+  const [dialog, setDialog] = useState<{ titles: string[]; only?: 'stems' | 'submixes' | 'info' } | null>(null);
   const standing = usePreparedStanding(currentSet, `${setSaved?.at ?? ''}|${running}`);
 
   // A prepare finishing anywhere is a reason to ask again.
@@ -62,7 +62,7 @@ export default function SyncBar() {
           label="Stems"
           count={stems}
           title={stems ? `${found.stemsBehind.slice(0, 6).join(', ')}${stems > 6 ? '…' : ''}` : 'Every song matches the arrangement.'}
-          onClick={() => setDialog({ titles: found.stemsBehind })}
+          onClick={() => setDialog({ titles: found.stemsBehind, only: 'stems' })}
         />
         <Chip
           label="Words &amp; sections"
@@ -76,7 +76,7 @@ export default function SyncBar() {
                   : ' They come with the stems, since those songs are being written again anyway.')
               : 'Every song\u2019s sections, chords and words match the set.'
           }
-          onClick={() => setDialog({ titles: [] })}
+          onClick={() => setDialog({ titles: found?.wordsRefreshable ?? [], only: 'info' })}
         />
         <Chip
           label="Submixes"

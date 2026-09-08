@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Offer the four jobs a prepare is really made of, and let the info be chosen**
+
+One button did everything, which is fine when everything needs doing and wrong the rest of the time: a set whose sections have moved does not want twenty minutes of rendering, and a band that has changed does not want its stems written again. The window offers the four jobs instead — prepare all, the stems, the submixes, the info — each acting on the songs ticked, and the one the window was opened for leads.
+
 **Offer the button that would help, not the one that wouldn't**
 
 Two ways of being behind, and only one of them a reload fixes. A server still running the code it started with is caught up by opening the app again, since the servers come up with it — so that banner now carries a Quit and reopen button, which quits and opens it a second later, rather than a sentence telling somebody to do it themselves.

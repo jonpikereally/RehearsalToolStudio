@@ -12,7 +12,7 @@ import { SETS_FOLDER } from './prints';
 import { publishLibrary, type PublishResult } from './publish';
 import { clearDecodedCache, releaseReady } from './songLoader';
 import { absolutePath, readBytes, statFile } from './source';
-import { updatePrepared, wordsChanged } from './updatePrepared';
+import { updatePrepared, wordsChanged, type InfoKinds } from './updatePrepared';
 import { readMembers, spareSubmixes, submixState, type MemberMix } from './members.ts';
 
 /**
@@ -264,6 +264,18 @@ export interface RunOptions {
   aside?: local.Aside[];
   /** The band's submixes; read from the folder when not given. */
   members?: MemberMix[];
+  /**
+   * Whose words and sections to write, and which of them.
+   *
+   * `auto` is what a prepare has always done: the songs left alone get their
+   * words refreshed, narrowed to the ones whose words actually moved. A list
+   * of titles is somebody asking for those songs outright, whether or not
+   * anything about them changed; `none` leaves the words alone entirely,
+   * which is what a stems-only or submixes-only run wants.
+   */
+  refresh?: 'auto' | 'none' | string[];
+  /** Which facts an info run writes; all of them when absent. */
+  infoKinds?: InfoKinds;
   signal?: AbortSignal;
   onProgress?: (p: PrepareProgress) => void;
 }
@@ -459,7 +471,12 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
      * in the set lands everywhere, whether or not any audio moved. The cheap
      * path, over the manifest the run just wrote — or the one that was there.
      */
-    const unchanged = titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
+    const wanted = o.refresh ?? 'auto';
+    const unchanged = Array.isArray(wanted)
+      ? wanted
+      : wanted === 'none'
+        ? []
+        : titles.filter((t) => !selected.has(t) && standing?.get(t)?.state === 'unchanged');
     let refreshed: RunOutcome['refreshed'] = null;
     if (unchanged.length) {
       try {
@@ -470,7 +487,13 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
         const orderNow = folderOrder(project, songOrder).map((n) => n.toLowerCase());
         const orderThen = manifest.songs.map((e) => folderBaseOf(e.folder).toLowerCase()).filter((n) => orderNow.includes(n));
         const orderMoved = orderThen.join('|') !== orderNow.filter((n) => orderThen.includes(n)).join('|');
-        const untouched = o.words && !orderMoved ? unchanged.filter((t) => o.words!.has(t)) : unchanged;
+        // Asked for by name, they are all written; found by the run, only the
+        // ones whose words moved — or every one, when the order itself did.
+        const untouched = Array.isArray(wanted)
+          ? unchanged
+          : o.words && !orderMoved
+            ? unchanged.filter((t) => o.words!.has(t))
+            : unchanged;
         if (!untouched.length) {
           refreshed = { count: 0, songs: [] };
           throw Object.assign(new Error('nothing to refresh'), { name: 'NothingToRefresh' });
@@ -492,6 +515,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           manifest,
           presentFolders,
           only: untouched,
+          kinds: o.infoKinds,
           songOrder,
           sessionPath,
           writeFile,
