@@ -27,6 +27,14 @@ export interface PreparedStanding {
   total: number;
   /** The songs whose stems want writing again, by title. */
   stemsBehind: string[];
+  /**
+   * Songs whose words, sections, chords or notes differ from the folder —
+   * whether or not their audio does too. A song being written again brings
+   * its words with it, so those are said and not offered.
+   */
+  wordsBehind: string[];
+  /** Of those, the ones a refresh can do on its own: their audio is right. */
+  wordsRefreshable: string[];
   /** The songs whose submixes don't match the band, by title, and why. */
   submixesBehind: string[];
   /** One song's reason, for saying what is behind rather than how many. */
@@ -79,6 +87,8 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
             words: titles.filter((t) => standing.standing.get(t)?.state === 'unchanged' && standing.words.has(t)).length,
             total: titles.length,
             stemsBehind: titles.filter((t) => standing.standing.get(t)?.state !== 'unchanged'),
+            wordsBehind: titles.filter((t) => standing.words.has(t)),
+            wordsRefreshable: titles.filter((t) => standing.standing.get(t)?.state === 'unchanged' && standing.words.has(t)),
             submixesBehind: titles.filter((t) => !!standing.submixes.get(t)),
             whySubmixes: titles.map((t) => standing.submixes.get(t)).find(Boolean) ?? null,
           },

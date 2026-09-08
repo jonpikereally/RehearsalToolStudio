@@ -7,11 +7,14 @@ import PrepareSetDialog from './PrepareSetDialog';
 /**
  * Whether the band's folder still matches the set, said where it can be seen.
  *
- * Two separate questions, and two separate jobs. The stems come from the
+ * Three separate questions, and three separate jobs. The stems come from the
  * arrangement: move a clip, change a fader, and the songs they belong to want
- * writing again. The submixes come from the stems and follow whoever is in
- * the band: add a member, or change what one of them keeps, and every song
- * wants a file it hasn't got — with every stem in it already right.
+ * writing again. The words — the sections, the chords, the lyrics, a note
+ * typed on a song — come from the same set but cost nothing to write, so a
+ * section renamed is not a re-render. The submixes come from the stems and
+ * follow whoever is in the band: add a member, or change what one of them
+ * keeps, and every song wants a file it hasn't got, with every stem in it
+ * already right.
  *
  * Each says how many songs are behind and offers to do that job alone. A
  * count that has just gone up flashes, because the answer changes while
@@ -36,6 +39,9 @@ export default function SyncBar() {
 
   const found = standing.state === 'found' ? standing.found : null;
   const stems = found?.stemsBehind.length ?? 0;
+  const words = found?.wordsBehind.length ?? 0;
+  // The ones a refresh can do alone; the rest come with their song's render.
+  const refreshable = found?.wordsRefreshable.length ?? 0;
   const submixes = found?.submixesBehind.length ?? 0;
 
   if (!currentSet || !outputSet || !found) return null;
@@ -48,6 +54,20 @@ export default function SyncBar() {
           count={stems}
           title={stems ? `${found.stemsBehind.slice(0, 6).join(', ')}${stems > 6 ? '…' : ''}` : 'Every song matches the arrangement.'}
           onClick={() => setDialog({ titles: found.stemsBehind })}
+        />
+        <Chip
+          label="Words &amp; sections"
+          count={words}
+          idle={!refreshable}
+          title={
+            words
+              ? `The sections, chords or lyrics differ — ${found.wordsBehind.slice(0, 6).join(', ')}${words > 6 ? '…' : ''}.` +
+                (refreshable
+                  ? ' Writing them renders nothing.'
+                  : ' They come with the stems, since those songs are being written again anyway.')
+              : 'Every song\u2019s sections, chords and words match the set.'
+          }
+          onClick={() => setDialog({ titles: [] })}
         />
         <Chip
           label="Submixes"
@@ -82,7 +102,20 @@ export default function SyncBar() {
  * goes down, since work being done is not news — and says nothing at all
  * loudly when there is nothing to do.
  */
-function Chip({ label, count, title, onClick }: { label: string; count: number; title: string; onClick: () => void }) {
+function Chip({
+  label,
+  count,
+  title,
+  onClick,
+  idle,
+}: {
+  label: string;
+  count: number;
+  title: string;
+  onClick: () => void;
+  /** Behind, but with nothing of its own to do about it. */
+  idle?: boolean;
+}) {
   const [flash, setFlash] = useState(false);
   const before = useRef(count);
   useEffect(() => {
@@ -97,9 +130,9 @@ function Chip({ label, count, title, onClick }: { label: string; count: number; 
 
   return (
     <button
-      className={`sync-chip${count ? ' behind' : ''}${flash ? ' flash' : ''}`}
-      onClick={count ? onClick : undefined}
-      disabled={!count}
+      className={`sync-chip${count ? (idle ? ' waiting' : ' behind') : ''}${flash ? ' flash' : ''}`}
+      onClick={count && !idle ? onClick : undefined}
+      disabled={!count || idle}
       title={title}
     >
       <span className="sync-dot" aria-hidden="true" />

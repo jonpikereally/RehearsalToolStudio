@@ -2711,6 +2711,15 @@ input[type='range'] {
   background: var(--accent);
 }
 
+/* Behind, but with nothing of its own to do: it comes with the stems. */
+.sync-chip.waiting .sync-dot {
+  background: var(--text-dim);
+}
+
+.sync-chip.waiting .sync-count {
+  color: var(--text-dim);
+}
+
 /* It went up while nobody was looking: say so, briefly. */
 .sync-chip.flash {
   animation: sync-flash 0.8s ease-in-out 3;

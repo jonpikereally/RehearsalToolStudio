@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-07
 
+**Count the words and sections apart from the stems that carry them**
+
+"Stems 1 behind" was the whole story a song could tell, so a set whose sections and chords had moved said nothing about them — and a song whose audio had also moved by a hair looked like nothing but a re-render.
+
 **Give the band's file its own prompt for the site**
 
 It was a section inside the submix prompt, which was right while the site only read it. The site is meant to write it now — a member setting what they keep without asking anybody to open a laptop — so the file that two apps write gets a page of its own: the shape, how names are matched, the merge both sides owe each other, and what a page for it could offer.
