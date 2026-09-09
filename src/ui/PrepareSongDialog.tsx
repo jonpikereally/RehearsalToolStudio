@@ -5,7 +5,8 @@ import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchSe
 import { holdAwake } from '../lib/keepAwake';
 import { useLiveOrder } from '../lib/useLiveOrder';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
-import { describeParts, overallProgress, partFileName, prepareSet, songFolderName, soundsInSong, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
+import { describeParts, overallProgress, partFileName, partsFor, prepareSet, songFolderName, soundsInSong, submixPartsFor, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
+import type { MemberMix } from '../lib/members';
 import { readBytes } from '../lib/source';
 import { clearDecodedCache, releaseReady } from '../lib/songLoader';
 import * as local from '../lib/localSource';
@@ -35,6 +36,26 @@ import { bandMembers, removeSilentParts } from '../lib/prepareRun';
 
 type Choice = 'print' | 'combine' | 'skip';
 
+/**
+ * The three jobs the buttons offer, the same three a whole set gets: render
+ * the song (its parts and its submixes), write only the submixes from the
+ * audio already there, or write only the words and sections beside it. A
+ * song is behind in one way at a time as much as a set is.
+ */
+type Job = 'stems' | 'submixes' | 'info';
+
+const JOBS: readonly [Job, string, string][] = [
+  ['stems', 'Prepare stems', 'Render the song — its parts and its submixes. The slow one; writes the folder over.'],
+  ['submixes', 'Prepare submixes', "Each member's submix, from the audio already in the folder. The stems are not touched."],
+  ['info', 'Prepare info', 'The words and sections beside the audio: sections, chords, lyrics, patch changes. Nothing is rendered.'],
+];
+
+const CONFIRM_TITLE: Record<Job, string> = {
+  stems: 'Render the stems?',
+  submixes: 'Write the submixes?',
+  info: 'Write the words and sections?',
+};
+
 const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
   const pct = Math.round(overallProgress(progress) * 100);
   return (
@@ -59,6 +80,12 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [updated, setUpdated] = useState<UpdateResult | null>(null);
+  /** The band, when its folder is already granted, so the submixes can be named before they are made. */
+  const [members, setMembers] = useState<MemberMix[]>([]);
+  /** The job a press has asked for and is waiting to be agreed to: the work starts on the second press. */
+  const [confirming, setConfirming] = useState<Job | null>(null);
+  /** The job that is running, for the button that says so. */
+  const [job, setJob] = useState<Job | null>(null);
   /*
    * A run in progress, so it can be stopped. Preparing reads whole WAVs and
    * encodes them, which is minutes on a long song — and a dialog that offers
@@ -100,6 +127,24 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     };
   }, [song.setPath, song.title]);
 
+  // The band, read from its folder when that is already granted; asked for otherwise on the press.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const folder = await publishFolder();
+        if (!folder) return;
+        const band = (await bandMembers(folder)).filter((m) => !m.off);
+        if (live) setMembers(band);
+      } catch {
+        /* nobody in the band yet, or no folder: no submixes to name */
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [publishFolder]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !busy) onClose();
@@ -114,6 +159,12 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const printing = stems.filter((s) => choice[s.name] === 'print');
   const combining = stems.filter((s) => choice[s.name] === 'combine');
   const partCount = printing.length + (combining.length ? 1 : 0);
+  const plan: SongPlan = {
+    print: printing.map((s) => s.name),
+    combine: combining.length ? [{ name: combinedName || 'band', stems: combining.map((s) => s.name) }] : [],
+  };
+  // The submixes the band's lists ask for, from the parts as chosen above.
+  const submixNames = alsSong ? submixPartsFor(alsSong, partsFor(alsSong, plan), members).map((p) => p.name) : [];
   // The folder the rest of the set went into, if it was ever named; else today's.
   const setName = outputSet?.name ?? setNameFor(song.setPath ?? null);
   const folderName = alsSong ? songFolderName(alsSong) : '';
@@ -148,8 +199,10 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     }
   };
 
-  const go = async () => {
+  const go = async (kind: Job) => {
     if (!alsSong || !project || !song.setPath) return;
+    if (kind === 'info') return updateWordsOnly();
+    setJob(kind);
     running.current = new AbortController();
     // Minutes of work nobody is touching is what a Mac calls idle; held
     // awake, or the display sleeps, the app naps and the run crawls.
@@ -173,10 +226,6 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       // Asked for inside the click, where a dialog is allowed to open.
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
       const setPath = song.setPath;
-      const plan: SongPlan = {
-        print: printing.map((s) => s.name),
-        combine: combining.length ? [{ name: combinedName || 'band', stems: combining.map((s) => s.name) }] : [],
-      };
       // What is about to be written over is kept aside, as a set-wide run keeps it.
       const setFolder = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}`;
       await local.undoBegin(folder, setFolder);
@@ -191,6 +240,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
          * just been asked to make.
          */
         members: (await bandMembers(folder)).filter((m) => !m.off),
+        // Only the submixes, into the folder the song already has, its stems untouched.
+        submixesOnly: kind === 'submixes',
         beforeSong: async (name, previous) => {
           if (previous) await local.undoKeep(folder, setFolder, previous);
           await local.undoKeep(folder, setFolder, name);
@@ -250,6 +301,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       running.current = null;
       setBusy(false);
       setProgress(null);
+      setJob(null);
     }
   };
 
@@ -264,6 +316,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
    */
   const updateWordsOnly = async () => {
     if (!project || !alsSong || !song.setPath) return;
+    setJob('info');
     setBusy(true);
     setError(null);
     setUpdated(null);
@@ -291,6 +344,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       if (!/abort/i.test(message)) setError(message);
     } finally {
       setBusy(false);
+      setJob(null);
     }
   };
 
@@ -371,6 +425,13 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
                   {' — '}
                   {printing.map((s) => partFileName(song.title, s.name, s.reference)).join(', ')}
                   {combining.length ? `${printing.length ? ', ' : ''}${partFileName(song.title, combinedName || 'band')}` : ''}.
+                  {submixNames.length > 0 && (
+                    <>
+                      {' '}
+                      And {submixNames.length === 1 ? 'one submix' : `${submixNames.length} submixes`} for the band, into{' '}
+                      <span className="code">submixes/</span> — {submixNames.map((n) => `[${n}]`).join(', ')}.
+                    </>
+                  )}{' '}
                   The tempo, key and time signature are in the folder name, the part in the
                   brackets, and the words and sections go beside them — nothing there needs this
                   app to read.
@@ -475,6 +536,37 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
           </div>
         )}
 
+        {/* What the press just asked for, in the plain terms it will happen in. */}
+        {confirming && !busy && !result && !updated && (
+          <div className="notice" role="status">
+            <strong>{CONFIRM_TITLE[confirming]}</strong>
+            <div style={{ marginTop: 4 }}>
+              {confirming === 'stems' && (
+                <>
+                  Render {partCount} part{partCount === 1 ? '' : 's'}
+                  {submixNames.length ? ` and ${submixNames.length} submix${submixNames.length === 1 ? '' : 'es'}` : ''} of “
+                  {song.title}” into “{setName}” in the band’s folder. Every stem the set points at is read, and the
+                  song’s folder is written over — what it held is kept aside, so it can be undone; and it can be
+                  stopped while it runs.
+                </>
+              )}
+              {confirming === 'submixes' && (
+                <>
+                  Write {submixNames.length} submix{submixNames.length === 1 ? '' : 'es'} for “{song.title}” into “{setName}”,
+                  from the audio already in the folder — {submixNames.map((n) => `[${n}]`).join(', ')}. The stems are
+                  not touched.
+                </>
+              )}
+              {confirming === 'info' && (
+                <>
+                  Write the sections, chords, lyrics and patch changes of “{song.title}” into “{setName}”. Nothing is
+                  rendered and no audio is read.
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="btn-row">
           {result ? (
             // Finished: one thing left to do, and it is the plain one.
@@ -483,21 +575,44 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             </button>
           ) : (
             <>
-              <button
-                className="btn primary"
-                disabled={busy || !alsSong || partCount === 0}
-                onClick={() => void go()}
-              >
-                {busy ? 'Preparing…' : publishFolderName ? 'Prepare' : 'Choose the band\'s folder and prepare'}
-              </button>
-              <button
-                className="btn"
-                disabled={busy || !alsSong}
-                onClick={() => void updateWordsOnly()}
-                title="Rewrite this song's sections, chords, lyrics and patch changes in the band's folder, leaving its audio exactly as it is"
-              >
-                Words and sections only
-              </button>
+              {/*
+                Three jobs, as a set has. While one waits to be agreed to it is
+                the only one offered: the other two would be a second question
+                over the first.
+              */}
+              {JOBS.map(([kind, label, why]) =>
+                confirming && confirming !== kind ? null : (
+                  <button
+                    key={kind}
+                    className={kind === (confirming ?? 'stems') ? 'btn primary' : 'btn'}
+                    title={why}
+                    disabled={
+                      busy || !alsSong || (kind === 'stems' && partCount === 0) || (kind === 'submixes' && submixNames.length === 0)
+                    }
+                    onClick={() => {
+                      if (confirming === kind) {
+                        setConfirming(null);
+                        void go(kind);
+                      } else {
+                        setConfirming(kind);
+                      }
+                    }}
+                  >
+                    {busy && job === kind
+                      ? `${label}…`
+                      : confirming === kind
+                        ? `Yes — ${label.toLowerCase()}`
+                        : kind === 'stems' && !publishFolderName
+                          ? "Choose the band's folder and prepare"
+                          : label}
+                  </button>
+                ),
+              )}
+              {confirming && !busy && (
+                <button className="btn" onClick={() => setConfirming(null)}>
+                  Back
+                </button>
+              )}
               <button
                 className={busy ? 'btn danger' : 'btn'}
                 onClick={() => (busy ? stop() : onClose())}

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Offer a song the three jobs a set gets, and ask before each**
+
+Preparing one song had a single button that rendered everything, and a second for the words alone; the submixes it would write were not named, and there was no way to write only them. Now it offers what a set does: Prepare stems, Prepare submixes and Prepare info, each pressed twice — the first press says what it will do to what, the second does it. The note above names the submixes the band's lists ask for, from the parts as chosen, and the submixes-only job writes them into the folder the song already has, its stems untouched.
+
 **Count a song's bars up to where it ends, not a bar past it**
 
 A song's endBar is where the next locator or the stop sits: the bar line it runs up to, not a bar it plays. Four places added one to the gap anyway, so every set.json said 66 bars and 186 seconds for a 65-bar Cruel Summer whose files, and click, ran 65 — and the info clip in Live said the same. One definition now, songBars, used by the manifest, the info clip, the render span and the set review. The render itself was already the right length.
