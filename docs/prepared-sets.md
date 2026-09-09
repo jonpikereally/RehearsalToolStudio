@@ -102,6 +102,12 @@ length of the song, and is meant to be played alongside the others.
 
 - **The label is the Ableton track name**, lowercased, with Live's trailing
   duplicate number removed: a track called `Bass 1` becomes `[bass]`.
+- **A track is a part only where it sounds.** One switched off in Live for
+  this song, or with no active clip inside it, is not written — a set is one
+  timeline with every song on it, and most tracks are silent through most of
+  it. The record is the exception: it is switched off so the room doesn't
+  hear it, and is written all the same, since it is what the band play
+  against.
 - **A reference part says so**: a track filed under the set's `REF` group
   comes out as `[ref drums]`, `[ref vox]` and so on, so the record's lead
   vocal can never be mistaken for the band's. The prefix is not added when

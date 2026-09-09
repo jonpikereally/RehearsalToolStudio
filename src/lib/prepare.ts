@@ -254,9 +254,18 @@ export interface PlannedPart {
  * a list of the stretches that sound otherwise, and empty where none do.
  * Missing is read as null, since a set read before regions existed said
  * nothing about them and every track of it played.
+ *
+ * A reference is the one exception. The record is turned off in Live so
+ * the room doesn't hear it — the preflight asks for exactly that — and it
+ * is still what the band play against, so a reference with a clip to play
+ * inside the song is a part however its track is switched. One whose clips
+ * are all deactivated, or that has none here, has nothing to render.
  */
-export function soundsInSong(stem: Pick<AlsSong['stems'][number], 'regions'>): boolean {
-  return !stem.regions || stem.regions.length > 0;
+export function soundsInSong(
+  stem: Pick<AlsSong['stems'][number], 'regions'> & Partial<Pick<AlsSong['stems'][number], 'reference' | 'clips'>>,
+): boolean {
+  if (!stem.regions || stem.regions.length > 0) return true;
+  return !!stem.reference && (stem.clips ?? []).some((c) => !c.disabled);
 }
 
 /** The parts a song will be written as, given its plan — or all of it without one. */

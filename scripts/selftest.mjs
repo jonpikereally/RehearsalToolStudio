@@ -3960,6 +3960,23 @@ group('a plan for one song');
     partsFor(quiet, { print: ['Strings', 'Drums'], combine: [{ name: 'band', stems: ['Strings'] }] })
       .map((p) => p.name).join() === 'Drums',
     partsFor(quiet, { print: ['Strings', 'Drums'], combine: [{ name: 'band', stems: ['Strings'] }] }).map((p) => p.name).join());
+
+  /*
+   * The record is switched off in Live so it doesn't sound in the room, which
+   * is what the preflight asks for — and the band still play against it. A
+   * reference with a clip to play is a part whatever its track's switch says;
+   * one with nothing to play is not.
+   */
+  const clip = (disabled = false) => ({ path: 'Record.wav', startBar: 1, endBar: 9, sourceStartSec: 0, disabled, fadeInSec: 0, fadeOutSec: 0, warped: true, semitones: 0, gain: 1, speed: 1 });
+  const offRecord = { ...stem('REF SONG', true), regions: [], clips: [clip()] };
+  const offPart = { ...stem('Strings'), regions: [], clips: [clip()] };
+  const emptyRecord = { ...stem('REF MIX', true), regions: [], clips: [clip(true)] };
+  check('a reference turned off in Live is still a part', soundsInSong(offRecord));
+  check('an ordinary track turned off is not', !soundsInSong(offPart));
+  check('nor is a reference with nothing to play', !soundsInSong(emptyRecord) && !soundsInSong({ ...stem('REF X', true), regions: [] }));
+  check('so the record comes out of a prepare with the track switched off',
+    partsFor({ ...song, stems: [offRecord, offPart, emptyRecord, stem('Drums')] }).map((p) => p.name).join() === 'REF SONG,Drums',
+    partsFor({ ...song, stems: [offRecord, offPart, emptyRecord, stem('Drums')] }).map((p) => p.name).join());
 }
 
 /* ---------------------------- the mix, as the set has it ---------------------------- */
