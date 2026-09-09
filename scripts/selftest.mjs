@@ -5276,5 +5276,45 @@ group('when a run has finished');
   check('and nobody is told after they have stopped listening', told === 3);
 }
 
+/* ------------------------------ locator text as clips ------------------------------ */
+
+group('locator text as clips');
+{
+  const { locatorTextFor, locatorClipsFor, DEFAULT_LOCATOR_FIELDS } = await import('../src/lib/locatorText.ts');
+  const { parseLocatorName } = await import('../src/lib/alsParser.ts');
+  const project = { creator: 'x', tempo: 120, timeSigNum: 4, timeSigDen: 4, warnings: [], songs: [] };
+  const song = (over = {}) => ({
+    title: 'Yellow', raw: '', startBar: 9, endBar: 72, bpm: 88, startBpm: 88, key: 'Bb', durationText: null, tags: ['slow'],
+    flags: ['END'], endsAtStop: true, slateBars: [], sections: [], chords: [], lyrics: [], lanes: [],
+    tempoChanges: [], rigMarks: [], timeSigNum: 4, timeSigDen: 4, stems: [], notes: '', ...over,
+  });
+  const all = DEFAULT_LOCATOR_FIELDS;
+  const ableset = locatorTextFor(song(), project, all, 'ableset');
+  const setlist = locatorTextFor(song(), project, all, 'setlist');
+  check('AbleSet form: the title, then its duration, its facts in braces, its tags and flags',
+    ableset === 'Yellow [2:52] {Bb / 88 BPM} #slow +END', ableset);
+  check('setlist form: slashes between the fields, tags and flags after', setlist === 'Yellow / 2:52 / Bb / 88BPM #slow +END', setlist);
+  for (const [name, text] of [['AbleSet', ableset], ['setlist', setlist]]) {
+    const back = parseLocatorName(text);
+    check(`the ${name} form reads back as it was written`,
+      back.title === 'Yellow' && back.key === 'Bb' && back.bpm === 88 && back.durationText === '2:52' && back.tags.join() === 'slow' && back.flags.join() === 'END',
+      JSON.stringify(back));
+  }
+  check('unticked facts are left out', locatorTextFor(song(), project, { ...all, tempo: false, tags: false, flags: false }, 'ableset') === 'Yellow [2:52] {Bb}');
+  check('a title alone is a title alone', locatorTextFor(song(), project, { key: false, tempo: false, length: false, tags: false, flags: false }, 'setlist') === 'Yellow');
+  check('a key typed by hand wins over the locator\'s', locatorTextFor(song(), project, all, 'setlist', 'A') === 'Yellow / 2:52 / A / 88BPM #slow +END');
+  check('a song without a key says nothing about one', locatorTextFor(song({ key: null, tags: [], flags: [] }), project, all, 'ableset') === 'Yellow [2:52] {88 BPM}');
+  check('a slash in a title is not a field break in the setlist form',
+    parseLocatorName(locatorTextFor(song({ title: 'AC/DC Medley' }), project, all, 'setlist')).title === 'AC-DC Medley');
+  check('a tempo change is timed through', locatorTextFor(song({ tempoChanges: [{ bar: 33, bpm: 176 }] }), project, { ...all, key: false, tempo: false, tags: false, flags: false }, 'setlist') === 'Yellow / 2:10');
+
+  const p2 = { ...project, songs: [song(), song({ title: 'Yellow' }), song({ title: 'Clocks', startBar: 80, endBar: 100, key: 'D', tags: [], flags: [] })] };
+  const { clips, songs } = locatorClipsFor(p2, ['Yellow', 'Clocks'], all, 'ableset');
+  check('one one-bar clip per song, at its first bar', clips.length === 2 && clips[0].bar === 9 && clips[0].bars === 1 && clips[1].bar === 80 && clips[1].bars === 1, JSON.stringify(clips));
+  check('named with the locator text', clips[1].text === 'Clocks [0:55] {D / 88 BPM}', clips[1].text);
+  check('a repeated title is one song', songs.join() === 'Yellow,Clocks');
+  check('and only the chosen songs are written', locatorClipsFor(p2, ['Clocks'], all, 'setlist').songs.join() === 'Clocks');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

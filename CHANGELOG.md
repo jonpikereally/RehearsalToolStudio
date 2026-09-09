@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-09
 
+**Write each song's locator name out as a clip**
+
+The locator is where a song's facts live in these sets — its key, its tempo, its length — and typing them onto forty locators is the kind of job that gets done for six. A new set tool writes the name each locator should have, from what the set knows, as a one-bar MIDI clip at the song's start on a track of its own, in a copy of the set: the text sits beside the locator it is for, ready to be copied across in Live. Which facts, in which of the two shapes the parser reads — AbleSet's own or the slash-separated setlist form — and which songs are all choices, and each shape reads back exactly as it was written. Lengths are timed through the arrangement rather than read off the locators as they are; time signatures are left out, since their slash is the field separator.
+
 **Build one installer for another Mac**
 
 The packaged app was a zip to unzip and drag, with Lyrics Studio in a second one. make-installer.sh wraps both in a macOS installer package: double-click, the admin password, and both apps are in Applications, an older install replaced in place with the Mac's own folders and caches kept. The packaged window is compiled for both kinds of Mac when the tools can, as the Node beside it already is, and the installer tells Installer which Macs it runs on so the others are refused plainly. The README says what Gatekeeper does with an unsigned download on macOS 15, which is no longer right-click → Open.

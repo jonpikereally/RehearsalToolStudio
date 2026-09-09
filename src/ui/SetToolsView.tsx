@@ -15,6 +15,7 @@ import {
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor, chordNotationsIn } from '../lib/chordTrack';
 import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
+import { DEFAULT_LOCATOR_FIELDS, DEFAULT_LOCATOR_TRACK, LOCATOR_FIELD_LABEL, LOCATOR_FORMAT_LABEL, locatorClipsFor, locatorTextFor, type LocatorFields, type LocatorFormat } from '../lib/locatorText';
 import { keyRank, type SortSpec } from '../lib/songSort';
 import { addThis } from '../lib/alsEdit';
 import { runningOrderTitles } from '../lib/ableset';
@@ -49,6 +50,9 @@ const LS_VOICE = 'ls.settools.voice';
 const LS_INFO = 'ls.settools.info';
 const LS_INFO_TRACK = 'ls.settools.info.track';
 const LS_INFO_SPAN = 'ls.settools.info.span';
+const LS_LOCATORS = 'ls.settools.locators';
+const LS_LOCATORS_FORMAT = 'ls.settools.locators.format';
+const LS_LOCATORS_TRACK = 'ls.settools.locators.track';
 
 export default function SetToolsView() {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
@@ -62,7 +66,7 @@ export default function SetToolsView() {
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet, setSaved, publishFolder, pickPublishFolder } = useStore();
   const [tool, setTool] = useState<
-    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'patches' | 'setlist' | 'update'
+    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
   /*
    * Song info clips: which facts, remembered on this device, and whether the
@@ -83,6 +87,32 @@ export default function SetToolsView() {
       const next = { ...was, [key]: on };
       try {
         remember(LS_INFO, next);
+      } catch {
+        /* not remembered, then */
+      }
+      return next;
+    });
+  /*
+   * Locator text clips: which facts, in which of the two shapes, on which
+   * track — each remembered on this device.
+   */
+  const [locatorFields, setLocatorFields] = useState<LocatorFields>(() => {
+    try {
+      const raw = localStorage.getItem(LS_LOCATORS);
+      return raw ? { ...DEFAULT_LOCATOR_FIELDS, ...(JSON.parse(raw) as Partial<LocatorFields>) } : DEFAULT_LOCATOR_FIELDS;
+    } catch {
+      return DEFAULT_LOCATOR_FIELDS;
+    }
+  });
+  const [locatorFormat, setLocatorFormat] = useState<LocatorFormat>(() =>
+    localStorage.getItem(LS_LOCATORS_FORMAT) === 'setlist' ? 'setlist' : 'ableset',
+  );
+  const [locatorTrack, setLocatorTrack] = useState(() => localStorage.getItem(LS_LOCATORS_TRACK) || DEFAULT_LOCATOR_TRACK);
+  const setLocatorField = (key: keyof LocatorFields, on: boolean) =>
+    setLocatorFields((was) => {
+      const next = { ...was, [key]: on };
+      try {
+        remember(LS_LOCATORS, next);
       } catch {
         /* not remembered, then */
       }
@@ -502,6 +532,41 @@ export default function SetToolsView() {
   };
 
   /**
+   * Each song's locator name, written out as a one-bar MIDI clip at its
+   * start in a copy of the set, for copying onto the locator in Live.
+   */
+  const addLocatorText = async () => {
+    if (!project || !setPath) return;
+    setError(null);
+    setDone(null);
+    try {
+      const trackName = addThis(locatorTrack.trim() || DEFAULT_LOCATOR_TRACK);
+      const { clips, songs } = locatorClipsFor(project, [...selected], locatorFields, locatorFormat, { keyFor });
+      if (!clips.length) {
+        setError('Nothing to write — choose at least one song.');
+        return;
+      }
+      setProgress('Writing locator text…');
+      const { dir, prefix, base } = await destination();
+      const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
+      const only = keepOnlyAdded(result.xml, [result.trackName]);
+      const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
+      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (locators).als`;
+      await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
+      setDone(
+        `${result.clipsWritten} locator text clip${result.clipsWritten === 1 ? '' : 's'} on a “${result.trackName}” track, ` +
+          `${songs.length} song${songs.length === 1 ? '' : 's'}, in ${copyPath.split('/').pop()} — a copy holding only that track, ` +
+          "on the set's own timeline and locators. Open it beside the set and drag the track across; each clip sits at its " +
+          'song\'s locator, named as the locator should be. The original is untouched.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  /**
    * The library's patch clips, written into the set as *rig locators — the
    * same commit the player offers per song, here for the set at once. Only
    * for a set from the folder: a lone .als was never scanned, so the library
@@ -839,6 +904,7 @@ export default function SetToolsView() {
               ['lyrics', 'Lyrics'],
               ['chords', 'Chords'],
               ['info', 'Song info'],
+              ['locators', 'Locator text'],
               ['patches', 'Patch changes'],
               ['setlist', 'Setlist'],
               ['update', 'Update the band'],
@@ -1157,6 +1223,99 @@ export default function SetToolsView() {
                   <div style={{ color: '#6b7789', fontSize: 12.5 }}>
                     Writes a copy of the set named “… (info).als” with the new track; the original is
                     never touched. Run it again after a change and the copy is rewritten.
+                  </div>
+                </>
+              )}
+
+              {tool === 'locators' && (
+                <>
+                  <div className="field stacked">
+                    <label>
+                      What each locator says
+                      <span className="hint">
+                        The title always, then the facts ticked here, written the way the set reads them back. One
+                        one-bar MIDI clip at each song's start, named with its locator text, for copying onto the
+                        locator in Live.
+                      </span>
+                    </label>
+                    <div className="controls flush" style={{ gap: 12 }}>
+                      {(Object.keys(LOCATOR_FIELD_LABEL) as (keyof LocatorFields)[]).map((key) => (
+                        <label key={key} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={locatorFields[key]}
+                            disabled={!!progress}
+                            onChange={(e) => setLocatorField(key, e.target.checked)}
+                          />
+                          <span style={{ fontSize: 14 }}>{LOCATOR_FIELD_LABEL[key]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="controls flush" style={{ alignItems: 'center' }}>
+                    <span className="control-label">Format</span>
+                    <div className="segmented" role="radiogroup" aria-label="Which form the locator name takes">
+                      {(Object.keys(LOCATOR_FORMAT_LABEL) as LocatorFormat[]).map((format) => (
+                        <button
+                          key={format}
+                          role="radio"
+                          aria-checked={locatorFormat === format}
+                          className={locatorFormat === format ? 'seg on' : 'seg'}
+                          disabled={!!progress}
+                          onClick={() => {
+                            setLocatorFormat(format);
+                            try {
+                              remember(LS_LOCATORS_FORMAT, format);
+                            } catch {
+                              /* not remembered, then */
+                            }
+                          }}
+                        >
+                          {LOCATOR_FORMAT_LABEL[format]}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="control-note">
+                      {locatorFormat === 'ableset'
+                        ? 'AbleSet\'s own: “Title [3:00] {F / 100 BPM} #tag +END”'
+                        : 'the setlist form: “Title / 3:00 / F / 100BPM #tag +END”'}
+                    </span>
+                  </div>
+                  <div className="controls flush" style={{ alignItems: 'center' }}>
+                    <span className="control-label">Track</span>
+                    <input
+                      className="text-input"
+                      value={locatorTrack}
+                      onChange={(e) => {
+                        setLocatorTrack(e.target.value);
+                        try {
+                          remember(LS_LOCATORS_TRACK, e.target.value);
+                        } catch {
+                          /* not remembered, then */
+                        }
+                      }}
+                      placeholder={DEFAULT_LOCATOR_TRACK}
+                      aria-label="Track name for the locator text clips"
+                      disabled={!!progress}
+                    />
+                  </div>
+                  {(() => {
+                    const first = project.songs.find((sg) => selected.has(sg.title));
+                    return first ? (
+                      <div className="notice">
+                        {`For ${first.title}, the locator would read: ${locatorTextFor(first, project, locatorFields, locatorFormat, keyFor[first.title])}`}
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="btn-row">
+                    <button className="btn primary" disabled={!!progress || selected.size === 0} onClick={() => void addLocatorText()}>
+                      {wholeSet ? 'Write locator text, whole set' : `Write locator text, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                    Writes a copy of the set named “… (locators).als” with the new track; the original is never
+                    touched. Lengths are timed through the arrangement, not read off the locators as they are.
+                    Time signatures are left out: a slash is what separates the fields.
                   </div>
                 </>
               )}
