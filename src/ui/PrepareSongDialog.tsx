@@ -18,7 +18,7 @@ import { setNameFor } from '../lib/setName';
 import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
-import { bandMembers, removeSilentParts } from '../lib/prepareRun';
+import { audioKeysFor, bandMembers, removeSilentParts } from '../lib/prepareRun';
 
 /**
  * One song, prepared for the band.
@@ -229,6 +229,14 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       // What is about to be written over is kept aside, as a set-wide run keeps it.
       const setFolder = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}`;
       await local.undoBegin(folder, setFolder);
+      /*
+       * The song's audio as a key, for its entry. A whole set has always
+       * written one, and it is how the next save knows whether this song's
+       * audio has changed since; a song prepared here went without, so it
+       * read as "prepared before this could be told" for ever after — and a
+       * cut made in it afterwards was one more thing the key couldn't say.
+       */
+      const keys = await audioKeysFor(project, setPath);
       const ctx = new AudioContext();
       const done = await prepareSet({
         songOrder: liveOrder?.titles,
@@ -250,6 +258,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         alsPath: setPath,
         only: [alsSong.title],
         plan: { [alsSong.title]: plan },
+        audioKeys: keys.byTitle,
         readManifest: async () => {
           const path = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}/${MANIFEST_NAME}`;
           try {

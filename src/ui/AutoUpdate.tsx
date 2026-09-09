@@ -36,9 +36,9 @@ type Why = 'save' | 'launch';
 type Phase =
   | { kind: 'saved'; at: number }
   | { kind: 'running'; at: number; why: Why; stage: string; progress: PrepareProgress | null }
-  | { kind: 'done'; at: number; why: Why; outcome: RunOutcome; selected: string[] }
+  | { kind: 'done'; at: number; why: Why; outcome: RunOutcome; selected: string[]; held: string[] }
   | { kind: 'unprepared'; at: number }
-  | { kind: 'nothing'; at: number }
+  | { kind: 'nothing'; at: number; held: string[] }
   | { kind: 'wholeSet'; at: number; why: Why; folder: string; count: number }
   | { kind: 'error'; at: number; why: Why; message: string }
   | { kind: 'undone'; at: number; restored: number; removed: number; songs: number };
@@ -120,8 +120,14 @@ export default function AutoUpdate() {
         const selected = auto.stems ? changed : [];
         const behind = auto.submixes ? titles.filter((t) => found.submixes.get(t)) : [];
         const refresh = auto.info ? 'auto' : 'none';
+        /*
+         * Songs whose audio has changed while the stems are left to a person:
+         * not written, but not "nothing had changed" either. Said, so a cut
+         * made in a song does not read as undetected.
+         */
+        const held = auto.stems ? [] : changed;
         if (!selected.length && !behind.length && refresh === 'none') {
-          if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at });
+          if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at, held });
           return;
         }
         /*
@@ -182,12 +188,12 @@ export default function AutoUpdate() {
           set: folderName,
           songs: [...new Set([...selected, ...behind])],
           text: did.length
-            ? `${written || mixed ? '' : 'No audio had changed; '}${did.join(', ')}.` +
+            ? `${written || mixed ? '' : held.length ? `The audio of ${held.length} song${held.length === 1 ? '' : 's'} has changed (${held.join(', ')}), left for a prepare by hand; ` : 'No audio had changed; '}${did.join(', ')}.` +
               (quiet ? ` ${quiet} part${quiet === 1 ? '' : 's'} came out silent.` : '') +
               (outcome.published ? ` The band sees ${outcome.published.songs}.` : ` The band's library could not be written: ${outcome.publishError}`)
             : 'Nothing had changed.',
         });
-        if (current()) setPhase({ kind: 'done', at, why, outcome, selected });
+        if (current()) setPhase({ kind: 'done', at, why, outcome, selected, held });
       } catch (err) {
         if (!current()) return;
         const aborted = (err as { name?: string })?.name === 'AbortError';
@@ -337,7 +343,9 @@ export default function AutoUpdate() {
               <strong>Updated</strong> {since(phase)} —{' '}
               {phase.outcome.result
                 ? `${phase.outcome.result.songsWritten} song${phase.outcome.result.songsWritten === 1 ? '' : 's'} written again (${phase.selected.join(', ')})`
-                : 'no audio had changed'}
+                : phase.held.length
+                  ? `the audio of ${phase.held.length === 1 ? phase.held[0] : `${phase.held.length} songs (${phase.held.slice(0, 4).join(', ')}${phase.held.length > 4 ? '…' : ''})`} has changed, and stems are not updated on their own here — prepare ${phase.held.length === 1 ? 'it' : 'them'} by hand`
+                  : 'no audio had changed'}
               {(phase.outcome.result?.silent.length ?? 0) + (phase.outcome.submixes?.silent.length ?? 0) > 0 && (
                 <>
                   {' '}
@@ -392,6 +400,12 @@ export default function AutoUpdate() {
             <>
               <strong>{setName}</strong> was saved at {clock(phase.at)} — nothing the studio is set to keep up to date had
               changed{auto.stems && auto.submixes && auto.info ? '' : ' — of what is switched on here'}.
+              {phase.held.length > 0 && (
+                <>
+                  {' '}The audio of {phase.held.length === 1 ? phase.held[0] : `${phase.held.length} songs (${phase.held.slice(0, 4).join(', ')}${phase.held.length > 4 ? '…' : ''})`} has
+                  changed; stems are not updated on their own here, so prepare {phase.held.length === 1 ? 'it' : 'them'} by hand.
+                </>
+              )}
             </>
           )}
           {phase.kind === 'unprepared' && (

@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-08
 
+**Key a song prepared on its own, and say when changed audio is left alone**
+
+A song prepared from its own dialog was written without its audio key — a whole set has always carried one — so from then on the folder could only say "prepared before this could be told", never whether a cut made in it since was a change. Mean, cut after being prepared that way, showed nothing but an update that said no audio had changed: the stems were switched off for saves, and the banner counted only what it wrote. The song dialog now keys the song like a set does, and a save that finds changed audio it is not allowed to render names the songs and says to prepare them by hand, in the banner and in the log.
+
 **Offer a song the three jobs a set gets, and ask before each**
 
 Preparing one song had a single button that rendered everything, and a second for the words alone; the submixes it would write were not named, and there was no way to write only them. Now it offers what a set does: Prepare stems, Prepare submixes and Prepare info, each pressed twice — the first press says what it will do to what, the second does it. The note above names the submixes the band's lists ask for, from the parts as chosen, and the submixes-only job writes them into the folder the song already has, its stems untouched.
