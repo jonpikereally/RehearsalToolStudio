@@ -5,6 +5,16 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-09
+
+**Build one installer for another Mac**
+
+The packaged app was a zip to unzip and drag, with Lyrics Studio in a second one. make-installer.sh wraps both in a macOS installer package: double-click, the admin password, and both apps are in Applications, an older install replaced in place with the Mac's own folders and caches kept. The packaged window is compiled for both kinds of Mac when the tools can, as the Node beside it already is, and the installer tells Installer which Macs it runs on so the others are refused plainly. The README says what Gatekeeper does with an unsigned download on macOS 15, which is no longer right-click → Open.
+
+**Keep the record in a prepare when its track is switched off**
+
+A track that sounds nowhere in a song has been left out of a prepare since yesterday, which is right for the six alternate takes switched off in Mine — and threw out the record with them. REF SONG is switched off in nine songs, exactly as the preflight asks so the record never sounds at a gig, and the rule read that as silence. A reference with a clip to play inside the song is now a part however its track is switched; one with nothing to play, no clip here or every clip deactivated, still is not. The studio's own player goes on muting it as Live does. The contract says which tracks become parts.
+
 ## 2026-09-08
 
 **Key a song prepared on its own, and say when changed audio is left alone**

@@ -80,20 +80,32 @@ after moving this folder.
 
 ### As a normal app
 
-For a Mac that only uses the studio, and needn't have Node or this folder:
+For a Mac that only uses the studio, and needn't have Node or this folder,
+build an installer:
 
 ```bash
-bash scripts/package-app.sh
-bash scripts/package-lyrics-studio.sh
+bash scripts/make-installer.sh
 ```
 
-Each writes an app and a zip of it into `Mac apps/`. The zip is the thing to
-move: unzip on the other Mac, drag to Applications, and right-click → Open
-the first time, since nothing here carries a Developer ID. The studio app
-has a Node runtime, a finished build and its servers inside it and carries no
-path to anywhere; it never rebuilds, so a new build means packaging again.
-Lyrics Studio carries its source and a copy of `uv`, which on first open
-fetches a Python and its dependencies — minutes, and the network, once.
+It writes `Mac apps/Rehearsal Tool Studio <build>.pkg`. That is the download:
+double-click it on the other Mac, and Installer puts Rehearsal Tool Studio
+and Lyrics Studio into Applications the way any installer does, asking for
+the admin password once. Installing a newer one over an older one replaces
+the apps and keeps everything set up on that Mac. The studio app has a Node
+runtime, a finished build and its servers inside it and carries no path to
+anywhere; it never rebuilds, so a new build means a new installer. Lyrics
+Studio carries its source and a copy of `uv`, which on first open fetches a
+Python and its dependencies — minutes, and the network, once.
+
+Nothing here carries a Developer ID. A copy that arrives by Dropbox sync
+opens without comment; one downloaded through a browser is held by
+Gatekeeper the first time. On macOS 15 and later, that is System Settings →
+Privacy & Security → "Open Anyway", after the first attempt has been
+refused; right-click → Open no longer does it.
+
+The installer is built from the two apps `scripts/package-app.sh` and
+`scripts/package-lyrics-studio.sh` make, each of which also writes a zip of
+its app into `Mac apps/` for moving one by hand.
 
 Nothing of what you set up travels with the code. The remembered folders, the
 decoded audio and transposition caches, the mixer positions, the block layout

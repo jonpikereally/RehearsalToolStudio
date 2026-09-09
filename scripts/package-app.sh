@@ -12,8 +12,11 @@
 #
 # Alongside the .app it writes a .zip made with ditto, which is how to move it
 # between Macs: a zip keeps the bundle's permissions where a folder sync may
-# not. On the other Mac, unzip, drag to Applications, and — since nothing here
-# is signed with a Developer ID — right-click → Open the first time.
+# not. On the other Mac, unzip and drag to Applications. Nothing here is
+# signed with a Developer ID, so a copy that came through a browser is held by
+# Gatekeeper once — on macOS 15 and later, System Settings → Privacy &
+# Security → "Open Anyway". For an installer that does the dragging, and
+# carries Lyrics Studio too, see scripts/make-installer.sh.
 #
 # Run it from a normal terminal, not a sandboxed agent: macOS refuses apps
 # stamped with a sandbox's provenance. Needs the command line tools and Node.
@@ -53,8 +56,21 @@ npx tsc -b >/dev/null
 npx vite build --outDir "$BUILD/dist" --emptyOutDir >/dev/null
 STAMP="$(sed -n 's/.*"build":"\([^"]*\)".*/\1/p' "$BUILD/dist/build.json")"
 echo "compiling the window"
-"$SWIFTC" -O -sdk "$SDK" -target "$(uname -m)-apple-macos12.0" -module-cache-path "$BUILD/cache" \
-  -o "$BUILD/$NAME" mac/RehearsalToolStudio/main.swift -framework Cocoa -framework WebKit
+compile_window() {
+  "$SWIFTC" -O -sdk "$SDK" -target "$1-apple-macos12.0" -module-cache-path "$BUILD/cache-$1" \
+    -o "$2" mac/RehearsalToolStudio/main.swift -framework Cocoa -framework WebKit
+}
+compile_window "$(uname -m)" "$BUILD/$NAME"
+# And for the other kind of Mac when the tools can, so the window is as
+# universal as the Node beside it; when they can't, the app is this Mac's kind.
+OTHER=x86_64; [ "$(uname -m)" = x86_64 ] && OTHER=arm64
+if compile_window "$OTHER" "$BUILD/$NAME-$OTHER" 2>/dev/null; then
+  lipo -create "$BUILD/$NAME" "$BUILD/$NAME-$OTHER" -output "$BUILD/$NAME-universal"
+  mv "$BUILD/$NAME-universal" "$BUILD/$NAME"
+  rm -f "$BUILD/$NAME-$OTHER"
+else
+  echo "  note: the window compiled for $(uname -m) only"
+fi
 
 # A modern .icns can simply carry a PNG — ic09 is the 512-point slot.
 make_icns() {
