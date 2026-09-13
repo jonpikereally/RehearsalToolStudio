@@ -589,6 +589,24 @@ export function isSetStem(stem: { name: string }): boolean {
   return name === 'click' || name === 'cues';
 }
 
+/**
+ * Whether a set stem is written as a pattern of samples, or rendered like
+ * any other stem.
+ *
+ * The cues always are: each is a handful of short files along the song. A
+ * click is when Live plays it as one — a MIDI track striking a drum rack —
+ * and not when the click is an audio clip: a song-length file, trimmed and
+ * placed on the timeline like any stem, sometimes cut in two. Struck as a
+ * one-shot that plays from the file's top, a clip that starts three seconds
+ * in lands three seconds early, and a clip cut in two plays twice over
+ * itself. Rendered, it comes out as Live plays it, as a `[click]` file the
+ * player already knows as the click.
+ */
+export function isSamplerStem(stem: { name: string; clips: { note?: number }[] }): boolean {
+  if (!isSetStem(stem)) return false;
+  return stem.name.trim().toLowerCase() === 'cues' || stem.clips.some((c) => c.note !== undefined);
+}
+
 /** What a sampler part wants read and written, before any of it is. */
 export interface SamplerSource {
   path: string;
@@ -890,7 +908,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
       (clip.semitones ?? 0) !== 0 || Math.abs((clip.speed ?? 1) - 1) > 1e-6;
     const shifts = new Map<string, AlsSong['stems'][number]['clips'][number]>();
     for (const part of parts) {
-      if (!part.combined && part.stems.length === 1 && isSetStem(part.stems[0])) continue;
+      if (!part.combined && part.stems.length === 1 && isSamplerStem(part.stems[0])) continue;
       for (const stem of part.stems) {
         for (const clip of stem.clips) {
           if (!clip.disabled && needsShift(clip) && !shifts.has(shiftKey(clip))) shifts.set(shiftKey(clip), clip);
@@ -976,9 +994,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
          * of notes striking a few samples, and that — with the samples copied
          * once to Resources/ — is what gets written: kilobytes where a
          * rendered click was tens of megabytes. A click folded into a combined
-         * part is the one exception, since a sum cannot be triggered.
+         * part is the one exception, since a sum cannot be triggered — and
+         * a click that is an audio clip in Live is rendered like any stem.
          */
-        if (!part.combined && part.stems.length === 1 && isSetStem(part.stems[0])) {
+        if (!part.combined && part.stems.length === 1 && isSamplerStem(part.stems[0])) {
           report('writing', 0);
           const built = samplerPartFor(part.stems[0]);
           if (!built) {

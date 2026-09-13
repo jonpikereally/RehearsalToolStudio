@@ -214,7 +214,12 @@ length of the song, and is meant to be played alongside the others.
   worth of titles from its click; to the player they are cues like any
   other, reached by the path on the sample. Sets prepared
   before this carry `[click].mp3` and `[cues].mp3` instead; a player should
-  go on treating `[click]` as the click track when it meets one.
+  go on treating `[click]` as the click track when it meets one — and it
+  will keep meeting them: a click that is an **audio clip** in Live, a
+  song-length file trimmed and placed like any stem rather than a MIDI
+  track striking a drum rack, is rendered as a `[click].mp3` file, since
+  struck as a one-shot it would play from the file's top wherever the clip
+  was cut.
 - The audio is what Live would play: clips laid end to end with gaps silent,
   fades applied, clip and track gain in, a clip's own transposition and warp
   speed rendered in. Anything on a return bus is ignored, and third-party
