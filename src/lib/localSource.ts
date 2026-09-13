@@ -132,6 +132,34 @@ export async function pickFolder(
   return { handle: wrap({ dir: picked.dir, name: picked.name }), name: picked.name };
 }
 
+/**
+ * Prompt for a folder and answer with where it is, for a page that has to
+ * work out what it was given — a set folder, the band's folder — before it
+ * is anything. Granted for the page's lifetime, remembered by nobody.
+ */
+export async function pickFolderPath(opts: {
+  prompt: string;
+  startIn?: string | { slot: FolderSlot; sub?: string };
+}): Promise<{ dir: string; name: string }> {
+  const picked = await call<{ cancelled?: true; dir: string; name: string }>('pick', {
+    kind: 'folder',
+    prompt: opts.prompt,
+    startIn: opts.startIn,
+  });
+  if (picked.cancelled) throw aborted();
+  return { dir: picked.dir, name: picked.name };
+}
+
+/**
+ * A folder known by its path, taken as the one under a slot without a
+ * dialog — the band's folder, worked out from a set folder picked inside
+ * it. Granted and remembered as a choice in the dialog would be.
+ */
+export async function takeFolder(path: string, slot: FolderSlot): Promise<LocalFolder> {
+  const taken = await call<{ dir: string; name: string }>('open', { path, slot });
+  return { handle: wrap({ dir: taken.dir, name: taken.name }), name: taken.name };
+}
+
 /** Prompt for one file and answer with where it is, for a file another app or a later read will take up. */
 export async function pickFilePath(opts: { description: string; extensions: string[] }): Promise<{ dir: string; name: string }> {
   const picked = await call<{ cancelled?: true; dir: string; name: string }>('pick', {

@@ -2548,27 +2548,6 @@ input[type='range'] {
   margin: 0;
 }
 
-/* The folders to choose between, folded away until they are asked for. */
-.launch-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.launch-list .row {
-  padding: 8px 10px;
-  min-height: 44px;
-}
-
-.launch-list .row:last-child {
-  border-bottom: none;
-}
-
-.launch-list .row.on {
-  background: var(--accent-dim);
-}
-
 /* What is about to be opened, named on both sides, and the button that does it. */
 .launch-go {
   display: flex;

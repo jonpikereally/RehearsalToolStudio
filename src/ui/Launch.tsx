@@ -4,7 +4,7 @@ import { navigate } from '../lib/router';
 import { setToolsAlone } from '../lib/toolsAlone';
 import * as local from '../lib/localSource';
 import type { FolderSessions } from '../lib/localSource';
-import { createOutputSet, outputSets, type OutputSet } from '../lib/locatePrepared';
+import { createOutputSet, outputSets, rememberSession, type OutputSet } from '../lib/locatePrepared';
 import { alwaysOpen, recentOutput, recentSession, setAlwaysOpen, takeAsk } from '../lib/recent';
 import { choosingNew, chooserChose, chooserWantsTools, isChooserWindow } from '../lib/appWindow';
 import { SETS_FOLDER } from '../lib/prints';
@@ -44,7 +44,7 @@ function Pick({ on, title, note, onClick }: { on: boolean; title: string; note: 
 }
 
 export default function Launch() {
-  const { publishFolderName, publishFolder, pickPublishFolder, chooseOutput, openSession, sessionPath } = useStore();
+  const { publishFolderName, publishFolder, pickPublishFolder, adoptPublishFolder, chooseOutput, openSession, sessionPath } = useStore();
 
   /* What is chosen so far, on each side. Nothing is opened until both are. */
   const [output, setOutput] = useState<OutputSet | null>(null);
@@ -56,7 +56,6 @@ export default function Launch() {
   const [outError, setOutError] = useState<string | null>(null);
   const [inError, setInError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
-  const [choosing, setChoosing] = useState(false);
   // Opened by File ▸ New, the window arrives with the new folder asked for.
   const [making, setMaking] = useState(choosingNew);
   const [newName, setNewName] = useState('');
@@ -149,10 +148,7 @@ export default function Launch() {
 
   /* File ▸ New while this window is already up: ask for the new folder here. */
   useEffect(() => {
-    const onNew = () => {
-      setMaking(true);
-      setChoosing(false);
-    };
+    const onNew = () => setMaking(true);
     window.addEventListener('studio:new', onNew);
     return () => window.removeEventListener('studio:new', onNew);
   }, []);
@@ -160,7 +156,6 @@ export default function Launch() {
   /** Choosing a folder offers the session it remembers, when none is chosen yet. */
   const takeOutput = (set: OutputSet) => {
     setOutput(set);
-    setChoosing(false);
     setMaking(false);
     if (!session && set.session) setSession(set.session);
   };
@@ -177,6 +172,51 @@ export default function Launch() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/abort/i.test(message)) setInError(message);
+    }
+  };
+
+  /**
+   * A set folder chosen in the Finder, the way the session is. What is
+   * picked says what it is: a folder inside a band's Sets/ is that set, in
+   * that band — another band's, and the studio moves to it; the band's
+   * folder itself, or any other, is taken as the band's, with its sets to
+   * choose from. A set folder with no manifest yet gets one, fed by the
+   * chosen session, so a folder made by hand in the Finder is usable too.
+   */
+  const pickOutput = async () => {
+    setOutError(null);
+    setMaking(false);
+    try {
+      const picked = await local.pickFolderPath({
+        prompt: 'Choose the set folder the band will read, or the band’s folder',
+        startIn: { slot: 'publish', sub: SETS_FOLDER },
+      });
+      const parent = dirOf(picked.dir);
+      const isSet = nameOf(parent) === SETS_FOLDER;
+      const band = await adoptPublishFolder(isSet ? dirOf(parent) : picked.dir);
+      let found = await outputSets(band);
+      if (!isSet) {
+        setOutput(null);
+        setSets(found);
+        return;
+      }
+      const folder = `${SETS_FOLDER}/${picked.name}`;
+      let set = found.find((s) => s.folder === folder);
+      if (!set) {
+        if (!session) {
+          setSets(found);
+          setOutError(`${picked.name} has nothing prepared in it yet. Choose the session first, then pick it again: a new set folder is fed by the session.`);
+          return;
+        }
+        await rememberSession(band, folder, session);
+        found = await outputSets(band);
+        set = found.find((s) => s.folder === folder) ?? { folder, name: picked.name, songs: 0, session };
+      }
+      setSets(found);
+      takeOutput(set);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/abort/i.test(message)) setOutError(message);
     }
   };
 
@@ -324,21 +364,30 @@ export default function Launch() {
           </label>
 
           <div className="launch-row">
-            <button
-              className={choosing ? 'btn on' : 'btn'}
-              onClick={() => {
-                setChoosing((c) => !c);
-                setMaking(false);
+            <select
+              className="jump-select"
+              aria-label={`Set folders in ${publishFolderName ?? 'the band’s folder'}`}
+              value={output && sets?.some((s) => s.folder === output.folder) ? output.folder : ''}
+              onChange={(e) => {
+                const set = sets?.find((s) => s.folder === e.target.value);
+                if (set) takeOutput(set);
               }}
               disabled={!sets?.length}
             >
-              {choosing ? 'Never mind' : 'Another folder…'}
+              <option value="">{sets?.length ? `In ${publishFolderName ?? 'the band’s folder'}…` : 'No set folders yet'}</option>
+              {sets?.map((set) => (
+                <option key={set.folder} value={set.folder}>
+                  {set.name}
+                </option>
+              ))}
+            </select>
+            <button className="btn" onClick={() => void pickOutput()}>
+              Another folder…
             </button>
             <button
               className={making ? 'btn on' : 'btn'}
               onClick={() => {
                 setMaking((m) => !m);
-                setChoosing(false);
                 if (!newName && session) setNewName(nameOf(session).replace(/\.als$/i, ''));
               }}
             >
@@ -362,26 +411,6 @@ export default function Launch() {
             </div>
           )}
           {making && !session && <div className="launch-none">Choose the session first: the new folder is fed by it.</div>}
-
-          {choosing && (
-            <div className="launch-list">
-              {sets?.map((set) => (
-                <button
-                  key={set.folder}
-                  className={output?.folder === set.folder ? 'row on' : 'row'}
-                  onClick={() => takeOutput(set)}
-                >
-                  <div className="row-main">
-                    <div className="row-title">{set.name}</div>
-                    <div className="row-sub">
-                      {describe(set)}
-                      {set.session ? ` · from ${nameOf(set.session)}` : ' · no session yet'}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
 
           {outError && <div className="notice error">{outError}</div>}
         </section>

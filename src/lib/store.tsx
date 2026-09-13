@@ -261,6 +261,8 @@ interface StoreValue {
   forgetResourceFolder: (dir: string) => Promise<void>;
   pickResourcesFolder: (startIn?: string) => Promise<void>;
   pickPublishFolder: () => Promise<local.FolderHandle>;
+  /** The band's folder by its path — worked out from a folder picked inside it — with no dialog. */
+  adoptPublishFolder: (dir: string) => Promise<local.FolderHandle>;
   publishFolder: () => Promise<local.FolderHandle | null>;
   dismissScanResult: () => void;
 }
@@ -1067,6 +1069,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return picked.handle;
   }, []);
 
+  const adoptPublishFolder = useCallback(async (dir: string) => {
+    const taken = await local.takeFolder(dir, 'publish');
+    setPublishFolderName(taken.name);
+    return taken.handle;
+  }, []);
+
   /** Allow another folder samples may be read from; the others stay allowed. */
   const pickResourcesFolder = useCallback(async (startIn?: string) => {
     await local.pickFolder('resources', { startIn });
@@ -1115,6 +1123,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pullNow,
       publishFolderName,
       pickPublishFolder,
+      adoptPublishFolder,
       publishFolder,
       resourceFolders,
       forgetResourceFolder,
@@ -1125,7 +1134,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
       rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
-      publishFolderName, pickPublishFolder, publishFolder, resourceFolders, forgetResourceFolder, pickResourcesFolder,
+      publishFolderName, pickPublishFolder, adoptPublishFolder, publishFolder, resourceFolders, forgetResourceFolder, pickResourcesFolder,
     ],
   );
 
