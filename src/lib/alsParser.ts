@@ -125,8 +125,13 @@ export interface AlsSong {
     frozen: boolean;
     /** The devices on the track and then on each group above it, in order. */
     devices: Device[];
-    /** Return buses the signal is sent into on its way, by index. */
-    sends: { bus: number; level: number }[];
+    /**
+     * Return buses the signal is sent into on its way, by index. `fader` is
+     * the faders a post-fader send comes after — the track's own for its
+     * send, the track's and its groups' up to the sending group for a
+     * group's — so a bus can be summed as Live sums it.
+     */
+    sends: { bus: number; level: number; fader?: number }[];
     /** Whether the signal reaches an output on its own, or only through sends. */
     direct: boolean;
     path: string;
@@ -1209,7 +1214,9 @@ export function parseAlsXml(xml: string): AlsProject {
    * A bus sums whatever is sent to it, runs it through its own devices,
    * and goes to an output or on into another bus.
    */
-  const buses: Bus[] = [...xml.matchAll(/<ReturnTrack Id="\d+"[^>]*>([\s\S]*?)<\/ReturnTrack>/g)].map((m) => {
+  // Live's pre/post switch per return, kept on the main track in bus order.
+  const sendsPre = [...(xml.match(/<SendsPre>([\s\S]*?)<\/SendsPre>/)?.[1] ?? '').matchAll(/<SendPreBool Id="\d+" Value="(true|false)"/g)].map((m) => m[1] === 'true');
+  const buses: Bus[] = [...xml.matchAll(/<ReturnTrack Id="\d+"[^>]*>([\s\S]*?)<\/ReturnTrack>/g)].map((m, index) => {
     const body = m[1];
     const routing = routingOf(body);
     return {
@@ -1218,6 +1225,7 @@ export function parseAlsXml(xml: string): AlsProject {
       devices: devicesOf(body),
       direct: routing.output === 'main' || routing.output === 'external',
       sends: routing.sends,
+      ...(sendsPre[index] ? { pre: true } : {}),
     };
   });
 
@@ -1412,13 +1420,24 @@ export function parseAlsXml(xml: string): AlsProject {
    * Song"), when only one group could; and failing both, by position — the
    * group whose clips mostly sit inside the song's bars, which is what a
    * group being a song's means in the arrangement whatever it was called.
+   *
+   * A group named exactly like a song is that song's whatever else happens:
+   * a near miss — "Addicted Acapella" for ADDICTED, "UNTOUCHABLE DNU" for
+   * UNTOUCHABLE — must not take it by its name or by its clips first, since
+   * the song it is named for comes later and would be left with nothing.
+   * A song that plays out of another's group, an old arrangement kept in
+   * the same tracks, still finds it by position; it shares the group rather
+   * than claiming it, each song taking the clips inside its own bars.
    */
   const claimed = new Set<Track>();
+  const songKeys = new Set(songLocators.map((l) => songKey(parseLocatorName(l.name).title)));
+  const reserved = (g: Track) => songKeys.has(songKey(g.name));
   const groupFor = (title: string, startBeat: number, endBeat: number): Track | undefined => {
     const key = songKey(title);
-    const free = songGroups.filter((g) => !claimed.has(g));
-    let found = free.find((g) => songKey(g.name) === key);
-    if (!found && key) {
+    let found = songGroups.find((g) => songKey(g.name) === key);
+    if (found) return found;
+    const free = songGroups.filter((g) => !claimed.has(g) && !reserved(g));
+    if (key) {
       const partial = free.filter((g) => {
         const gk = songKey(g.name);
         return gk && (key.startsWith(gk + ' ') || gk.startsWith(key + ' '));
@@ -1434,9 +1453,14 @@ export function parseAlsXml(xml: string): AlsProject {
         const within = clips.filter((c) => c.startBeat >= startBeat - 1e-6 && c.startBeat < endBeat).length;
         return within / clips.length;
       };
-      const scored = free.map((g) => ({ g, share: inside(g) })).filter((x) => x.share > 0.5);
-      scored.sort((a, b) => b.share - a.share);
-      found = scored[0]?.g;
+      const byPlace = (groups: Track[]) => {
+        const scored = groups.map((g) => ({ g, share: inside(g) })).filter((x) => x.share > 0.5);
+        scored.sort((a, b) => b.share - a.share);
+        return scored[0]?.g;
+      };
+      found = byPlace(free);
+      // Nothing of its own: it plays out of a named song's group, shared.
+      if (!found) return byPlace(songGroups.filter(reserved));
     }
     if (found) claimed.add(found);
     return found;
@@ -1499,7 +1523,9 @@ export function parseAlsXml(xml: string): AlsProject {
             // groups' are not, and are gathered below as for any track.
             const frozen = isFrozen(t);
             const devices: Device[] = frozen ? [] : [...t.devices];
-            const sends = [...t.sends];
+            // A send is taken after the fader of whatever sends: the track's
+            // own for its sends, every fader up to a group's for that group's.
+            const sends: AlsSong['stems'][number]['sends'] = t.sends.map((s) => ({ ...s, fader: t.gain }));
             let output = t.output;
             for (let c = byId.get(t.groupId), i = 0; c && c !== group && i < 8; i++) {
               folders.push(c.name);
@@ -1508,7 +1534,7 @@ export function parseAlsXml(xml: string): AlsProject {
               // The signal only carries on up when the track feeds its group.
               if (output === 'group') {
                 devices.push(...c.devices);
-                sends.push(...c.sends);
+                sends.push(...c.sends.map((s) => ({ ...s, fader: gain })));
                 output = c.output;
               }
               c = byId.get(c.groupId);
@@ -1518,7 +1544,7 @@ export function parseAlsXml(xml: string): AlsProject {
             pan = Math.max(-1, Math.min(1, pan + group.pan));
             if (output === 'group') {
               devices.push(...group.devices);
-              sends.push(...group.sends);
+              sends.push(...group.sends.map((s) => ({ ...s, fader: gain })));
               output = group.output;
             }
             const direct = output === 'main' || output === 'external' || output === 'group';
@@ -1598,6 +1624,20 @@ export function parseAlsXml(xml: string): AlsProject {
           (groups.some((g) => rootOf(t) === g) || (t.groupId === '-1' && match.test(t.name.trim()))),
       );
       const clips: AlsClip[] = [];
+      /*
+       * Where the set sends them: a member's own sends, and its groups' where
+       * it feeds them. Every fader is already folded into the clips below, so
+       * a send here comes after none — one list serves the summed part.
+       */
+      const busSends = new Map<number, { bus: number; level: number; fader: number }>();
+      for (const t of members) {
+        for (const s of t.sends) if (!busSends.has(s.bus)) busSends.set(s.bus, { ...s, fader: 1 });
+        for (let c = byId.get(t.groupId), out = t.output, i = 0; c && out === 'group' && i < 8; i++) {
+          for (const s of c.sends) if (!busSends.has(s.bus)) busSends.set(s.bus, { ...s, fader: 1 });
+          out = c.output;
+          c = byId.get(c.groupId);
+        }
+      }
       for (const t of members) {
         let level = t.gain;
         for (let c = byId.get(t.groupId), i = 0; c && i < 8; i++) {
@@ -1679,7 +1719,7 @@ export function parseAlsXml(xml: string): AlsProject {
         gain: 1,
         pan: 0,
         devices: [],
-        sends: [],
+        sends: [...busSends.values()],
         direct: true,
         path: clips[0].path,
         regions: null,

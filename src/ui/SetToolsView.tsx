@@ -16,6 +16,10 @@ import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor, chordNotationsIn } from '../lib/chordTrack';
 import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
 import { DEFAULT_LOCATOR_FIELDS, DEFAULT_LOCATOR_TRACK, LOCATOR_FIELD_LABEL, LOCATOR_FORMAT_LABEL, locatorClipsFor, locatorTextFor, type LocatorFields, type LocatorFormat } from '../lib/locatorText';
+import { busLabel, describeFeeds, unimitatedOn } from '../lib/returnMix';
+import { runReturnMix } from '../lib/returnMixRun';
+import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
+import { versionName } from '../lib/versions';
 import { keyRank, type SortSpec } from '../lib/songSort';
 import { addThis } from '../lib/alsEdit';
 import { runningOrderTitles } from '../lib/ableset';
@@ -53,6 +57,7 @@ const LS_INFO_SPAN = 'ls.settools.info.span';
 const LS_LOCATORS = 'ls.settools.locators';
 const LS_LOCATORS_FORMAT = 'ls.settools.locators.format';
 const LS_LOCATORS_TRACK = 'ls.settools.locators.track';
+const LS_RETURN = 'ls.settools.return';
 
 export default function SetToolsView() {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
@@ -64,9 +69,9 @@ export default function SetToolsView() {
   const [lyricsUrl, setLyricsUrl] = useState<string | null | undefined>(undefined);
   const lyricsUp = lyricsUrl === undefined ? null : lyricsUrl !== null;
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const { library, currentSet, setSaved, publishFolder, pickPublishFolder } = useStore();
+  const { library, currentSet, setSaved, publishFolder, pickPublishFolder, outputSet, rescan } = useStore();
   const [tool, setTool] = useState<
-    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'patches' | 'setlist' | 'update'
+    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
   /*
    * Song info clips: which facts, remembered on this device, and whether the
@@ -118,6 +123,13 @@ export default function SetToolsView() {
       }
       return next;
     });
+  /*
+   * A return mix: which of the set's buses to print, remembered by name so
+   * the choice survives a bus being added; and what to call the print,
+   * empty meaning "after the bus".
+   */
+  const [returnName, setReturnName] = useState(() => localStorage.getItem(LS_RETURN) ?? '');
+  const [returnLabel, setReturnLabel] = useState('');
   /* The song picker: sorted, and narrowed by a few typed letters. */
   const [pickSort, setPickSort] = useSort('ls.sort.settools');
   const [pickFilter, setPickFilter] = useState('');
@@ -567,6 +579,62 @@ export default function SetToolsView() {
   };
 
   /**
+   * A return bus's mix of each chosen song, printed into the band's folder
+   * under Prints/ — where a print made in the player goes — in the version
+   * folder of the song's prepared set, so the scan attaches it there.
+   */
+  const printReturn = async () => {
+    if (!project || !setPath) return;
+    const buses = project.buses ?? [];
+    const bus = Math.max(0, buses.findIndex((b) => b.name === returnName));
+    if (!buses[bus]) return;
+    setError(null);
+    setDone(null);
+    setProgress('Preparing to print…');
+    try {
+      const band = (await publishFolder()) ?? (await pickPublishFolder());
+      // The version folder each song's print joins: its folder in the set chosen on opening, when it is prepared there.
+      const folders = new Map<string, string>();
+      if (outputSet) {
+        try {
+          const { bytes } = await local.readBytes(band, '', `${outputSet.folder}/${MANIFEST_NAME}`);
+          const manifest = JSON.parse(new TextDecoder().decode(bytes)) as PreparedManifest;
+          for (const entry of manifest.songs) folders.set(entry.title.trim().toLowerCase(), versionName(entry.folder, entry.title));
+        } catch {
+          /* nothing prepared there yet: the prints sit loose under Prints/ */
+        }
+      }
+      const label = returnLabel.trim() || `${busLabel(buses[bus])} mix`;
+      const outcome = await runReturnMix({
+        project,
+        setPath,
+        band,
+        bus,
+        titles: [...selected],
+        label,
+        versionFor: (title) => folders.get(title.trim().toLowerCase()) ?? '',
+        existingNames: (title) =>
+          (library?.songs ?? [])
+            .filter((sg) => sg.title.trim().toLowerCase() === title.trim().toLowerCase())
+            .flatMap((sg) => sg.variants.map((v) => v.name)),
+        onProgress: (p) => setProgress(`Printing ${p.song} (${p.index + 1} of ${p.count}) — ${p.stage}…`),
+      });
+      const n = outcome.written.length;
+      setDone(
+        `${n} print${n === 1 ? '' : 's'} of ${buses[bus].name} written under Prints/ in the band's folder, as “${label}”.` +
+          (outcome.written.some((w) => w.pulledDb < 0) ? ' A mix that peaked over full scale was pulled down to fit.' : '') +
+          (outcome.skipped.length ? ` Skipped: ${outcome.skipped.map((sk) => `${sk.song} (${sk.reason})`).join('; ')}.` : '') +
+          (outcome.notes.length ? ` ${outcome.notes.join('. ')}.` : ''),
+      );
+      if (n) void rescan().catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  /**
    * The library's patch clips, written into the set as *rig locators — the
    * same commit the player offers per song, here for the set at once. Only
    * for a set from the folder: a lone .als was never scanned, so the library
@@ -905,6 +973,7 @@ export default function SetToolsView() {
               ['chords', 'Chords'],
               ['info', 'Song info'],
               ['locators', 'Locator text'],
+              ['returns', 'Print a return mix'],
               ['patches', 'Patch changes'],
               ['setlist', 'Setlist'],
               ['update', 'Update the band'],
@@ -1319,6 +1388,92 @@ export default function SetToolsView() {
                   </div>
                 </>
               )}
+
+              {tool === 'returns' &&
+                (() => {
+                  const buses = project.buses ?? [];
+                  const bus = Math.max(0, buses.findIndex((b) => b.name === returnName));
+                  const here = buses[bus];
+                  const first = project.songs.find((sg) => selected.has(sg.title));
+                  const feeds = here && first ? describeFeeds(first, project, bus) : [];
+                  const passed = here ? unimitatedOn(here) : [];
+                  return (
+                    <>
+                      <div className="field stacked">
+                        <label>
+                          Which return
+                          <span className="hint">
+                            A song as one of the set's return buses hears it: every track sent to the bus at its send
+                            level, after its fader; every bus sent into it at its own output; the sum through the
+                            bus's devices, its fader and its pan. Printed as an MP3 into the band's folder, where it
+                            turns up as a version of the song.
+                          </span>
+                        </label>
+                        {buses.length ? (
+                          <div className="controls flush" style={{ alignItems: 'center' }}>
+                            <span className="control-label">Return</span>
+                            <select
+                              className="jump-select"
+                              aria-label="Which return bus to print"
+                              value={here?.name ?? ''}
+                              disabled={!!progress}
+                              onChange={(e) => {
+                                setReturnName(e.target.value);
+                                setReturnLabel('');
+                                try {
+                                  remember(LS_RETURN, e.target.value);
+                                } catch {
+                                  /* not remembered, then */
+                                }
+                              }}
+                            >
+                              {buses.map((b) => (
+                                <option key={b.name} value={b.name}>
+                                  {b.name}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="control-label">Call it</span>
+                            <input
+                              className="text-input"
+                              value={returnLabel}
+                              onChange={(e) => setReturnLabel(e.target.value)}
+                              placeholder={here ? `${busLabel(here)} mix` : 'mix'}
+                              aria-label="What to call the print"
+                              disabled={!!progress}
+                            />
+                          </div>
+                        ) : (
+                          <div className="notice">This set has no return buses.</div>
+                        )}
+                      </div>
+                      {here && first && (
+                        <div className="notice" style={{ whiteSpace: 'pre-line' }}>
+                          {feeds.length
+                            ? `For ${first.title}, ${here.name} carries:\n${feeds.join('\n')}`
+                            : `For ${first.title}, nothing reaches ${here.name} — it would be skipped.`}
+                          {passed.length ? `\n\n${passed.join(', ')} on ${here.name} cannot be imitated here and passes straight through.` : ''}
+                        </div>
+                      )}
+                      <div className="btn-row">
+                        <button
+                          className="btn primary"
+                          disabled={!!progress || selected.size === 0 || !here}
+                          onClick={() => void printReturn()}
+                        >
+                          {here
+                            ? `Print ${here.name}, ${wholeSet ? 'whole set' : `${selected.size} song${selected.size === 1 ? '' : 's'}`}`
+                            : 'Print a return mix'}
+                        </button>
+                      </div>
+                      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                        Sends into a bus set to pre-fader in Live ignore the sender's fader, as there. Live's stock
+                        devices on the bus are imitated — EQ Eight, the compressors, Utility, Reverb — and a plugin is
+                        passed through and named. A song is timed and rendered exactly as a prepare renders it.
+                      </div>
+                    </>
+                  );
+                })()}
 
               {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={setPath} />}
 

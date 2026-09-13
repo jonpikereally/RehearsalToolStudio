@@ -4479,7 +4479,7 @@ group('reference stems');
 
 group('the click and cues as sampler parts');
 {
-  const { isSetStem, samplerPartFor, sampleFileName } = await import('../src/lib/prepare.ts');
+  const { isSetStem, isSamplerStem, samplerPartFor, sampleFileName } = await import('../src/lib/prepare.ts');
   const { manifestFromSongs, validateManifest } = await import('../src/lib/preparedSet.ts');
   const { isProjectScaffolding } = await import('../src/lib/scan.ts');
 
@@ -4526,6 +4526,17 @@ group('the click and cues as sampler parts');
     { regions: [{ startBar: 1, endBar: 3 }] }));
   check('a mute region silences the notes inside it', gated.notes.length === 1, String(gated?.notes.length));
   check('a track with nothing playing is no part at all', samplerPartFor(stem([])) === null);
+
+  /*
+   * A click Live strikes from a drum rack is a pattern; a click that is an
+   * audio clip — a song-length file, trimmed and placed like any stem — is
+   * not, and is rendered as one. The cues are always a pattern.
+   */
+  check('a MIDI click is written as a pattern', isSamplerStem(stem([clip('up.wav', 1, { note: 36, velocity: 100 })])));
+  check('an audio click is rendered like a stem', !isSamplerStem(stem([clip('ADDICTED_Click_93bpm.wav', 1)])));
+  check('a click with both is a pattern', isSamplerStem(stem([clip('ADDICTED_Click_93bpm.wav', 1), clip('up.wav', 1, { note: 36, velocity: 100 })])));
+  check('audio cues are still a pattern', isSamplerStem(stem([clip('Slates/Fix You.wav', 1)], { name: 'Cues' })));
+  check('and an ordinary stem is neither', !isSamplerStem(stem([clip('bass.wav', 1)], { name: 'Bass' })));
 
   check('a sample is named for what it is: its own name plus a hash of its bytes, under Resources/',
     sampleFileName('Some/Folder/kick.wav', '1a2b3c4d5e6f') === 'Resources/kick-1a2b3c4d.wav',
@@ -5314,6 +5325,82 @@ group('locator text as clips');
   check('named with the locator text', clips[1].text === 'Clocks [0:55] {D / 88 BPM}', clips[1].text);
   check('a repeated title is one song', songs.join() === 'Yellow,Clocks');
   check('and only the chosen songs are written', locatorClipsFor(p2, ['Clocks'], all, 'setlist').songs.join() === 'Clocks');
+}
+
+/* ------------------------------- a return mix ------------------------------- */
+
+group('a return mix');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { feedsOf, describeFeeds, busLabel, unimitatedOn } = await import('../src/lib/returnMix.ts');
+  const send = (levels) => `<Sends>${levels.map((l, i) => `<TrackSendHolder Id="${i}"><Send><LomId Value="0" /><Manual Value="${l}" /></Send><Active Value="true" /></TrackSendHolder>`).join('')}</Sends>`;
+  const out = (target) => `<AudioOutputRouting><Target Value="${target}" /></AudioOutputRouting>`;
+  const mixer = (gain) => `<Mixer><Volume><LomId Value="0" /><Manual Value="${gain}" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const clip = (start, end, file) => `<AudioClip Id="1" Time="${start}"><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="${file}" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef></AudioClip>`;
+  const audio = (id, group, name, gain, target, sends, clips = clip(0, 64, `Stems/${name}.wav`)) => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      <DeviceChain>${mixer(gain)}<Devices></Devices>${out(target)}${send(sends)}</DeviceChain>${clips}</AudioTrack>`;
+  const groupTrack = (id, parent, name, gain, target, sends) =>
+    `<GroupTrack Id="${id}"><TrackGroupId Value="${parent}" /><EffectiveName Value="${name}" /><DeviceChain>${mixer(gain)}<Devices></Devices>${out(target)}${send(sends)}</DeviceChain></GroupTrack>`;
+  const plugin = `<AuPluginDevice Id="3"><On><LomId Value="0" /><Manual Value="true" /></On><PluginDesc><AuPluginInfo><Name Value="Lifesine" /></AuPluginInfo></PluginDesc></AuPluginDevice>`;
+  const ret = (id, name, gain, sends, devices = '') =>
+    `<ReturnTrack Id="${id}"><EffectiveName Value="${name}" /><DeviceChain>${mixer(gain)}<Devices>${devices}</Devices>${out('AudioOut/External/S0')}${send(sends)}</DeviceChain></ReturnTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Addicted Acapella" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="3"><Time Value="128" /><Name Value="Addicted / 2:57 / 93BPM" /></Locator>
+    <Locator Id="4"><Time Value="192" /><Name Value="AUTOSTOP" /></Locator>
+    <Locator Id="5"><Time Value="256" /><Name Value="Addicted DNU" /></Locator>
+    <Locator Id="6"><Time Value="384" /><Name Value="AUTOSTOP" /></Locator>
+    ${groupTrack(90, -1, 'CLICK', 1, 'AudioOut/None', [0, 0, 1])}
+    ${audio(91, 90, 'CLICK AUDIO', 0.5, 'AudioOut/GroupTrack', [0, 0, 0], clip(128, 192, 'Click/addicted click.wav'))}
+    ${groupTrack(10, -1, 'ADDICTED', 0.5, 'AudioOut/None', [0.25, 0, 0])}
+    ${audio(11, 10, 'DRUMS', 0.8, 'AudioOut/None', [0, 1, 0], clip(128, 192, 'Stems/DRUMS.wav') + clip(256, 288, 'Stems/DRUMS old.wav') + clip(288, 320, 'Stems/DRUMS old.wav') + clip(320, 352, 'Stems/DRUMS old.wav') + clip(352, 384, 'Stems/DRUMS old.wav'))}
+    ${audio(12, 10, 'VOX', 1, 'AudioOut/GroupTrack', [0, 0, 0], clip(128, 192, 'Stems/VOX.wav'))}
+    ${audio(13, 10, 'OFF', 1, 'AudioOut/None', [1, 1, 1], clip(128, 192, 'Stems/OFF.wav')).replace('<Devices>', '<Speaker><LomId Value="0" /><Manual Value="false" /></Speaker><Devices>')}
+    ${ret(50, 'A-EDIT BUS', 0.5, [0, 0, 0])}
+    ${ret(51, 'C-DRUMS 3/4', 1, [0.5, 0, 0])}
+    ${ret(52, 'F-CLICK 9', 1, [0, 0, 0], plugin)}
+    <MainTrack><SendsPre><SendPreBool Id="1" Value="false" /><SendPreBool Id="2" Value="true" /><SendPreBool Id="3" Value="false" /></SendsPre></MainTrack>
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const acapella = p.songs.find((s) => s.title === 'Addicted Acapella');
+  const song = p.songs.find((s) => s.title === 'Addicted');
+  check('a group named exactly like a song is that song\'s, not a near miss\'s',
+    song?.stems.some((s) => s.name === 'DRUMS') && !acapella?.stems.some((s) => s.name === 'DRUMS'),
+    JSON.stringify([acapella?.stems.map((s) => s.name), song?.stems.map((s) => s.name)]));
+  // An old arrangement kept in the same tracks, most of whose clips sit in its
+  // own bars: it plays out of the group too, with its own clips, and the song
+  // the group is named for keeps its.
+  const dnu = p.songs.find((s) => s.title === 'Addicted DNU');
+  check('a song playing out of a named song\'s group shares it rather than taking it',
+    dnu?.stems.find((s) => s.name === 'DRUMS')?.clips.length === 4 && song.stems.find((s) => s.name === 'DRUMS')?.clips.length === 1,
+    JSON.stringify([dnu?.stems.map((s) => [s.name, s.clips.length]), song.stems.map((s) => [s.name, s.clips.length])]));
+  const drums = song.stems.find((s) => s.name === 'DRUMS');
+  const vox = song.stems.find((s) => s.name === 'VOX');
+  check('a track\'s own send comes after its own fader alone', drums.sends[0].bus === 1 && drums.sends[0].fader === 0.8, JSON.stringify(drums.sends));
+  check('a group\'s send comes after every fader up to the group', vox.sends[0].bus === 0 && Math.abs(vox.sends[0].fader - 0.5) < 1e-9, JSON.stringify(vox.sends));
+  check('the pre/post switch is read per return', !p.buses[0].pre && p.buses[1].pre === true && !p.buses[2].pre, JSON.stringify(p.buses.map((b) => b.pre)));
+  const click = song.stems.find((s) => s.name === 'Click');
+  check('the set\'s click carries where its group sends it', click?.sends.length === 1 && click.sends[0].bus === 2 && click.sends[0].level === 1, JSON.stringify(click?.sends));
+
+  const drumsBus = feedsOf(song, p, 1);
+  check('a pre-fader bus takes the send regardless of the fader', drumsBus.stems.length === 1 && drumsBus.stems[0].stem.name === 'DRUMS' && drumsBus.stems[0].level === 1, JSON.stringify(drumsBus.stems.map((f) => [f.stem.name, f.level])));
+  const edit = feedsOf(song, p, 0);
+  check('a post-fader bus takes fader times send, from the group\'s send too',
+    edit.stems.length === 1 && edit.stems[0].stem.name === 'VOX' && Math.abs(edit.stems[0].level - 0.125) < 1e-9, JSON.stringify(edit.stems.map((f) => [f.stem.name, f.level])));
+  check('a track switched off sends nothing', !edit.stems.some((f) => f.stem.name === 'OFF') && !drumsBus.stems.some((f) => f.stem.name === 'OFF'));
+  check('and a bus sent into it is a feed, at its send level', edit.buses.length === 1 && edit.buses[0].from === 1 && edit.buses[0].level === 0.5 && edit.buses[0].pre === false, JSON.stringify(edit.buses));
+  const clickBus = feedsOf(song, p, 2);
+  check('the click reaches its bus', clickBus.stems.length === 1 && clickBus.stems[0].stem.name === 'Click' && clickBus.stems[0].level === 1);
+  const said = describeFeeds(song, p, 0);
+  check('the account follows every bus in', said.length === 2 && /^VOX at −18.1 dB$/.test(said[0]) && /^via C-DRUMS 3\/4 at −6 dB: DRUMS at 0 dB$/.test(said[1]), JSON.stringify(said));
+  check('a plugin on the bus is named as passed through', unimitatedOn(p.buses[2]).join() === 'plugin “Lifesine”' && unimitatedOn(p.buses[1]).length === 0, JSON.stringify(unimitatedOn(p.buses[2])));
+  check('a print is named after its bus', busLabel({ name: 'H-HP 11/12' }) === 'HP 11-12' && busLabel({ name: 'A-EDIT BUS' }) === 'EDIT BUS', busLabel({ name: 'H-HP 11/12' }));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

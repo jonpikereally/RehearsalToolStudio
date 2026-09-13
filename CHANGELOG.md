@@ -5,6 +5,20 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-12
+
+**Print a song as one of the set's returns hears it**
+
+In a set built for the stage the returns are the outputs — every track sent to its bus, the buses on to the interface or into each other — so what reaches a bus is a mix in its own right, with its balance in the sends. A new set tool prints it: each stem at its send level, after the sender's fader unless the bus takes its sends pre, each bus sent into it at its own output, the sum through the bus's devices and then its fader and pan, as an MP3 under Prints/ in the band's folder where the scan attaches it to the song. The page says what the bus carries before anything is rendered. For that the parser records which fader a send follows, reads Live's pre/post switch per return, and gives the set's click and cues the sends of their groups.
+
+**Render a click that is an audio clip, rather than striking it**
+
+The set's click was always written as a pattern of samples, which is right for a MIDI track striking a drum rack and wrong for a click that is an audio clip: a song-length file placed like any stem, trimmed and sometimes cut in two. Struck as a one-shot from the file's top, a clip that starts three seconds in landed three seconds early and a clip cut in two played twice over itself. A click with no rack notes is now rendered like a stem, as a [click].mp3 the player already treats as the click; one with any is a pattern still, and the cues always are.
+
+**Choose the output folder in the Finder**
+
+The launch window's output side offered only a list of the band's set folders where the input side opened the Finder. Now both do: Another folder… opens the folder dialog in the band's Sets folder, and what is picked says what it is — a set folder inside a band's Sets is that set, another band's moving the studio to it; the band's folder, or any other, becomes the band's, with its sets in the dropdown that has taken the list's place. A set folder made by hand gets its manifest, fed by the chosen session. The band folder is worked out from the pick and granted by path, so no second dialog is needed.
+
 ## 2026-09-09
 
 **Write each song's locator name out as a clip**

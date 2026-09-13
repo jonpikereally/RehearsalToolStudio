@@ -270,6 +270,8 @@ export interface Bus {
   direct: boolean;
   /** Its own sends into other buses, by index. */
   sends: { bus: number; level: number }[];
+  /** Sends into this bus are taken before the sender's fader, as Live's pre/post switch has it. */
+  pre?: boolean;
 }
 
 /** One of the set's rig tracks, cut down to one song. */
