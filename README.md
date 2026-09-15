@@ -39,8 +39,9 @@ with its own repo. This one is only Rehearsal Tool Studio.
   lyric clips via Lyrics Studio, patch changes written into the `.als`,
   locator names written out as MIDI clips in AbleSet's form or the setlist's,
   a print of any return bus's mix of a song — the edit bus, the headphone
-  mix — summed as Live sums it, and a printable setlist whose durations
-  come from the arrangement.
+  mix — summed as Live sums it, new songs laid out from a folder of stems
+  the way a song already in the set is, and a printable setlist whose
+  durations come from the arrangement.
   Everything writes to a copy, never the original.
 - **Prints a mix** to a file, and drives nothing: this window has no Web MIDI.
 

@@ -2548,6 +2548,82 @@ input[type='range'] {
   margin: 0;
 }
 
+/* New songs from stems: a card per song, a row per file. */
+.stem-song {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: var(--bg);
+}
+
+.stem-song.off {
+  opacity: 0.55;
+}
+
+.stem-song-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stem-title {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.stem-song-note {
+  margin: 6px 0 8px 30px;
+}
+
+.stem-parts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto minmax(140px, auto) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  overflow-x: auto;
+}
+
+.stem-part {
+  display: contents;
+}
+
+.stem-part.off > *:not(input) {
+  opacity: 0.45;
+}
+
+.stem-file {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stem-length,
+.stem-arrow,
+.stem-onto {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.stem-onto {
+  grid-column: span 2;
+}
+
+.stem-name {
+  width: 140px;
+}
+
+.btn.small {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
 /* What is about to be opened, named on both sides, and the button that does it. */
 .launch-go {
   display: flex;

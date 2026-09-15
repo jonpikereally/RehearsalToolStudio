@@ -33,6 +33,7 @@ import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyric
 import SlatesPanel from './SlatesPanel';
 import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
+import NewSongsPanel from './NewSongsPanel';
 import { useStore } from '../lib/store';
 import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
@@ -71,7 +72,7 @@ export default function SetToolsView() {
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet, setSaved, publishFolder, pickPublishFolder, outputSet, rescan } = useStore();
   const [tool, setTool] = useState<
-    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'patches' | 'setlist' | 'update'
+    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'stems' | 'patches' | 'setlist' | 'update'
   >(currentSet ? 'check' : 'slates');
   /*
    * Song info clips: which facts, remembered on this device, and whether the
@@ -974,6 +975,7 @@ export default function SetToolsView() {
               ['info', 'Song info'],
               ['locators', 'Locator text'],
               ['returns', 'Print a return mix'],
+              ['stems', 'New songs from stems'],
               ['patches', 'Patch changes'],
               ['setlist', 'Setlist'],
               ['update', 'Update the band'],
@@ -1474,6 +1476,8 @@ export default function SetToolsView() {
                     </>
                   );
                 })()}
+
+              {tool === 'stems' && folder && setPath && <NewSongsPanel project={project} setPath={setPath} folder={folder} />}
 
               {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={setPath} />}
 

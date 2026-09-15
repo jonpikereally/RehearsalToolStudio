@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-15
+
+**Lay out new songs from a folder of stems the way the set's own are**
+
+A song arrives as a folder of bounces, named every which way by whoever made them, and getting it into a set was an hour of the same clicks: a group, a REF folder, a track per stem routed and sent like the others, the click onto the click track, a locator and an AUTOSTOP. A new set tool does them. Nothing in it knows a format — each set has its own — so a song already in the set is the model: each file is matched to one of its tracks by what it is, and that track, with its folder, routing, sends, devices and switch, is copied with the file in its clip. The page shows what was read from the names and lets any of it be changed first; the tempo is measured from the click's audio, since the number in a click's name is often double or wrong. It writes a copy beside the set, with the songs added after everything in it or in a new set of only them, and checks the copy reads back before writing anything.
+
 ## 2026-09-12
 
 **Print a song as one of the set's returns hears it**

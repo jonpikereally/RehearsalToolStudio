@@ -5403,5 +5403,143 @@ group('a return mix');
   check('a print is named after its bus', busLabel({ name: 'H-HP 11/12' }) === 'HP 11-12' && busLabel({ name: 'A-EDIT BUS' }) === 'EDIT BUS', busLabel({ name: 'H-HP 11/12' }));
 }
 
+/* --------------------------- new songs from stems --------------------------- */
+
+group('new songs from stems');
+{
+  const { namePart, titleFromFolder, songsFromFiles, categoryOf, songFromFiles, clickTempo, relativePath, buildSongsIntoSet, modelSong, modelCandidates, clickTrackIn } =
+    await import('../src/lib/newSet.ts');
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+
+  // The names producers actually send, from two real deliveries.
+  const read = (file, title) => {
+    const n = namePart(file, title);
+    return `${n.role}:${n.part}${n.bpm ? ` ${n.bpm}bpm` : ''}${n.clickBpm ? ` click${n.clickBpm}` : ''}${n.key ? ` ${n.key}` : ''}`;
+  };
+  const cases = [
+    ['ADDICTED_Bass.wav', 'Addicted', 'stem:Bass'],
+    ['ADDICTED_Click_93bpm.wav', 'Addicted', 'click: 93bpm'],
+    ['ADDICTED_REF.wav', 'Addicted', 'ref:'],
+    ['FOREVER_REF_F# Major.wav', 'FOREVER', 'ref: F#'],
+    ['FULLY LOADED.Click_92BPM.wav', 'FULLY LOADED', 'click: 92bpm'],
+    ['FULLY LOADED_F MAJOR_REF.wav', 'FULLY LOADED', 'ref: F'],
+    ['LOST_Bass-Gain_01-01.wav', 'LOST', 'stem:Bass'],
+    ['SCHEDULE._Vocal-Gain_01-01.wav', 'SCHEDULE', 'stem:Vocal'],
+    ['JDP_Vocal BG.wav', 'JDP', 'stem:Vocal BG'],
+    [' Bass - INTO YOU_V2_02.wav', 'INTO YOU', 'stem:Bass'],
+    ['Click 148 - INTO YOU_V2_02.wav', 'INTO YOU', 'click: click148'],
+    ['Click_138_Hold You Down_V2_02.wav', 'HOLD YOU DOWN', 'click: click138'],
+    ['MIX_Hold You Down_V2_02.wav', 'HOLD YOU DOWN', 'ref:'],
+    ['Drumss - Regionss_01.wav', 'REGIONS', 'stem:Drumss'],
+    ['22 (F)_Bass.wav', '22', 'stem:Bass F'],
+    ['Fearless 100BPM 2026.08.10_Piano.wav', 'Fearless', 'stem:Piano 100bpm'],
+    ['Love Story (Taylor\'s Version) (C)_Guitar.wav', 'Love Story', 'stem:Guitar C'],
+    ['Mine 2026.08.10.wav', 'Mine', 'ref:'],
+  ];
+  const wrong = cases.filter(([file, title, want]) => read(file, title) !== want).map(([file, title, want]) => `${file}: ${read(file, title)} ≠ ${want}`);
+  check('a bounce\'s name is read for its part, key, tempo and click, however it is written', wrong.length === 0, wrong.join(' | '));
+  check('a folder\'s name gives the song',
+    titleFromFolder('Fearless 100BPM 2026.08.10 Stems') === 'Fearless' && titleFromFolder('Cruel Summer Stems 2026.04.11') === 'Cruel Summer' && titleFromFolder('YBWM Set 2026.09.06') === 'YBWM Set',
+    titleFromFolder('YBWM Set 2026.09.06'));
+
+  const one = songsFromFiles([{ path: '/A_Bass.wav', name: 'A_Bass.wav' }, { path: '/A_Bass.wav.asd', name: 'A_Bass.wav.asd' }, { path: '/A.wav', name: 'A.wav' }], 'Anthem Stems 2026.01.01');
+  check('a folder of one song\'s stems is that song', one.length === 1 && one[0].title === 'Anthem' && one[0].files.length === 2, JSON.stringify(one));
+  const many = songsFromFiles([
+    { path: '/HOLD YOU DOWN/Bass_Hold You Down.wav', name: 'Bass_Hold You Down.wav' },
+    { path: '/Ready/INTO YOU/Drums - INTO YOU.wav', name: 'Drums - INTO YOU.wav' },
+    { path: '/Shinin.mp3', name: 'Shinin.mp3' },
+    { path: '/Backup/HOLD YOU DOWN/Bass_Hold You Down.wav', name: 'Bass_Hold You Down.wav' },
+  ], 'Song Stems');
+  check('a delivery of folders is a song a folder, wherever they sit, a loose file its own, a backup none',
+    many.map((s) => `${s.title}:${s.files.length}`).join() === 'HOLD YOU DOWN:1,INTO YOU:1,Shinin:1', many.map((s) => `${s.title}:${s.files.length}`).join());
+
+  check('a track\'s kind is read from the set\'s names and the files\'',
+    ['VOX 1', 'BGVS', 'REF LV', 'REF SONG', 'Vocal BG', 'Instrumental', 'Extra Prod', 'Drumss', 'REF DRUMS']
+      .map((n) => `${categoryOf(n).category}${categoryOf(n).ref ? '*' : ''}`).join() === 'vox1,vox2,vox1*,song*,vox2,music,other,drums,drums*',
+    ['VOX 1', 'BGVS', 'REF LV', 'REF SONG', 'Vocal BG', 'Instrumental', 'Extra Prod', 'Drumss', 'REF DRUMS'].map((n) => `${categoryOf(n).category}${categoryOf(n).ref ? '*' : ''}`).join());
+
+  const file = (name, seconds = 120) => ({ name, relPath: `Stems/${name}`, absPath: `/Set Project/Stems/${name}`, size: 1000, modified: 1.7e12, seconds, sampleRate: 44100, frames: seconds * 44100 });
+  const fakeModel = { title: 'Model', group: {}, inside: ['REF SONG', 'REF DRUMS', 'REF VOX', 'BASS', 'DRUMS', 'OTHER'].map((name, i) => ({ kind: 'AudioTrack', id: String(i), parentId: 'g', name, text: '' })) };
+  const matched = songFromFiles({ title: 'New', folder: 'New 96BPM' }, ['New.wav', 'New_Drums.wav', 'New_Vocals.wav', 'New_Bass.wav', 'New_Bass 2.wav', 'New_Guitar.wav', 'New_Click.wav'].map((n) => file(n)), fakeModel);
+  check('each file is matched to the model\'s track for its kind, the band\'s before the record\'s',
+    matched.parts.map((p) => `${p.target || `+${p.name}`}`).join() === 'REF SONG,DRUMS,REF VOX,BASS,+BASS,+GUITAR,+CLICK',
+    matched.parts.map((p) => `${p.target || `+${p.name}`}`).join());
+  check('and the folder\'s tempo is the song\'s', matched.bpm === 96 && matched.bpmFrom === 'name');
+
+  // A click at 120 with an accent, after a two-beat count-in at 118.
+  const sr = 8000;
+  const tick = (buf, at, amp) => { for (let i = 0; i < 80; i++) buf[at + i] = amp * Math.exp(-i / 20) * (i % 2 ? 1 : -1); };
+  const clicks = new Float32Array(sr * 20);
+  let t = 0;
+  for (let b = 0; b < 2; b++) { tick(clicks, Math.round(t * sr), 0.9); t += 60 / 118; }
+  for (let b = 0; t < 19.5; b++) { tick(clicks, Math.round(t * sr), b % 4 ? 0.5 : 1); t += 0.5; }
+  check('a click\'s tempo is measured from its clicks, the count-in aside', Math.abs(clickTempo(clicks, sr) - 120) < 0.1, String(clickTempo(clicks, sr)));
+  check('silence has no tempo', clickTempo(new Float32Array(sr * 2), sr) === null);
+  check('a path is written from the set\'s folder', relativePath('/Users/j/Set Project', '/Users/j/Set Project/Stems/A/b.wav') === 'Stems/A/b.wav' && relativePath('/Users/j/Set Project', '/Users/j/Elsewhere/b.wav') === '../Elsewhere/b.wav');
+
+  /* Writing: a compact set in Live's shape, a song with a REF folder, a click group and a return. */
+  const mixer = (on = true) => `<Mixer><Speaker><LomId Value="0" /><Manual Value="${on}" /><AutomationTarget Id="{T}" /></Speaker><Volume><LomId Value="0" /><Manual Value="1" /><AutomationTarget Id="{T}" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan><Sends><TrackSendHolder Id="0"><Send><LomId Value="0" /><Manual Value="0.0003162277571" /><AutomationTarget Id="{T}" /></Send></TrackSendHolder><TrackSendHolder Id="1"><Send><LomId Value="0" /><Manual Value="1" /><AutomationTarget Id="{T}" /></Send></TrackSendHolder></Sends></Mixer>`;
+  const routing = (target) => `<AudioOutputRouting><Target Value="${target}" /><UpperDisplayString Value="x" /><LowerDisplayString Value="" /></AudioOutputRouting>`;
+  const clipXml = (id, start, end, path) => `<AudioClip Id="${id}" Time="${start}"><LomId Value="0" /><CurrentStart Value="${start}" /><CurrentEnd Value="${end}" /><Loop><LoopStart Value="0" /><LoopEnd Value="32" /><StartRelative Value="0" /><LoopOn Value="false" /><OutMarker Value="32" /><HiddenLoopStart Value="0" /><HiddenLoopEnd Value="32" /></Loop><Name Value="old" /><Disabled Value="false" /><IsWarped Value="true" /><SampleRef><FileRef><RelativePathType Value="3" /><RelativePath Value="${path}" /><Path Value="/old/${path}" /><OriginalFileSize Value="1" /><OriginalCrc Value="77" /></FileRef><LastModDate Value="1" /><DefaultDuration Value="1" /><DefaultSampleRate Value="44100" /></SampleRef><Fade Value="false" /><SampleVolume Value="0.5" /><WarpMarkers><WarpMarker Id="9" SecTime="0" BeatTime="0" /></WarpMarkers><IsSongTempoLeader Value="false" /></AudioClip>`;
+  const seq = (clips) => `<MainSequencer><Sample><ArrangerAutomation><Events>${clips}</Events></ArrangerAutomation></Sample></MainSequencer><FreezeSequencer><Sample><ArrangerAutomation><Events /></ArrangerAutomation></Sample></FreezeSequencer>`;
+  const audio = (id, group, name, target, clips, on = true) =>
+    `<AudioTrack Id="${id}"><LomId Value="3" /><Name><EffectiveName Value="${name}" /><UserName Value="${name}" /><MemorizedFirstClipName Value="" /></Name><AutomationEnvelopes><Envelopes /></AutomationEnvelopes><TrackGroupId Value="${group}" /><DeviceChain>${routing(target)}${mixer(on)}${seq(clips)}</DeviceChain><Freeze Value="false" /></AudioTrack>`;
+  const groupXml = (id, parent, name) =>
+    `<GroupTrack Id="${id}"><LomId Value="0" /><Name><EffectiveName Value="${name}" /><UserName Value="${name}" /></Name><AutomationEnvelopes><Envelopes /></AutomationEnvelopes><TrackGroupId Value="${parent}" /><DeviceChain>${routing(parent === -1 ? 'AudioOut/Main' : 'AudioOut/GroupTrack')}${mixer()}</DeviceChain></GroupTrack>`;
+  let target = 1000;
+  const set = `<?xml version="1.0" encoding="UTF-8"?>
+<Ableton Creator="Live 12"><LiveSet><NextPointeeId Value="5000" />
+<Tracks>
+${groupXml(10, -1, 'CLICK')}
+${audio(11, 10, 'CLICK AUDIO', 'AudioOut/GroupTrack', clipXml(0, 0, 64, 'Click/yellow click.wav'))}
+${groupXml(20, -1, 'Yellow')}
+${groupXml(21, 20, 'REF')}
+${audio(22, 21, 'REF SONG', 'AudioOut/GroupTrack', clipXml(0, 0, 64, 'Stems/Yellow.wav'), false)}
+${audio(23, 20, 'BASS', 'AudioOut/None', clipXml(0, 0, 64, 'Stems/Yellow_Bass.wav'))}
+${audio(24, 20, 'DRUMS', 'AudioOut/None', clipXml(0, 0, 64, 'Stems/Yellow_Drums.wav'))}
+<ReturnTrack Id="90"><Name><EffectiveName Value="A-EDIT" /></Name><DeviceChain>${routing('AudioOut/External/S0')}${mixer()}</DeviceChain></ReturnTrack>
+<ReturnTrack Id="91"><Name><EffectiveName Value="B-BASS" /></Name><DeviceChain>${routing('AudioOut/External/S1')}${mixer()}</DeviceChain></ReturnTrack>
+</Tracks>
+<MainTrack><DeviceChain><Mixer><Tempo><LomId Value="0" /><Manual Value="120" /><AutomationTarget Id="8" /></Tempo></Mixer></DeviceChain><AutomationEnvelopes><Envelopes><AutomationEnvelope Id="0"><EnvelopeTarget><PointeeId Value="8" /></EnvelopeTarget><Automation><Events>
+<FloatEvent Id="1" Time="-63072000" Value="120" />
+</Events></Automation></AutomationEnvelope></Envelopes></AutomationEnvelopes></MainTrack>
+<Locators><Locators>
+<Locator Id="2"><LomId Value="0" /><Time Value="0" /><Name Value="Yellow / 0:32 / 120BPM" /><Annotation Value="" /><IsSongStart Value="false" /></Locator>
+<Locator Id="3"><LomId Value="0" /><Time Value="64" /><Name Value="AUTOSTOP" /><Annotation Value="" /><IsSongStart Value="false" /></Locator>
+</Locators></Locators>
+</LiveSet></Ableton>`.replace(/\{T\}/g, () => String(target++));
+  const p = parseAlsXml(set);
+  check('the fixture is a set with a song', p.songs.length === 1 && p.songs[0].stems.filter((s) => s.trackId).length === 3, JSON.stringify(p.songs.map((s) => [s.title, s.stems.map((x) => x.name)])));
+  check('the songs that can be a model, and the click track, are found', modelCandidates(set, p).join() === 'Yellow' && clickTrackIn(set) === 'CLICK AUDIO');
+  const model = modelSong(set, p, 'Yellow');
+  check('a model is its group and everything in it, folders too', model.inside.map((t) => t.name).join() === 'REF,REF SONG,BASS,DRUMS');
+  const newSong = songFromFiles({ title: 'Clocks', folder: 'Clocks' }, [file('Clocks.wav', 60), file('Clocks_Bass.wav', 60), file('Clocks_Piano.wav', 60), file('Clocks_Click_130bpm.wav', 60)], model);
+  const added = buildSongsIntoSet(set, [newSong], { model });
+  const q = parseAlsXml(added.xml);
+  const clocks = q.songs.find((s) => s.title === 'Clocks');
+  check('the song is added after the set, on a bar line past the gap', clocks && clocks.startBar === 25 && Math.abs(clocks.endBar - 25 - 33) < 1e-9, JSON.stringify(clocks && [clocks.startBar, clocks.endBar]));
+  check('with its locator in the set\'s form', /<Name Value="Clocks \/ 1:00 \/ 130BPM" \/>/.test(added.xml) && /<Time Value="\d+" \/>\s*<Name Value="AUTOSTOP" \/>[\s\S]*<\/Locators>/.test(added.xml));
+  const stems = clocks?.stems.filter((s) => s.trackId) ?? [];
+  check('each file on a copy of its model track, a new kind beside its nearest relation',
+    stems.map((s) => `${s.name}${s.regions?.length === 0 ? '(off)' : ''}`).join() === 'REF SONG(off),BASS,PIANO', stems.map((s) => `${s.name}${s.regions?.length === 0 ? '(off)' : ''}`).join());
+  check('in the model\'s folders', /<EffectiveName Value="REF" \/>[\s\S]*<EffectiveName Value="REF SONG" \/>[\s\S]*<EffectiveName Value="Clocks" \/>/.test(added.xml.slice(added.xml.indexOf('<EffectiveName Value="Clocks"') - 2000)) || stems[0]?.name === 'REF SONG');
+  check('with the model\'s routing and sends', stems.find((s) => s.name === 'BASS')?.sends.some((x) => x.bus === 1) && stems.find((s) => s.name === 'BASS')?.direct === false);
+  const bassClip = stems.find((s) => s.name === 'BASS')?.clips[0];
+  check('its clip plays the file unwarped from the song\'s start, at unity', bassClip && bassClip.path === 'Stems/Clocks_Bass.wav' && !bassClip.warped && bassClip.gain === 1 && bassClip.startBar === 1, JSON.stringify(bassClip));
+  check('the click goes onto the set\'s click track', clocks?.stems.find((s) => s.name === 'Click')?.clips.some((c) => c.path === 'Stems/Clocks_Click_130bpm.wav'));
+  check('the tempo steps to the song\'s', clocks?.startBpm === 130 && p.songs[0].startBpm === 120, String(clocks?.startBpm));
+  check('the set\'s own song is as it was', q.songs.find((s) => s.title === 'Yellow')?.stems.filter((s) => s.trackId).length === 3);
+  const ids = [...added.xml.matchAll(/<([\w.]*Target[\w.]*|Pointee|Locator) Id="(\d+)"/g)].map((m) => Number(m[2]));
+  check('no id is used twice, and none past the counter', new Set(ids).size === ids.length && Math.max(...ids) < Number(added.xml.match(/<NextPointeeId Value="(\d+)"/)[1]));
+  check('nothing of the model\'s clips comes along', (added.xml.match(/<AudioClip Id=/g) ?? []).length === 4 + 4 && (added.xml.match(/<RelativePath Value="Stems\/Yellow_Bass.wav"/g) ?? []).length === 1);
+  check('a song the set already has is left out and said so', (() => { try { buildSongsIntoSet(set, [{ ...newSong, title: 'Yellow' }], { model }); return false; } catch (e) { return /No songs to write/.test(e.message); } })());
+
+  const fresh = buildSongsIntoSet(set, [newSong], { model, fresh: true });
+  const f = parseAlsXml(fresh.xml);
+  check('a new set holds only the new songs, from the gap', f.songs.length === 1 && f.songs[0].title === 'Clocks' && f.songs[0].startBar === 9, JSON.stringify(f.songs.map((s) => [s.title, s.startBar])));
+  check('and at the first song\'s tempo from the top', f.songs[0].startBpm === 130 && /<FloatEvent Id="\d+" Time="-63072000" Value="130"/.test(fresh.xml), String(f.songs[0].startBpm));
+  check('with the set\'s click track and returns, and none of its clips', /CLICK AUDIO/.test(fresh.xml) && /A-EDIT/.test(fresh.xml) && !/yellow click|Yellow_Bass/.test(fresh.xml) && f.songs[0].stems.find((s) => s.name === 'Click')?.clips.length === 1);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);
