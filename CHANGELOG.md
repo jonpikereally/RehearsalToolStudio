@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-15
 
+**Bring the checkout up to date with GitHub before building**
+
+The studio is built from the checkout beside it, and until now an update was whatever had reached that folder by other means. With the code on GitHub, every launch and File ▸ Check for Updates first fetch from it and fast-forward onto the branch tracked, then rebuild if anything moved — so a commit made anywhere arrives on the next check. Work in progress is never pulled over: uncommitted changes, or commits here that GitHub hasn't, leave the checkout alone and the log says which. A fetch that does not answer in fifteen seconds is given up on and the app opens on what it has. The packaged app has no checkout and is unchanged.
+
 **Lay out new songs from a folder of stems the way the set's own are**
 
 A song arrives as a folder of bounces, named every which way by whoever made them, and getting it into a set was an hour of the same clicks: a group, a REF folder, a track per stem routed and sent like the others, the click onto the click track, a locator and an AUTOSTOP. A new set tool does them. Nothing in it knows a format — each set has its own — so a song already in the set is the model: each file is matched to one of its tracks by what it is, and that track, with its folder, routing, sends, devices and switch, is copied with the file in its clip. The page shows what was read from the names and lets any of it be changed first; the tempo is measured from the click's audio, since the number in a click's name is often double or wrong. It writes a copy beside the set, with the songs added after everything in it or in a new set of only them, and checks the copy reads back before writing anything.

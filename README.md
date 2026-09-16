@@ -63,6 +63,14 @@ moves, since the studio app carries the repo's path.
 Click the app. On the first run it asks for the folder your sets live in — the
 macOS folder dialog — and remembers it from then on. Rescan reads every set.
 
+When this folder is a clone with a GitHub remote, every launch and File ▸
+Check for Updates (⌘U) first fetch from it and fast-forward onto what it
+has, then rebuild if anything moved. Uncommitted changes, or commits here
+that are not on GitHub yet, are never pulled over; the launcher's log
+(`.studio-build.log`) says what happened either way. The packaged app from
+the installer has no checkout and does not do this: a new version there is
+a new installer.
+
 ## On another Mac
 
 The folder is in Dropbox and has no git remote, so the code arrives by sync

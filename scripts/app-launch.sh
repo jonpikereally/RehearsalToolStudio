@@ -56,6 +56,51 @@ start_voice_helper() {
   fi
 }
 
+# The checkout is brought up to date with GitHub first, when it has a
+# remote: a fetch, then a fast-forward onto the branch it tracks, so a
+# commit made on another Mac — or by the studio on one — arrives here on
+# the next launch or Check for Updates and is built below like any other.
+#
+# It never pulls over work in progress: uncommitted changes, or commits of
+# this Mac's own that are not on GitHub yet, leave the checkout alone and
+# the log says so. Nor does it wait on a dead network: the fetch is given
+# fifteen seconds, after which the app opens on what it has.
+update_from_github() {
+  GIT=/usr/bin/git
+  ( cd "$REPO" && "$GIT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 ) || return
+  if [ -n "$(cd "$REPO" && "$GIT" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    echo "$(date '+%F %T') not updated from GitHub: uncommitted changes here" >>"$REPO/.studio-build.log"
+    return
+  fi
+  ( cd "$REPO" && "$GIT" fetch --quiet origin >>"$REPO/.studio-build.log" 2>&1 ) &
+  fetching=$!
+  n=0
+  while kill -0 "$fetching" 2>/dev/null; do
+    n=$((n + 1))
+    if [ $n -gt 150 ]; then
+      kill "$fetching" 2>/dev/null
+      echo "$(date '+%F %T') not updated from GitHub: the fetch did not answer" >>"$REPO/.studio-build.log"
+      return
+    fi
+    sleep 0.1
+  done
+  wait "$fetching" || { echo "$(date '+%F %T') not updated from GitHub: the fetch failed" >>"$REPO/.studio-build.log"; return; }
+  before="$(cd "$REPO" && "$GIT" rev-parse --short HEAD 2>/dev/null)"
+  if ( cd "$REPO" && "$GIT" merge --ff-only --quiet '@{u}' >>"$REPO/.studio-build.log" 2>&1 ); then
+    after="$(cd "$REPO" && "$GIT" rev-parse --short HEAD 2>/dev/null)"
+    ahead="$(cd "$REPO" && "$GIT" rev-list --count '@{u}..HEAD' 2>/dev/null)"
+    if [ "$before" != "$after" ]; then
+      echo "$(date '+%F %T') updated from GitHub: $before → $after" >>"$REPO/.studio-build.log"
+    elif [ "${ahead:-0}" -gt 0 ]; then
+      echo "$(date '+%F %T') ahead of GitHub by $ahead commit(s) at $before — push when ready" >>"$REPO/.studio-build.log"
+    else
+      echo "$(date '+%F %T') up to date with GitHub at $before" >>"$REPO/.studio-build.log"
+    fi
+  else
+    echo "$(date '+%F %T') not updated from GitHub: this Mac has commits GitHub hasn't — push them first" >>"$REPO/.studio-build.log"
+  fi
+}
+
 # The studio is served from this machine — an offline tool has no deployed
 # copy to lean on. Rebuild when the source has moved on, but never let a
 # failed build brick the app: the stale build opens and the log says why.
@@ -63,6 +108,7 @@ start_studio_server() {
   NODE="$(find_bin node)"
   NPM="$(find_bin npm)"
   [ -n "$NODE" ] || return
+  update_from_github
 
   newest="$(/usr/bin/find "$REPO/src" "$REPO/public" "$REPO/index.html" \
     "$REPO/package.json" "$REPO/vite.config.ts" "$REPO/tsconfig.json" \
