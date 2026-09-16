@@ -65,7 +65,9 @@ macOS folder dialog — and remembers it from then on. Rescan reads every set.
 
 When this folder is a clone with a GitHub remote, every launch and File ▸
 Check for Updates (⌘U) first fetch from it and fast-forward onto what it
-has, then rebuild if anything moved. Uncommitted changes, or commits here
+has, then rebuild if anything moved. The app also looks on its own — on
+launch, on coming back to it, every half hour — and when GitHub is ahead
+the menu item reads "Update Available — Install…" instead. Uncommitted changes, or commits here
 that are not on GitHub yet, are never pulled over; the launcher's log
 (`.studio-build.log`) says what happened either way. The packaged app from
 the installer has no checkout and does not do this: a new version there is

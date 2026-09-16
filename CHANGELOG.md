@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-15
 
+**Say in the File menu when GitHub has an update**
+
+Check for Updates pulls from GitHub and rebuilds, but nothing said whether there was anything to pull. The app now looks for itself — on launch, on coming back to it no more than every ten minutes, every half hour, and again after an update — with a fetch in the background and a count of the commits the tracked branch has that this checkout hasn't. When there are any, the menu item reads "Update Available — Install…" and the same command installs them; while it runs it reads "Updating…". The launch log notes when GitHub pulls ahead or is caught up. The packaged app has no checkout and never looks.
+
 **Bring the checkout up to date with GitHub before building**
 
 The studio is built from the checkout beside it, and until now an update was whatever had reached that folder by other means. With the code on GitHub, every launch and File ▸ Check for Updates first fetch from it and fast-forward onto the branch tracked, then rebuild if anything moved — so a commit made anywhere arrives on the next check. Work in progress is never pulled over: uncommitted changes, or commits here that GitHub hasn't, leave the checkout alone and the log says which. A fetch that does not answer in fifteen seconds is given up on and the app opens on what it has. The packaged app has no checkout and is unchanged.

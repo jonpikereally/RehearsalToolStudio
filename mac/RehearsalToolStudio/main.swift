@@ -110,9 +110,17 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     var titleWatch: NSKeyValueObservation?
     /// The build the page was loaded from, to notice when the server has moved on.
     var loadedBuild: String?
+    /// File ▸ Check for Updates, retitled when GitHub has commits this checkout hasn't.
+    var updatesItem: NSMenuItem?
+    /// How many commits GitHub is ahead by, as of the last look; 0 when level or unknown.
+    var behind = 0
+    var lastLook = Date.distantPast
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
+        // Whether GitHub has moved on is looked at now and then, so the File
+        // menu can say so before anybody asks.
+        Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in self?.lookForUpdates() }
 
         let config = WKWebViewConfiguration()
         config.mediaTypesRequiringUserActionForPlayback = []
@@ -170,6 +178,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         DispatchQueue.global(qos: .userInitiated).async {
             let build = self.startServers()
             DispatchQueue.main.async {
+                self.lookForUpdates()
                 if let build {
                     self.loadedBuild = build
                     self.web.load(URLRequest(url: studioURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
@@ -228,6 +237,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
      * reload forced from here once landed in the middle of preparing a song.
      */
     func applicationDidBecomeActive(_ notification: Notification) {
+        lookForUpdates(throttled: true)
         guard loadedBuild != nil else { return }
         web.evaluateJavaScript("window.dispatchEvent(new Event('focus'))", completionHandler: nil)
     }
@@ -498,18 +508,79 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         }
     }
 
+    /*
+     * Whether GitHub has commits this checkout hasn't — looked at in the
+     * background on launch, on coming back to the app (no more than once
+     * every ten minutes), every half hour, and after an update — so the
+     * File menu can say "Update Available" rather than wait to be asked.
+     * A fetch is all it does; pulling is the launcher's, when asked. The
+     * packaged app has no checkout and never looks.
+     */
+    func lookForUpdates(throttled: Bool = false) {
+        guard !packaged else { return }
+        if throttled && Date().timeIntervalSince(lastLook) < 10 * 60 { return }
+        lastLook = Date()
+        DispatchQueue.global(qos: .utility).async {
+            let count = self.commitsBehindGitHub()
+            DispatchQueue.main.async {
+                if count != self.behind { self.note(count > 0 ? "GitHub is ahead by \(count) commit(s)" : "level with GitHub") }
+                self.behind = count
+                self.retitleUpdates()
+            }
+        }
+    }
+
+    /// Run git in the checkout and give back what it printed, or nil when it failed or took too long.
+    func git(_ arguments: [String], timeout: TimeInterval) -> String? {
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["-C", repo] + arguments
+        let out = Pipe()
+        git.standardOutput = out
+        git.standardError = FileHandle.nullDevice
+        do { try git.run() } catch { return nil }
+        let deadline = DispatchWorkItem { if git.isRunning { git.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        git.waitUntilExit()
+        deadline.cancel()
+        guard git.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Commits on the branch this checkout tracks that it hasn't got; 0 when level, unknown, or untracked.
+    func commitsBehindGitHub() -> Int {
+        guard git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], timeout: 5) != nil else { return 0 }
+        guard git(["fetch", "--quiet", "origin"], timeout: 15) != nil else { return 0 }
+        return Int(git(["rev-list", "--count", "HEAD..@{u}"], timeout: 5) ?? "") ?? 0
+    }
+
+    func retitleUpdates() {
+        guard let item = updatesItem else { return }
+        if checking {
+            item.title = "Updating…"
+        } else if behind > 0 {
+            item.title = behind == 1 ? "Update Available — Install…" : "Update Available — Install \(behind) Commits…"
+        } else {
+            item.title = "Check for Updates…"
+        }
+    }
+
     /// Whether a check is already under way; one at a time.
     var checking = false
 
     func runUpdateCheck() {
         guard !checking else { return }
         checking = true
+        retitleUpdates()
         let before = loadedBuild
         DispatchQueue.global(qos: .userInitiated).async {
             let build = self.startServers()
             DispatchQueue.main.async {
                 self.checking = false
                 self.note("checked for updates: \(build ?? "nothing answered"), was \(before ?? "unknown")")
+                // The launcher pulled whatever GitHub had; the menu says so, or says what is still to come.
+                self.lookForUpdates()
                 // The page knows which build it is showing, so it is the one
                 // that says whether this is news; it is told either way.
                 if self.pageReady {
@@ -570,6 +641,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         file.addItem(NSMenuItem.separator())
         let updates = file.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "u")
         updates.target = self
+        updatesItem = updates
         bar.addItem(holding(file))
 
         let edit = NSMenu(title: "Edit")
