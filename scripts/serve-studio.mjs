@@ -43,15 +43,19 @@ const MIME = {
 
 // STUDIO_STATE_FILE points the remembered folders somewhere else — for trying
 // the server against a scratch folder without touching the real ones.
-/** The build this server *is*: the stamp on disk when it started. */
-const readStamp = () => {
+/** The build on disk — its commit and when it was built — as build.json has it. */
+const readBuild = () => {
   try {
-    return JSON.parse(readFileSync(join(ROOT, 'build.json'), 'utf8')).build ?? null;
+    const stamp = JSON.parse(readFileSync(join(ROOT, 'build.json'), 'utf8'));
+    return { build: stamp.build ?? null, builtAt: stamp.builtAt ?? null };
   } catch {
-    return null;
+    return { build: null, builtAt: null };
   }
 };
-const STARTED_WITH = readStamp();
+const readStamp = () => readBuild().build;
+/** The build this server *is*: the stamp on disk when it started. */
+const STARTED = readBuild();
+const STARTED_WITH = STARTED.build;
 
 const files = fileApi(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {});
 
@@ -70,9 +74,13 @@ const server = createServer(async (req, res) => {
      * Answering only with the fresh stamp once let a server with a
      * year-old file API look current forever.
      */
+    const disk = readBuild();
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(
-      JSON.stringify({ ok: true, serving: 'rehearsal-tool-studio', build: readStamp(), server: STARTED_WITH, files: true }),
+      JSON.stringify({
+        ok: true, serving: 'rehearsal-tool-studio', files: true,
+        build: disk.build, builtAt: disk.builtAt, server: STARTED_WITH, serverBuiltAt: STARTED.builtAt,
+      }),
     );
   }
 

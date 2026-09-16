@@ -5541,5 +5541,15 @@ ${audio(24, 20, 'DRUMS', 'AudioOut/None', clipXml(0, 0, 64, 'Stems/Yellow_Drums.
   check('with the set\'s click track and returns, and none of its clips', /CLICK AUDIO/.test(fresh.xml) && /A-EDIT/.test(fresh.xml) && !/yellow click|Yellow_Bass/.test(fresh.xml) && f.songs[0].stems.find((s) => s.name === 'Click')?.clips.length === 1);
 }
 
+/* ------------------------------- a build's name ------------------------------- */
+
+group("a build's name");
+{
+  const { buildLabel } = await import('../src/lib/buildLabel.ts');
+  const named = buildLabel('914c26d', '2026-09-16T02:19:13.513Z');
+  check('a build is named by its commit and when it was built', /^914c26d \(.*2026.*\)$/.test(named) && /\d{1,2}:\d{2}/.test(named), named);
+  check('one with no time on record is named by its commit alone', buildLabel('914c26d') === '914c26d' && buildLabel('914c26d', null) === '914c26d' && buildLabel('914c26d', 'yesterday') === '914c26d');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

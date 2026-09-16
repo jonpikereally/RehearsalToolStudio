@@ -110,6 +110,9 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     var titleWatch: NSKeyValueObservation?
     /// The build the page was loaded from, to notice when the server has moved on.
     var loadedBuild: String?
+    /// When each build seen was built, by its stamp, for saying so beside it.
+    var builtAt: [String: String] = [:]
+    let builtAtLock = NSLock()
     /// File ▸ Check for Updates, retitled when GitHub has commits this checkout hasn't.
     var updatesItem: NSMenuItem?
     /// How many commits GitHub is ahead by, as of the last look; 0 when level or unknown.
@@ -211,6 +214,20 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         return nil
     }
 
+    /// A build named with when it was built — `914c26d (16 Sep 2026, 02:19)` — when that is known.
+    func label(_ build: String) -> String {
+        builtAtLock.lock()
+        let iso = builtAt[build]
+        builtAtLock.unlock()
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let iso, let when = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return build }
+        let out = DateFormatter()
+        out.dateStyle = .medium
+        out.timeStyle = .short
+        return "\(build) (\(out.string(from: when)))"
+    }
+
     /// The build on 5177 when what answers is the studio and not a stranger on the port.
     func studioBuild() -> String? {
         var request = URLRequest(url: studioURL.appendingPathComponent("__rehearsal-studio"),
@@ -222,6 +239,11 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                json["serving"] as? String == "rehearsal-tool-studio" {
                 build = json["build"] as? String ?? "unstamped"
+                if let stamp = build, let when = json["builtAt"] as? String {
+                    self.builtAtLock.lock()
+                    self.builtAt[stamp] = when
+                    self.builtAtLock.unlock()
+                }
             }
             done.signal()
         }.resume()
@@ -578,7 +600,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             let build = self.startServers()
             DispatchQueue.main.async {
                 self.checking = false
-                self.note("checked for updates: \(build ?? "nothing answered"), was \(before ?? "unknown")")
+                self.note("checked for updates: \(build.map(self.label) ?? "nothing answered"), was \(before.map(self.label) ?? "unknown")")
                 // The launcher pulled whatever GitHub had; the menu says so, or says what is still to come.
                 self.lookForUpdates()
                 // The page knows which build it is showing, so it is the one
@@ -592,8 +614,8 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                     let same = before == nil || build == before
                     alert.messageText = same ? "The studio is up to date." : "A newer build is ready."
                     alert.informativeText = same
-                        ? "Build \(build)."
-                        : "Build \(build) is built and being served; this window is still on \(before ?? "an older one")."
+                        ? "Build \(self.label(build))."
+                        : "Build \(self.label(build)) is built and being served; this window is still on \(before.map(self.label) ?? "an older one")."
                 } else {
                     alert.messageText = "The studio didn't answer."
                     alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."

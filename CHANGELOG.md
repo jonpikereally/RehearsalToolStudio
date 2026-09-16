@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-16
+
+**Name a build by when it was built as well as its commit**
+
+A commit hash answers "which build" only to somebody with the log open; with the date and time beside it — 914c26d (16 Sep 2026, 02:19) — it answers "is that this morning's?" on its own. One helper names a build that way, in the machine's local time, and everything that showed a bare hash uses it: the update banners in the page, the line in Settings, and the app's own dialog and log. The server's answer carries when the build on disk was made and when the build it started as was, so a page can name a newer build before it has loaded it. A build with no time on record is still named by its commit alone.
+
 ## 2026-09-15
 
 **Say in the File menu when GitHub has an update**

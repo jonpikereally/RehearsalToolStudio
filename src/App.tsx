@@ -3,6 +3,7 @@ import { useRoute, navigate, songUrl } from './lib/router';
 import { closeRun, useRun } from './lib/run';
 import { releaseReady } from './lib/songLoader';
 import { useStore } from './lib/store';
+import { buildLabel } from './lib/buildLabel';
 import LibraryView from './ui/LibraryView';
 import PlayerView from './ui/PlayerView';
 import SetlistsView from './ui/SetlistsView';
@@ -33,7 +34,7 @@ import SyncBar from './ui/SyncBar';
  * opening the app again, and the banner says so instead of offering a button
  * that cannot help.
  */
-type Behind = { build: string; kind: 'page' | 'server' };
+type Behind = { build: string; builtAt?: string | null; kind: 'page' | 'server' };
 
 /**
  * What a check asked for by hand found, when it found nothing to offer.
@@ -46,6 +47,9 @@ type Behind = { build: string; kind: 'page' | 'server' };
  */
 type Checked = { kind: 'looking' } | { kind: 'current' } | { kind: 'busy' } | { kind: 'silent' };
 
+/** This window's build, with when it was built. */
+const thisBuild = buildLabel(__BUILD__, __BUILT_AT__);
+
 function useNewerBuild(): { behind: Behind | null; checked: Checked | null; check: () => void; clear: () => void } {
   const [behind, setBehind] = useState<Behind | null>(null);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -57,9 +61,9 @@ function useNewerBuild(): { behind: Behind | null; checked: Checked | null; chec
       // `build` is what sits on disk; `server` is what this server is.
       const found: Behind | null =
         info.build && info.build !== __BUILD__
-          ? { build: info.build, kind: 'page' }
+          ? { build: info.build, builtAt: info.builtAt, kind: 'page' }
           : info.server && info.server !== __BUILD__
-            ? { build: info.server, kind: 'server' }
+            ? { build: info.server, builtAt: info.serverBuiltAt, kind: 'server' }
             : null;
       setBehind(found);
       return found;
@@ -426,8 +430,8 @@ export default function App() {
               : checked.kind === 'busy'
                 ? 'The studio is writing a set just now — checking would restart it. Try again when it has finished.'
                 : checked.kind === 'current'
-                  ? `This is the newest build (${__BUILD__}).`
-                  : `This window is on build ${__BUILD__}; there is no app here to build a newer one.`}
+                  ? `This is the newest build (${thisBuild}).`
+                  : `This window is on build ${thisBuild}; there is no app here to build a newer one.`}
           </span>
           {checked.kind !== 'looking' && (
             <button className="icon-btn" onClick={clearChecked} aria-label="Dismiss">
@@ -444,12 +448,12 @@ export default function App() {
           <span style={{ flex: 1 }}>
             {newerBuild.kind === 'page' ? (
               <>
-                A newer build ({newerBuild.build}) is ready — this window is showing {__BUILD__}.
+                A newer build ({buildLabel(newerBuild.build, newerBuild.builtAt)}) is ready — this window is showing {thisBuild}.
               </>
             ) : (
               <>
-                This window is showing the newest build ({__BUILD__}), but the studio’s own server is still the one it
-                started with ({newerBuild.build}) — so anything new it does with the disk isn’t there yet.
+                This window is showing the newest build ({thisBuild}), but the studio’s own server is still the one it
+                started with ({buildLabel(newerBuild.build, newerBuild.builtAt)}) — so anything new it does with the disk isn’t there yet.
                 {canRestart() ? ' Opening the app again picks it up.' : ' Quit and open the app again to pick it up.'}
               </>
             )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
+import { buildLabel } from '../lib/buildLabel';
 import { cacheStats, clearCache, clearLocalDuplicates, type CacheStats } from '../lib/idb';
 import { isLocal } from '../lib/source';
 import { formatBytes } from '../lib/songLoader';
@@ -233,8 +234,7 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
         Pitch shifting by SoundTouchJS (LGPL-2.1).
         <br />
         {/* So "is the fix live yet?" is something the app can answer — which, and when. */}
-        Build <span className="code">{__BUILD__}</span>, published{' '}
-        {new Date(__BUILT_AT__).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.
+        Build <span className="code">{buildLabel(__BUILD__, __BUILT_AT__)}</span>.
       </div>
     </>
   );
