@@ -360,7 +360,7 @@ export default function SongEditor({ song, onClose }: { song: Song; onClose: () 
         </div>
       )}
 
-      <div style={{ fontSize: 11.5, color: '#6b7789' }}>
+      <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
         Folder: <span className="code">{song.folderPath}</span>
       </div>
     </div>

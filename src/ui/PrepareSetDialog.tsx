@@ -840,7 +840,7 @@ export default function PrepareSetDialog({
         </div>
       )}
       {!result && (
-        <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
           Reads every stem the set points at, which is gigabytes, so it wants the machine those files
           are actually on. What it writes is small enough for a phone.
         </div>

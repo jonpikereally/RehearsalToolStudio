@@ -1,3 +1,13 @@
+/*
+ * Colour schemes. The page is drawn from these tokens alone, so a scheme is a
+ * set of values rather than a set of rules: `data-theme` on <html> picks the
+ * surfaces and text, `data-accent` the one colour that says "on" and "here".
+ * Both are set by lib/theme.ts before the first paint, per machine. Dark with
+ * amber is the default and what the page is with neither attribute.
+ *
+ * The confidence monitor is left out on purpose: it is stage black whatever
+ * the studio's scheme, since it is read from across a dark room.
+ */
 :root {
   --bg: #0d0f13;
   --bg-raised: #161a21;
@@ -6,16 +16,141 @@
   --text: #e8ecf3;
   --text-dim: #93a0b4;
   --text-faint: #5b6676;
+  --text-muted: #6b7789;
   --accent: #ffb03a;
+  --accent-rgb: 255, 176, 58;
   --accent-dim: #7a5518;
+  --accent-text: #ffd79a;
+  --on-accent: #1a1205;
   --good: #4ade80;
+  --on-good: #0d0f13;
   --bad: #f87171;
+  --bad-rgb: 248, 113, 113;
+  --live: #4cd08a;
+  --live-rgb: 76, 208, 138;
+  --gridline-strong: #3b4657;
+  --ok-bg: #14532d;
+  --ok-text: #86efac;
+  --bad-bg: #4c1d24;
+  --bad-text: #fca5a5;
+  --info-bg: #1e293b;
+  --info-text: #7dd3fc;
+  --error-border: #7f1d1d;
+  --error-bg: #2a1414;
+  --done-bg: #14261b;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --veil: rgba(13, 15, 19, 0.82);
   --radius: 12px;
   --tap: 48px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   color-scheme: dark;
+}
+
+/* Black: the dark scheme with its greys taken down to black, for a dark room. */
+:root[data-theme='black'] {
+  --bg: #000;
+  --bg-raised: #0b0d10;
+  --bg-raised-2: #15181d;
+  --border: #23282f;
+  --on-good: #000;
+  --veil: rgba(0, 0, 0, 0.85);
+}
+
+/* Light: for a daylit room, where a dark screen reads as a mirror. */
+:root[data-theme='light'] {
+  --bg: #f4f5f7;
+  --bg-raised: #ffffff;
+  --bg-raised-2: #e9ecf1;
+  --border: #d3d9e1;
+  --text: #151920;
+  --text-dim: #535f73;
+  --text-faint: #8a93a3;
+  --text-muted: #6f7a8c;
+  --accent: #c77700;
+  --accent-rgb: 199, 119, 0;
+  --accent-dim: #fde6bf;
+  --accent-text: #7a4800;
+  --on-accent: #ffffff;
+  --good: #15803d;
+  --on-good: #ffffff;
+  --bad: #dc2626;
+  --bad-rgb: 220, 38, 38;
+  --live: #16a34a;
+  --live-rgb: 22, 163, 74;
+  --gridline-strong: #b3bcc9;
+  --ok-bg: #dcfce7;
+  --ok-text: #166534;
+  --bad-bg: #fee2e2;
+  --bad-text: #991b1b;
+  --info-bg: #e0f2fe;
+  --info-text: #075985;
+  --error-border: #fca5a5;
+  --error-bg: #fef2f2;
+  --done-bg: #f0fdf4;
+  --backdrop: rgba(21, 25, 32, 0.35);
+  --veil: rgba(244, 245, 247, 0.85);
+
+  color-scheme: light;
+}
+
+/* Accents. Each has a bright form for the dark schemes and a deeper one for light. */
+:root[data-accent='blue'] {
+  --accent: #5aa9ff;
+  --accent-rgb: 90, 169, 255;
+  --accent-dim: #1d4674;
+  --accent-text: #bcdcff;
+  --on-accent: #06121f;
+}
+:root[data-accent='teal'] {
+  --accent: #2dd4bf;
+  --accent-rgb: 45, 212, 191;
+  --accent-dim: #125a52;
+  --accent-text: #a7f3e8;
+  --on-accent: #04130f;
+}
+:root[data-accent='pink'] {
+  --accent: #f472b6;
+  --accent-rgb: 244, 114, 182;
+  --accent-dim: #75284f;
+  --accent-text: #fbcfe6;
+  --on-accent: #1f0613;
+}
+:root[data-accent='violet'] {
+  --accent: #a78bfa;
+  --accent-rgb: 167, 139, 250;
+  --accent-dim: #463782;
+  --accent-text: #ddd3fe;
+  --on-accent: #0f0a24;
+}
+:root[data-theme='light'][data-accent='blue'] {
+  --accent: #1f6fd1;
+  --accent-rgb: 31, 111, 209;
+  --accent-dim: #d5e5fb;
+  --accent-text: #0d4185;
+  --on-accent: #ffffff;
+}
+:root[data-theme='light'][data-accent='teal'] {
+  --accent: #0e8577;
+  --accent-rgb: 14, 133, 119;
+  --accent-dim: #cbede8;
+  --accent-text: #0a5048;
+  --on-accent: #ffffff;
+}
+:root[data-theme='light'][data-accent='pink'] {
+  --accent: #c2317e;
+  --accent-rgb: 194, 49, 126;
+  --accent-dim: #f9d6e8;
+  --accent-text: #7c1a4f;
+  --on-accent: #ffffff;
+}
+:root[data-theme='light'][data-accent='violet'] {
+  --accent: #6d4fd8;
+  --accent-rgb: 109, 79, 216;
+  --accent-dim: #e3dcfb;
+  --accent-text: #3f2a91;
+  --on-accent: #ffffff;
 }
 
 * {
@@ -115,7 +250,7 @@ button {
 }
 
 .setbar .watch.live .watch-dot {
-  background: #4cd08a;
+  background: var(--live);
   opacity: 1;
   animation: watch-breathe 2.4s ease-in-out infinite;
 }
@@ -126,8 +261,8 @@ button {
 }
 
 @keyframes watch-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 208, 138, 0.55); }
-  50% { box-shadow: 0 0 0 5px rgba(76, 208, 138, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--live-rgb), 0.55); }
+  50% { box-shadow: 0 0 0 5px rgba(var(--live-rgb), 0); }
 }
 
 .topbar {
@@ -445,7 +580,7 @@ button {
 .tick.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #12100c;
+  color: var(--on-accent);
 }
 
 .row-main {
@@ -491,12 +626,12 @@ button {
 
 .badge.warn {
   background: var(--accent-dim);
-  color: #ffd79a;
+  color: var(--accent-text);
 }
 
 .badge.ok {
-  background: #14532d;
-  color: #86efac;
+  background: var(--ok-bg);
+  color: var(--ok-text);
 }
 
 /*
@@ -632,13 +767,13 @@ button {
 
 /* Not a warning: a song in this state is not worth opening at all. */
 .badge.bad {
-  background: #4c1d24;
-  color: #fca5a5;
+  background: var(--bad-bg);
+  color: var(--bad-text);
 }
 
 .badge.offline {
-  background: #1e293b;
-  color: #7dd3fc;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 /* --------------------------------- player --------------------------------- */
@@ -701,7 +836,7 @@ button {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(255, 176, 58, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   border-left: 2px solid var(--accent);
   border-right: 2px solid var(--accent);
 }
@@ -724,7 +859,7 @@ button {
 }
 
 .timeline .gridline.strong {
-  background: #3b4657;
+  background: var(--gridline-strong);
 }
 
 .timeline .marker {
@@ -799,7 +934,7 @@ button {
 
 .patch-clip:hover {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
 }
 
 .patch-clip:focus-visible {
@@ -813,7 +948,7 @@ button {
   z-index: 2;
   cursor: grabbing;
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -932,7 +1067,7 @@ button {
   height: 74px;
   border-radius: 50%;
   background: var(--accent);
-  color: #1a1205;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
   font-size: 30px;
@@ -970,7 +1105,7 @@ button {
 
 .variant-btn.on {
   border-color: var(--accent);
-  background: rgba(255, 176, 58, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .variant-btn .name {
@@ -1010,8 +1145,26 @@ button {
 }
 
 .seg.on {
-  color: var(--bg);
+  color: var(--on-accent);
   background: var(--accent);
+}
+
+/* The accent picker in Settings: a dot per colour, ringed when chosen. */
+.swatches {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-raised);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.swatch.on {
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 /* lyrics and chords chart */
@@ -1036,7 +1189,7 @@ button {
 }
 
 .lane-chip.on {
-  color: var(--bg);
+  color: var(--on-good);
   background: var(--good);
   border-color: var(--good);
 }
@@ -1075,7 +1228,7 @@ button {
 }
 
 .chart-row.on {
-  background: rgba(255, 176, 58, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   border-left-color: var(--accent);
 }
 
@@ -1108,7 +1261,7 @@ button {
   width: 34px;
   flex-shrink: 0;
   font-size: 11px;
-  color: #5c6779;
+  color: var(--text-muted);
   text-align: right;
 }
 
@@ -1169,7 +1322,7 @@ button {
   display: grid;
   place-items: center;
   border-radius: 5px;
-  color: #5c6779;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1;
   cursor: grab;
@@ -1210,7 +1363,7 @@ button {
   font-size: 9px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #5c6779;
+  color: var(--text-muted);
   margin-left: 2px;
 }
 
@@ -1516,13 +1669,13 @@ button {
 }
 
 .stem-btn.mute-on {
-  background: rgba(248, 113, 113, 0.16);
+  background: rgba(var(--bad-rgb), 0.16);
   border-color: var(--bad);
   color: var(--bad);
 }
 
 .stem-btn.solo-on {
-  background: rgba(255, 176, 58, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1535,7 +1688,7 @@ button {
 .stem-btn.mute-on.overridden {
   background: transparent;
   border-style: dashed;
-  color: rgba(248, 113, 113, 0.55);
+  color: rgba(var(--bad-rgb), 0.55);
   text-decoration: line-through;
   text-decoration-thickness: 1.5px;
 }
@@ -1557,7 +1710,7 @@ button {
   width: 30px;
   font-size: 10px;
   font-weight: 500;
-  color: #6b7789;
+  color: var(--text-muted);
 }
 
 .stem-db:hover {
@@ -1608,7 +1761,7 @@ button {
 .chip.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(255, 176, 58, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 /*
@@ -1617,8 +1770,8 @@ button {
  * room; anyone who has asked for less motion gets a steady, brighter fill.
  */
 @keyframes chip-flash {
-  0%, 100% { background: rgba(255, 176, 58, 0.12); box-shadow: 0 0 0 0 rgba(255, 176, 58, 0); }
-  50% { background: rgba(255, 176, 58, 0.5); box-shadow: 0 0 0 4px rgba(255, 176, 58, 0.25); }
+  0%, 100% { background: rgba(var(--accent-rgb), 0.12); box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
+  50% { background: rgba(var(--accent-rgb), 0.5); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.25); }
 }
 
 .chip.flash {
@@ -1630,7 +1783,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .chip.flash {
     animation: none;
-    background: rgba(255, 176, 58, 0.4);
+    background: rgba(var(--accent-rgb), 0.4);
   }
 }
 
@@ -1801,7 +1954,7 @@ button {
 .field .hint {
   display: block;
   font-size: 12px;
-  color: #6b7789;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -1854,7 +2007,7 @@ input[type='range'] {
 
 .btn.primary {
   background: var(--accent);
-  color: #1a1205;
+  color: var(--on-accent);
   border-color: transparent;
 }
 
@@ -1903,15 +2056,15 @@ input[type='range'] {
 }
 
 .notice.error {
-  border-color: #7f1d1d;
-  background: #2a1414;
-  color: #fca5a5;
+  border-color: var(--error-border);
+  background: var(--error-bg);
+  color: var(--bad-text);
 }
 
 /* A job finished: said in the colour of a thing gone right. */
 .notice.done {
   border-color: var(--good);
-  background: #14261b;
+  background: var(--done-bg);
 }
 .notice.done strong {
   color: var(--good);
@@ -3004,7 +3157,7 @@ input[type='range'] {
 .stem-switch.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
 }
 
 /* ------------------------------- dialogs ---------------------------------- */
@@ -3016,7 +3169,7 @@ input[type='range'] {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--backdrop);
 }
 
 .dialog {
@@ -3080,7 +3233,7 @@ input[type='range'] {
  * channel, plainly doing something different.
  */
 .stem.switched {
-  background: rgba(255, 176, 58, 0.07);
+  background: rgba(var(--accent-rgb), 0.07);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
@@ -3447,7 +3600,7 @@ input[type='range'] {
   z-index: 200;
   border: 3px dashed var(--accent);
   border-radius: 14px;
-  background: rgba(13, 15, 19, 0.82);
+  background: var(--veil);
   display: grid;
   place-items: center;
   pointer-events: none;
