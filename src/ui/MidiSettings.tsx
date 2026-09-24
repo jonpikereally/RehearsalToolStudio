@@ -256,7 +256,7 @@ export default function MidiSettings() {
         </div>
       )}
 
-      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
         Sent a moment before the section rather than on the downbeat, so the rig has changed by the
         time you play it. Chrome and Edge only — Safari and Firefox have no MIDI.
       </div>

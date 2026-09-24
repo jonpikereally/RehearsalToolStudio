@@ -9,6 +9,7 @@ import CueSettings from './CueSettings';
 import MidiSettings from './MidiSettings';
 import SettingsSection from './SettingsSection';
 import OutputDevice from './OutputDevice';
+import AppearanceSettings from './AppearanceSettings';
 
 /**
  * `onClose` is passed when Settings is opened over the player rather than as a
@@ -91,6 +92,8 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
           />
         </div>
       </SettingsSection>
+
+      <AppearanceSettings />
 
       {/* ------------------------------ this device ----------------------------- */}
       {/*
@@ -230,7 +233,7 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
         </div>
       </SettingsSection>
 
-      <div style={{ padding: 16, color: '#6b7789', fontSize: 12 }}>
+      <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>
         Pitch shifting by SoundTouchJS (LGPL-2.1).
         <br />
         {/* So "is the fix live yet?" is something the app can answer — which, and when. */}

@@ -5,9 +5,11 @@ import { StoreProvider } from './lib/store';
 import { requestPersistence } from './lib/idb';
 import ErrorBoundary from './ui/ErrorBoundary';
 import { watchErrors } from './lib/reportError';
+import { initTheme } from './lib/theme';
 import './styles.css';
 
 watchErrors();
+initTheme();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

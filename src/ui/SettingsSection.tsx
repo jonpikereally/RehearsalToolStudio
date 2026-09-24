@@ -17,7 +17,7 @@ import { useState, type ReactNode } from 'react';
 
 export type SectionId =
   | 'source' | 'account' | 'open' | 'local' | 'members' | 'prepare' | 'slates' | 'lyrics' | 'cues' | 'midi'
-  | 'playback' | 'device' | 'storage';
+  | 'playback' | 'appearance' | 'device' | 'storage';
 
 const LS_OPEN = 'ls.settings.open';
 

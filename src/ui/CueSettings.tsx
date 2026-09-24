@@ -80,7 +80,7 @@ export default function CueSettings() {
         </select>
       </div>
 
-      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
         Spoken by the browser, offline and free — but it plays through the device's own output
         rather than the mixer, so it has no fader and won't appear in a printed mix.
       </div>

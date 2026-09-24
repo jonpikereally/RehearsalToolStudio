@@ -1043,7 +1043,7 @@ export default function SetToolsView() {
                       {wholeSet ? 'Add slates to the whole set' : `Add slates to ${selected.size} song${selected.size === 1 ? '' : 's'}`}
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Spoken titles onto the set's Slate track, in a copy — never the original.
                   </div>
                 </>
@@ -1135,7 +1135,7 @@ export default function SetToolsView() {
                       Open Lyrics Studio instead
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Listens to that track inside the song, on this Mac, and writes the words as timed clips on an
                     “ADD THIS LYRICS +LYRICS” track in a copy of the set named “… (lyrics).als” — the copy holds only
                     that track. Lyrics Studio is started here if it is not running
@@ -1186,7 +1186,7 @@ export default function SetToolsView() {
                       }`}
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Classical names say what to play; Nashville numbers and Roman numerals say what a chord does,
                     and survive a change of key. Each chord is read for what it is, so a track that mixes kinds — or
                     a set whose songs are written differently — comes out as one kind.
@@ -1291,7 +1291,7 @@ export default function SetToolsView() {
                       {wholeSet ? 'Write song info, whole set' : `Write song info, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Writes a copy of the set named “… (info).als” with the new track; the original is
                     never touched. Run it again after a change and the copy is rewritten.
                   </div>
@@ -1383,7 +1383,7 @@ export default function SetToolsView() {
                       {wholeSet ? 'Write locator text, whole set' : `Write locator text, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Writes a copy of the set named “… (locators).als” with the new track; the original is never
                     touched. Lengths are timed through the arrangement, not read off the locators as they are.
                     Time signatures are left out: a slash is what separates the fields.
@@ -1468,7 +1468,7 @@ export default function SetToolsView() {
                             : 'Print a return mix'}
                         </button>
                       </div>
-                      <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                         Sends into a bus set to pre-fader in Live ignore the sender's fader, as there. Live's stock
                         devices on the bus are imitated — EQ Eight, the compressors, Utility, Reverb — and a plugin is
                         passed through and named. A song is timed and rendered exactly as a prepare renders it.
@@ -1496,7 +1496,7 @@ export default function SetToolsView() {
                         : `Write patch changes, ${selected.size} song${selected.size === 1 ? '' : 's'}`}
                     </button>
                   </div>
-                  <div style={{ color: '#6b7789', fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
                     Patch changes as MIDI clips, in a copy of the set: one “ADD THIS RIG … +PATCH” track per
                     band member from the rig files the website writes under the prepared set’s rigs/ folder,
                     and one for what was programmed in the player here. Drag the tracks into the set in Live;
