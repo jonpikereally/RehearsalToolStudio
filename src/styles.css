@@ -2565,10 +2565,9 @@ input[type='range'] {
 /* ------------------------- the launch window ------------------------------ */
 
 /*
- * Input and output side by side, because the question is really one question:
- * which session, filling which folder. In the Mac app this is a small window
- * of its own, so everything here is sized for a window that holds two choices
- * and nothing else.
+ * Two steps, one after the other: what to do, then where it goes. In the Mac
+ * app this is a small window of its own, so everything here is sized for a
+ * window that holds one step and nothing else.
  */
 .launch {
   display: grid;
@@ -2598,7 +2597,39 @@ input[type='range'] {
   font-weight: 650;
 }
 
-/* Which half of the pair this is: the same word in the card and in the bar. */
+/* One step at a time: a single card, as wide as the window. */
+.launch-one {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The three things a launch can be, side by side where they fit. */
+.launch-options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.launch-options .launch-pick-sub {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+/* What the chosen thing needs next, under the choice that needs it. */
+.launch-under {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.launch-under h4 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+/* Which step this is, and which half of the pair: the same word in the card and in the bar. */
 .launch-step {
   font-size: 10px;
   font-weight: 700;

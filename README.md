@@ -63,6 +63,13 @@ moves, since the studio app carries the repo's path.
 Click the app. On the first run it asks for the folder your sets live in — the
 macOS folder dialog — and remembers it from then on. Rescan reads every set.
 
+Every launch after that opens with two questions, one after the other. First,
+what to do: open an Ableton session, lay a new one out from a folder of stems
+like a session you already have, or just use the tools that need no set.
+Then where it goes: the set folder in the band's Dropbox that it writes to —
+one already there, one picked in the Finder, or a new one named on the spot.
+Each side offers what it had last, and can be told to always take it.
+
 When this folder is a clone with a GitHub remote, every launch and File ▸
 Check for Updates (⌘U) first fetch from it and fast-forward onto what it
 has, then rebuild if anything moved. The app also looks on its own — on

@@ -35,6 +35,7 @@ import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
 import NewSongsPanel from './NewSongsPanel';
 import { useStore } from '../lib/store';
+import { useRoute } from '../lib/router';
 import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
 import { locatePrepared } from '../lib/locatePrepared';
@@ -71,9 +72,10 @@ export default function SetToolsView() {
   const lyricsUp = lyricsUrl === undefined ? null : lyricsUrl !== null;
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet, setSaved, publishFolder, pickPublishFolder, outputSet, rescan } = useStore();
-  const [tool, setTool] = useState<
-    'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'stems' | 'patches' | 'setlist' | 'update'
-  >(currentSet ? 'check' : 'slates');
+  type Tool = 'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'stems' | 'patches' | 'setlist' | 'update';
+  /* Asked for by name — the launch sends a new session from stems straight here — else the first that applies. */
+  const askedTool = useRoute().query.get('tool');
+  const [tool, setTool] = useState<Tool>(askedTool === 'stems' && currentSet ? 'stems' : currentSet ? 'check' : 'slates');
   /*
    * Song info clips: which facts, remembered on this device, and whether the
    * clip runs the song or only its first bar.
@@ -1477,7 +1479,7 @@ export default function SetToolsView() {
                   );
                 })()}
 
-              {tool === 'stems' && folder && setPath && <NewSongsPanel project={project} setPath={setPath} folder={folder} />}
+              {tool === 'stems' && folder && setPath && <NewSongsPanel project={project} setPath={setPath} folder={folder} fresh={askedTool === 'stems'} />}
 
               {tool === 'check' && <CheckSetPanel project={project} selected={selected} setPath={setPath} />}
 

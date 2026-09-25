@@ -13,7 +13,7 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { askAppToBuild, canCheckUpdates, canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown } from './lib/appWindow';
+import { askAppToBuild, canCheckUpdates, canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown, type Chosen, type Intent } from './lib/appWindow';
 import { prepareRunning } from './lib/prepareState';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
@@ -259,13 +259,15 @@ export default function App() {
   const [taking, setTaking] = useState<string | null>(null);
   const [takeError, setTakeError] = useState<string | null>(null);
   const takeChosen = useCallback(
-    async (alsPath: string, into: OutputSet) => {
+    async (alsPath: string, into: OutputSet, intent: Intent = 'open') => {
       setToolsAlone(false);
       setTakeError(null);
       setTaking(alsPath.split('/').pop() ?? alsPath);
       try {
         chooseOutput(into);
         await openSession(alsPath, into);
+        // A new session from stems: the model is open, so go to the tool that lays them out.
+        if (intent === 'stems') navigate('/tools', { tool: 'stems' });
       } catch (err) {
         setTakeError(`${alsPath.split('/').pop()} could not be opened: ${err instanceof Error ? err.message : String(err)}`);
         throw err;
@@ -277,10 +279,18 @@ export default function App() {
   );
   useEffect(() => {
     const onChose = (e: Event) => {
-      const detail = (e as CustomEvent<{ set?: OutputSet; session?: string }>).detail;
+      const detail = (e as CustomEvent<Partial<Chosen>>).detail;
+      if (detail?.intent === 'tools') {
+        // The tools with no set, writing into whichever set folder was named, if one was.
+        if (detail.set) chooseOutput(detail.set);
+        setToolsAlone(true);
+        navigate('/tools');
+        return;
+      }
       if (!detail?.set || !detail.session) return;
-      void takeChosen(detail.session, detail.set);
+      void takeChosen(detail.session, detail.set, detail.intent);
     };
+    // An older app's way past the chooser: the tools, with no set.
     const onTools = () => {
       setToolsAlone(true);
       navigate('/tools');
@@ -291,7 +301,7 @@ export default function App() {
       window.removeEventListener('studio:chose', onChose);
       window.removeEventListener('studio:tools', onTools);
     };
-  }, [takeChosen]);
+  }, [takeChosen, chooseOutput]);
   const { behind: newerBuild, checked, clear: clearChecked } = useNewerBuild();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
@@ -353,7 +363,7 @@ export default function App() {
           {takeError ? (
             <div className="notice error">{takeError}</div>
           ) : (
-            <p>The Open window is in front. Choose an Ableton session and the folder it fills.</p>
+            <p>The Open window is in front. Choose what to do, then the set folder it writes to.</p>
           )}
           <button className="btn primary" onClick={() => showChooser()}>
             Show the Open window
@@ -401,9 +411,9 @@ export default function App() {
           <>
             <div className="topbar">
               <h1>
-                Open a set
+                Open
                 <span className="sub" style={{ display: 'block' }}>
-                  an Ableton session, and the folder it fills
+                  what to do, then the set folder it writes to
                 </span>
               </h1>
             </div>
