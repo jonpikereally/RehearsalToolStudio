@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-25
+
+**Open with what to do, then where it goes**
+
+The launch used to ask its two questions side by side — which session, filling which folder — with the tools as a link along the bottom, and a new session from stems buried in Set Tools behind an open set. Now it asks in order. First what this is: open an Ableton session, lay a new one out from a folder of stems like a session already there, or just use the tools that need no set. Then the output folder in the band's Dropbox — one already there, one picked in the Finder, or a new one named on the spot; optional for the tools alone.
+
 ## 2026-09-24
 
 **Choose the studio's colour scheme in Settings**
@@ -218,7 +224,3 @@ A submix is a sum of parts and nothing else, so naming it after the person it wa
 **Read a submixes folder as its song's, and tell the band whose submix it is**
 
 Filing submixes in a folder of their own broke two things at once, and both only showed in the band's own library. The scan read each submixes/ folder as a song, so a set of nineteen songs published as thirty-eight, half of them called "submixes". And the library's variants never carried what makes a submix one — hidden, submixFor, submixOf are in the manifest, and the publish dropped them — so the band's app would have played a member's submix as an ordinary fader, on top of the very parts inside it.
-
-**Put a song's submixes in a folder of their own**
-
-A song folder of eight stems and four submixes is a folder nobody can read at a glance: the parts the band play are lost among the things the studio summed for them. So each song's submixes go under submixes/ inside it, and their manifest entries carry the path from the song folder — `submixes/Cruel Summer [submix alex].mp3` — where every other part's file is a bare name.

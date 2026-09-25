@@ -117,16 +117,22 @@ export const canCheckUpdates = (): boolean => updates;
 export const askAppToBuild = (): boolean => updates && askApp({ check: true });
 
 /**
- * What the chooser chose, for the main window to open: the set folder whole,
- * as it was listed, and the session that fills it. Sent through the app, so
- * it must be plain data — an object and a string, nothing else.
+ * The three things a launch can be: a session opened, a new session laid out
+ * from stems like one already there, or the set tools with no set at all.
+ */
+export type Intent = 'open' | 'stems' | 'tools';
+
+/**
+ * What the chooser chose, for the main window to open: what to do, the set
+ * folder whole, as it was listed, and the session that fills it — or is the
+ * model for the new one. The tools alone may name a set folder and never a
+ * session. Sent through the app, so it must be plain data — objects and
+ * strings, nothing else.
  */
 export interface Chosen {
-  set: { folder: string; name: string; songs: number; preparedAt?: string; session?: string };
-  session: string;
+  intent: Intent;
+  set?: { folder: string; name: string; songs: number; preparedAt?: string; session?: string };
+  session?: string;
 }
 
 export const chooserChose = (chosen: Chosen): boolean => askApp({ chose: chosen });
-
-/** The chooser's way past itself: the tools, with no set. */
-export const chooserWantsTools = (): boolean => askApp({ tools: true });
