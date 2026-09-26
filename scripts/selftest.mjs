@@ -3835,6 +3835,41 @@ group('the file API');
   server.close();
 }
 
+/* --------------------------- region gates under a loop --------------------------- */
+
+group('region gates under a loop');
+{
+  /*
+   * A stem's file runs the whole song; the gate opens and closes it where
+   * the arrangement has the part. Under a loop the source goes round on its
+   * own, so the gate is laid down pass by pass — and each pass may only
+   * hold the part of a region inside the loop, or a region running past
+   * the loop's end closes partway through every pass after the first.
+   */
+  const { regionEvents } = await import('../src/lib/audioEngine.ts');
+  const loop = { startSec: 20, endSec: 30 };
+  // Started at the loop's top, at clock time 100, three passes: 100–110, 110–120, 120–130.
+  const events = (regions, at = loop, offset = 20) => regionEvents(regions, at, offset, 100, 3).map((e) => `${e.at}${e.on ? '+' : '-'}`).join(' ');
+
+  check('a region running past the loop stays open through every pass',
+    events([{ startSec: 0, endSec: 35 }]) === '100+ 110+ 120+', events([{ startSec: 0, endSec: 35 }]));
+  check('one wholly before the loop is never heard',
+    events([{ startSec: 0, endSec: 10 }]) === '100- 110- 120-', events([{ startSec: 0, endSec: 10 }]));
+  check('one inside the loop opens and closes in each pass',
+    events([{ startSec: 25, endSec: 28 }]) === '100- 105+ 108- 110- 115+ 118- 120- 125+ 128-', events([{ startSec: 25, endSec: 28 }]));
+  check('one starting inside and running past closes only at the loop point',
+    events([{ startSec: 25, endSec: 35 }]) === '100- 105+ 110- 115+ 120- 125+', events([{ startSec: 25, endSec: 35 }]));
+  check('without a loop the schedule is laid down once, to the end',
+    events([{ startSec: 25, endSec: 28 }], null) === '100- 105+ 108-', events([{ startSec: 25, endSec: 28 }], null));
+  check('and a region already begun is open from the start, closing where it ends',
+    events([{ startSec: 0, endSec: 35 }], null) === '100+ 115-', events([{ startSec: 0, endSec: 35 }], null));
+  // Started partway through the loop: the first pass is shorter, the rest are whole.
+  check('a start inside the loop makes a short first pass',
+    events([{ startSec: 25, endSec: 28 }], loop, 26) === '100+ 102- 104- 109+ 112- 114- 119+ 122-', events([{ startSec: 25, endSec: 28 }], loop, 26));
+  check('a start before the loop plays up to it first',
+    events([{ startSec: 15, endSec: 25 }], loop, 10) === '100- 105+ 115- 120+ 125- 130+ 135-', events([{ startSec: 15, endSec: 25 }], loop, 10));
+}
+
 /* ------------------------ a group named a little differently ------------------------ */
 
 group('a group named a little differently');

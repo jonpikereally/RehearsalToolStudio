@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Keep a stem's gate right through every pass of a loop**
+
+Under a loop each stem's region gate was laid down for every pass by shifting the whole region along by one loop length, without cutting it to the loop. A part whose region ran on past the loop's end — most of them, since a region is a stretch of the arrangement and a loop is a few bars of it — had its close land partway through the next pass, and from then on the part dropped out for the rest of every pass. The schedule is now worked out by one pure function that cuts each region to the pass's own window, the first pass running from where playback began to the loop's end and every later one the loop itself, and opens each pass with the state at its first moment. Setting, moving or lifting the loop while playing restarts the sources from where they are, so the schedule is rebuilt for the new loop and the old passes' automation goes with it. The self-test lays the cases out on a clock.
+
 **Name the studio's set copies on one list the server and page share**
 
 The names of the copies the set tools write were kept three times over — in the file server's guard, in the launch chooser's filter, and in the naming of the app's own copy — and the three had drifted. The locator text tool writes "… (locators).als", which the server's list never had, so its second run was refused as an attempt to write over a set. One plain module, scripts/studio-copies.mjs, now holds the list and names each copy; the server's guard, the chooser and every tool build on it, so a copy a tool can write is a copy the server lets it write again. The self-test writes each kind twice. The packaged app carries the module beside the server; tsconfig allows the one JavaScript import.
