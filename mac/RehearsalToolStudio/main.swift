@@ -591,34 +591,81 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     /// Whether a check is already under way; one at a time.
     var checking = false
 
+    /// How many bytes the launch log held, so only what a run appends is read back.
+    func logLength() -> UInt64 {
+        let path = (logPath as NSString).expandingTildeInPath
+        let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? NSNumber
+        return size?.uint64Value ?? 0
+    }
+
+    /// The launcher's last `outcome:` line past `from` in the log — built, unchanged, failed, fetch-failed — or nil when it wrote none.
+    func launcherOutcome(after from: UInt64) -> String? {
+        let path = (logPath as NSString).expandingTildeInPath
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { handle.closeFile() }
+        handle.seek(toFileOffset: from)
+        guard let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n").reversed() {
+            guard let mark = line.range(of: " outcome: ") else { continue }
+            let word = line[mark.upperBound...].trimmingCharacters(in: .whitespaces)
+            if ["built", "unchanged", "failed", "fetch-failed"].contains(word) { return word }
+        }
+        return nil
+    }
+
     func runUpdateCheck() {
         guard !checking else { return }
         checking = true
         retitleUpdates()
         let before = loadedBuild
+        let logWas = logLength()
         DispatchQueue.global(qos: .userInitiated).async {
             let build = self.startServers()
+            /*
+             * What the check did, not only what is being served: a server
+             * that answers with the old build after a build that failed, or
+             * a fetch that never answered, is not "up to date", and the page
+             * used to be told it was. The launcher's own last word decides;
+             * the packaged launcher has none, and there the builds decide.
+             */
+            let outcome: String
+            if build == nil {
+                outcome = "failed"
+            } else if let said = self.launcherOutcome(after: logWas) {
+                outcome = said
+            } else {
+                outcome = (before == nil || build == before) ? "unchanged" : "built"
+            }
             DispatchQueue.main.async {
                 self.checking = false
-                self.note("checked for updates: \(build.map(self.label) ?? "nothing answered"), was \(before.map(self.label) ?? "unknown")")
+                self.note("checked for updates: \(outcome), \(build.map(self.label) ?? "nothing answered"), was \(before.map(self.label) ?? "unknown")")
                 // The launcher pulled whatever GitHub had; the menu says so, or says what is still to come.
                 self.lookForUpdates()
                 // The page knows which build it is showing, so it is the one
                 // that says whether this is news; it is told either way.
                 if self.pageReady {
-                    self.tell("studio:checked", ["build": build ?? ""])
+                    self.tell("studio:checked", ["build": build ?? "", "outcome": outcome])
                     return
                 }
                 let alert = NSAlert()
-                if let build {
-                    let same = before == nil || build == before
-                    alert.messageText = same ? "The studio is up to date." : "A newer build is ready."
-                    alert.informativeText = same
-                        ? "Build \(self.label(build))."
-                        : "Build \(self.label(build)) is built and being served; this window is still on \(before.map(self.label) ?? "an older one")."
-                } else {
-                    alert.messageText = "The studio didn't answer."
-                    alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."
+                switch outcome {
+                case "failed" where build != nil:
+                    alert.messageText = "The build failed."
+                    alert.informativeText = "The studio is still on \(build.map(self.label) ?? "the previous build"). The launcher's log says why: \(logPath)."
+                case "fetch-failed":
+                    alert.messageText = "GitHub didn't answer."
+                    alert.informativeText = "Nothing newer could be fetched; the studio is on \(build.map(self.label) ?? "what it has"). The launcher's log says more: \(logPath)."
+                default:
+                    if let build {
+                        let same = before == nil || build == before
+                        alert.messageText = same ? "The studio is up to date." : "A newer build is ready."
+                        alert.informativeText = same
+                            ? "Build \(self.label(build))."
+                            : "Build \(self.label(build)) is built and being served; this window is still on \(before.map(self.label) ?? "an older one")."
+                    } else {
+                        alert.messageText = "The studio didn't answer."
+                        alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."
+                    }
                 }
                 alert.runModal()
             }

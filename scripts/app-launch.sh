@@ -64,7 +64,9 @@ start_voice_helper() {
 # It never pulls over work in progress: uncommitted changes, or commits of
 # this Mac's own that are not on GitHub yet, leave the checkout alone and
 # the log says so. Nor does it wait on a dead network: the fetch is given
-# fifteen seconds, after which the app opens on what it has.
+# fifteen seconds, after which the app opens on what it has. A fetch that
+# failed or did not answer is remembered in FETCH_FAILED, for the outcome.
+FETCH_FAILED=""
 update_from_github() {
   GIT=/usr/bin/git
   ( cd "$REPO" && "$GIT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 ) || return
@@ -80,11 +82,12 @@ update_from_github() {
     if [ $n -gt 150 ]; then
       kill "$fetching" 2>/dev/null
       echo "$(date '+%F %T') not updated from GitHub: the fetch did not answer" >>"$REPO/.studio-build.log"
+      FETCH_FAILED=1
       return
     fi
     sleep 0.1
   done
-  wait "$fetching" || { echo "$(date '+%F %T') not updated from GitHub: the fetch failed" >>"$REPO/.studio-build.log"; return; }
+  wait "$fetching" || { echo "$(date '+%F %T') not updated from GitHub: the fetch failed" >>"$REPO/.studio-build.log"; FETCH_FAILED=1; return; }
   before="$(cd "$REPO" && "$GIT" rev-parse --short HEAD 2>/dev/null)"
   if ( cd "$REPO" && "$GIT" merge --ff-only --quiet '@{u}' >>"$REPO/.studio-build.log" 2>&1 ); then
     after="$(cd "$REPO" && "$GIT" rev-parse --short HEAD 2>/dev/null)"
@@ -104,10 +107,25 @@ update_from_github() {
 # The studio is served from this machine — an offline tool has no deployed
 # copy to lean on. Rebuild when the source has moved on, but never let a
 # failed build brick the app: the stale build opens and the log says why.
+#
+# The log is appended to, never started afresh — a build's output used to
+# replace the update lines written moments before it — and is kept to its
+# last few hundred lines so it never grows without end. Each run ends with
+# one `outcome:` line — built, unchanged, failed or fetch-failed — which
+# the app reads back to say what a check for updates actually did.
+LOG="$REPO/.studio-build.log"
+outcome() { echo "$(date '+%F %T') outcome: $1" >>"$LOG"; }
 start_studio_server() {
   NODE="$(find_bin node)"
   NPM="$(find_bin npm)"
-  [ -n "$NODE" ] || return
+  if [ -f "$LOG" ] && [ "$(/usr/bin/wc -l <"$LOG")" -gt 1000 ]; then
+    /usr/bin/tail -n 500 "$LOG" >"$LOG.tmp" 2>/dev/null && /bin/mv "$LOG.tmp" "$LOG"
+  fi
+  if [ -z "$NODE" ]; then
+    echo "$(date '+%F %T') node was not found; the studio cannot be built or served" >>"$LOG"
+    outcome failed
+    return
+  fi
   update_from_github
 
   newest="$(/usr/bin/find "$REPO/src" "$REPO/public" "$REPO/index.html" \
@@ -126,8 +144,16 @@ start_studio_server() {
     # npm's scripts find node by name, and an app's PATH has no node in it:
     # "env: node: No such file" was every build failing from the Dock while
     # the same command worked from a terminal. Node's own folder goes first.
-    ( cd "$REPO" && PATH="$(dirname "$NODE"):$PATH" "$NPM" run build && /bin/sh scripts/prune-build.sh ) >"$REPO/.studio-build.log" 2>&1 \
-      || echo "build failed; serving the previous build" >>"$REPO/.studio-build.log"
+    if ( cd "$REPO" && PATH="$(dirname "$NODE"):$PATH" "$NPM" run build && /bin/sh scripts/prune-build.sh ) >>"$LOG" 2>&1; then
+      outcome built
+    else
+      echo "build failed; serving the previous build" >>"$LOG"
+      outcome failed
+    fi
+  elif [ -n "$FETCH_FAILED" ]; then
+    outcome fetch-failed
+  else
+    outcome unchanged
   fi
 
   stamped="$(/usr/bin/sed -n 's/.*"build":"\([^"]*\)".*/\1/p' "$REPO/dist/build.json" 2>/dev/null)"
@@ -137,7 +163,7 @@ start_studio_server() {
       *rehearsal-tool-studio*) ;;
       # Only reuse the port if it is actually us; a stranger squatting there
       # would otherwise be served up as the studio.
-      *) echo "port 5177 is taken by something else" >>"$REPO/.studio-build.log"; return ;;
+      *) echo "port 5177 is taken by something else" >>"$REPO/.studio-build.log"; outcome failed; return ;;
     esac
     # It is ours — but a long-lived server keeps running the code it started
     # with, file API included, and answers with the build it started as. When

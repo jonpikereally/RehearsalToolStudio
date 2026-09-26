@@ -42,10 +42,25 @@ type Behind = { build: string; builtAt?: string | null; kind: 'page' | 'server' 
  * Looking for updates and being told nothing is the usual answer, and a menu
  * item that appears to do nothing is the complaint that follows. So a check
  * somebody asked for always says something back — that it is looking, that
- * this is the newest build, or that now is not the moment because the studio
- * is in the middle of writing a set.
+ * this is the newest build, that now is not the moment because the studio
+ * is in the middle of writing a set — or that it went wrong: the build
+ * failed, GitHub never answered, or the app itself did not answer in a
+ * minute. None of those is "the newest build", and each says where to read why.
  */
-type Checked = { kind: 'looking' } | { kind: 'current' } | { kind: 'busy' } | { kind: 'silent' };
+type Checked =
+  | { kind: 'looking' }
+  | { kind: 'current' }
+  | { kind: 'busy' }
+  | { kind: 'silent' }
+  | { kind: 'failed' }
+  | { kind: 'fetch-failed' }
+  | { kind: 'unanswered' };
+
+/** How long a check may take before the page stops saying it is looking. */
+const LOOKING_TIMEOUT_MS = 60_000;
+
+/** Where the launcher and the app write what happened, beside the checkout. */
+const LAUNCH_LOG = '.studio-build.log';
 
 /** This window's build, with when it was built. */
 const thisBuild = buildLabel(__BUILD__, __BUILT_AT__);
@@ -100,7 +115,16 @@ function useNewerBuild(): { behind: Behind | null; checked: Checked | null; chec
 
   useEffect(() => {
     const asked = () => check();
-    const answered = () => void look().then((found) => setChecked(found ? null : { kind: 'current' }));
+    // The app says how the check went; only a check that went through can
+    // say this is the newest build.
+    const answered = (e: Event) => {
+      const outcome = (e as CustomEvent<{ outcome?: string }>).detail?.outcome;
+      if (outcome === 'failed' || outcome === 'fetch-failed') {
+        setChecked({ kind: outcome });
+        return;
+      }
+      void look().then((found) => setChecked(found ? null : { kind: 'current' }));
+    };
     window.addEventListener('studio:check', asked);
     window.addEventListener('studio:checked', answered);
     return () => {
@@ -109,10 +133,14 @@ function useNewerBuild(): { behind: Behind | null; checked: Checked | null; chec
     };
   }, [check, look]);
 
-  // News that is only news for a moment: said, then out of the way.
+  // News that is only news for a moment: said, then out of the way. A look
+  // that nothing answers is given a minute, then said to have been given up on.
   useEffect(() => {
-    if (!checked || checked.kind === 'looking') return;
-    const go = window.setTimeout(() => setChecked(null), 10000);
+    if (!checked) return;
+    const go =
+      checked.kind === 'looking'
+        ? window.setTimeout(() => setChecked({ kind: 'unanswered' }), LOOKING_TIMEOUT_MS)
+        : window.setTimeout(() => setChecked(null), 10000);
     return () => window.clearTimeout(go);
   }, [checked]);
 
@@ -441,13 +469,17 @@ export default function App() {
                 ? 'The studio is writing a set just now — checking would restart it. Try again when it has finished.'
                 : checked.kind === 'current'
                   ? `This is the newest build (${thisBuild}).`
-                  : `This window is on build ${thisBuild}; there is no app here to build a newer one.`}
+                  : checked.kind === 'failed'
+                    ? `The build failed; this window is still on build ${thisBuild}. The launcher's log says why: ${LAUNCH_LOG} in the checkout.`
+                    : checked.kind === 'fetch-failed'
+                      ? `GitHub didn't answer, so nothing newer was fetched; this is build ${thisBuild}. See ${LAUNCH_LOG} in the checkout.`
+                      : checked.kind === 'unanswered'
+                        ? `The app hasn't answered in a minute; this window is on build ${thisBuild}. See ${LAUNCH_LOG} in the checkout.`
+                        : `This window is on build ${thisBuild}; there is no app here to build a newer one.`}
           </span>
-          {checked.kind !== 'looking' && (
-            <button className="icon-btn" onClick={clearChecked} aria-label="Dismiss">
-              ×
-            </button>
-          )}
+          <button className="icon-btn" onClick={clearChecked} aria-label="Dismiss">
+            ×
+          </button>
         </div>
       )}
       {newerBuild && (
