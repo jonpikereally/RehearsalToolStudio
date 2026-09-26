@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Credit Signalsmith Stretch and lamejs by their own licences**
+
+Settings credited "SoundTouchJS (LGPL-2.1)" for pitch shifting, which the studio has not used since the shifter became Signalsmith Stretch — MIT, as its package says. The line now credits the stretcher and the MP3 encoder, lamejs, under LGPL-3.0, and the encoder's own comment says the same rather than pointing at SoundTouch.
+
 **Replace only the process listening on 5177, never the app's own**
 
 When the launcher found a studio server behind the build on disk it killed every process with a socket on port 5177 — the listener, and with it the app's own WebKit networking process, which holds a connection to that port for the open window. Both launchers now ask lsof for the listener alone. Not run here: the launchers are Mac shell scripts, edited by reading.
