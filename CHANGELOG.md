@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Replace only the process listening on 5177, never the app's own**
+
+When the launcher found a studio server behind the build on disk it killed every process with a socket on port 5177 — the listener, and with it the app's own WebKit networking process, which holds a connection to that port for the open window. Both launchers now ask lsof for the listener alone. Not run here: the launchers are Mac shell scripts, edited by reading.
+
 **Answer a malformed request with 400 instead of dying of it**
 
 The studio's server decoded each request's path outside any try, and a path that is not a valid escape — `/%` — threw out of the async handler, which is an unhandled rejection and ends Node: one bad request took the whole studio down under the open window. The file API's handler had the same shape around the URL it builds from the request line, which a request such as `GET http://[` makes throw. Both now answer such a request as the bad request it is and carry on, and the server logs anything that still slips out as a rejection rather than exiting on it. The self-test sends both requests raw, to the file API in-process and to the server started the way the launcher starts it, and checks each is still there afterwards.
