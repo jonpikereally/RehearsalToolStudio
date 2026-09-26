@@ -3847,6 +3847,33 @@ group('the file API');
   check('and the file it was refused for is still there',
     (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow [keys].mp3' })).exists);
 
+  /*
+   * Restarting Lyrics Studio stops whatever listens on the port the page
+   * names — so the port must be one of Lyrics Studio's, and what answers
+   * there must be Lyrics Studio, before anything is stopped. Neither case
+   * reaches the start itself, which would run the real thing here.
+   */
+  {
+    const { lyricsStudioAt, LYRICS_STUDIO_PORTS } = await import('./studio-files.mjs');
+    check('a restart names a port outside Lyrics Studio\'s and is refused',
+      (await call('lyrics-studio-start', { restart: true, port: server.address().port })).status === 400);
+    check('as is one that is not a port at all', (await call('lyrics-studio-start', { restart: true, port: '8765' })).status === 400);
+    let who = 'light-controller';
+    const stranger = await new Promise((ready) => {
+      const s = createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(req.url === '/api/version' ? { app: who } : {}));
+      });
+      s.listen(0, '127.0.0.1', () => ready(s));
+    });
+    check('a stranger on the port is known not to be Lyrics Studio', !(await lyricsStudioAt(stranger.address().port)));
+    who = 'lyrics-studio';
+    check('and Lyrics Studio is known by its answer', await lyricsStudioAt(stranger.address().port));
+    check('nothing at all is not it either', !(await lyricsStudioAt(1)));
+    check("the port range is Lyrics Studio's own", LYRICS_STUDIO_PORTS.first === 8765 && LYRICS_STUDIO_PORTS.last === 8775);
+    stranger.close();
+  }
+
   // A request line that is not a URL is answered, not died of.
   {
     const { connect } = await import('node:net');

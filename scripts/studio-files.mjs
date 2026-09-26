@@ -64,6 +64,32 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 /** Where the launcher writes, and where the page's own errors go too. */
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
+/**
+ * Where Lyrics Studio listens: home is 8765, and it steps up to the next
+ * free port when something else has that one, as far as 8775.
+ */
+export const LYRICS_STUDIO_PORTS = { first: 8765, last: 8775 };
+
+/**
+ * Whether what listens on `port` is Lyrics Studio, by asking it: its
+ * `/api/version` says `app: "lyrics-studio"`, and nothing else does. A
+ * stranger on one of its ports — a light controller took to 8765 once —
+ * answers otherwise or not at all, and is nobody's to stop.
+ */
+export async function lyricsStudioAt(port, { timeoutMs = 1500 } = {}) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/version`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) return false;
+    const doc = await res.json();
+    return !!doc && typeof doc === 'object' && doc.app === 'lyrics-studio';
+  } catch {
+    return false;
+  }
+}
+
 /** The set copies the studio and Lyrics Studio make, and may make again: see studio-copies.mjs. */
 export const OWN_SET_COPY = STUDIO_COPY_NAME;
 
@@ -512,8 +538,17 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
        * read Downloads — cannot read a set that this server can: macOS grants
        * a folder per app, and a child of this server has the studio's leave.
        * So on request the one on `port` is stopped and another started here.
+       * Only on a port of its own, and only when what answers there is Lyrics
+       * Studio: a page could otherwise name any port on this Mac and have
+       * whatever listens there stopped.
        */
-      if (restart && Number.isInteger(port)) {
+      if (restart) {
+        if (!Number.isInteger(port) || port < LYRICS_STUDIO_PORTS.first || port > LYRICS_STUDIO_PORTS.last) {
+          throw new Refusal(400, `Lyrics Studio listens between ${LYRICS_STUDIO_PORTS.first} and ${LYRICS_STUDIO_PORTS.last}, not on ${port}`);
+        }
+        if (!(await lyricsStudioAt(port))) {
+          throw new Refusal(409, `what listens on ${port} is not Lyrics Studio; it is left alone`);
+        }
         const pids = await new Promise((done) =>
           execFile('lsof', ['-ti', `tcp:${port}`], (err, out) => done(err ? [] : String(out).split(/\s+/).filter(Boolean))),
         );
