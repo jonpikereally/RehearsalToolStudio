@@ -816,7 +816,19 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   };
 
   return async function handle(req, res) {
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    /*
+     * A request line that is not a URL — `GET http://[` — is a request the
+     * parser throws on, and a throw here, outside the try below, ended the
+     * process. It is answered as a bad request instead; a path that is not
+     * this API's is simply not this API's business.
+     */
+    let url;
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost');
+    } catch {
+      answer(res, 400, { error: 'bad request' });
+      return true;
+    }
     if (!url.pathname.startsWith('/__fs/')) return false;
     const op = url.pathname.slice('/__fs/'.length);
 
