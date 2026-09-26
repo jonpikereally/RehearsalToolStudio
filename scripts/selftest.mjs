@@ -3847,6 +3847,28 @@ group('the file API');
   check('and the file it was refused for is still there',
     (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow [keys].mp3' })).exists);
 
+  // A request line that is not a URL is answered, not died of.
+  {
+    const { connect } = await import('node:net');
+    const raw = (line) =>
+      new Promise((done, fail) => {
+        const sock = connect(server.address().port, '127.0.0.1', () => sock.write(`${line}\r\nHost: x\r\nConnection: close\r\n\r\n`));
+        // The status line is in the first chunk; nothing else is wanted.
+        sock.once('data', (d) => {
+          done(String(d).split('\r\n')[0]);
+          sock.destroy();
+        });
+        sock.on('error', fail);
+        sock.setTimeout(3000, () => {
+          fail(new Error('no answer'));
+          sock.destroy();
+        });
+      });
+    const bad = await raw('GET http://[ HTTP/1.1').catch((e) => e.message);
+    check('a request whose line is not a URL is refused, not fatal', /^HTTP\/1\.1 400/.test(bad), bad);
+    check('and the server is still there to answer the next', (await ask('stored', { slot: 'songs' })).dir === songs);
+  }
+
   // A new server, the way tomorrow's launch makes one: the folder is still there.
   server.close();
   server = await serve(fileApi({ stateFile, pick }));
@@ -3858,6 +3880,62 @@ group('the file API');
   check('forgetting forgets', (await ask('stored', { slot: 'songs' })).dir === null);
   check('and an unknown slot is refused', (await call('stored', { slot: 'attic' })).status === 400);
   server.close();
+}
+
+/* ------------------------------ the studio's server ------------------------------ */
+
+group("the studio's server");
+{
+  /*
+   * The server that serves the page and carries the file API, started the
+   * way the launcher starts it, on a port of its own. What matters here is
+   * that a request it cannot make sense of does not end it: the page in the
+   * window would be talking to nothing.
+   */
+  const { spawn } = await import('node:child_process');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { connect } = await import('node:net');
+  const scratch = await mkdtemp(join(tmpdir(), 'studio-serve-'));
+  const port = 5177 + 100 + Math.floor(Math.random() * 400);
+  const child = spawn(process.execPath, ['scripts/serve-studio.mjs'], {
+    env: { ...process.env, STUDIO_PORT: String(port), STUDIO_STATE_FILE: join(scratch, 'state.json') },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.on('data', (d) => (output += d));
+  child.stderr.on('data', (d) => (output += d));
+  const up = await new Promise((done) => {
+    const started = Date.now();
+    const poll = () => {
+      if (output.includes('studio at')) return done(true);
+      if (child.exitCode !== null || Date.now() - started > 8000) return done(false);
+      setTimeout(poll, 50);
+    };
+    poll();
+  });
+  check('the server comes up on the port it is given', up, output);
+  const raw = (line) =>
+    new Promise((done, fail) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(`${line}\r\nHost: x\r\nConnection: close\r\n\r\n`));
+      sock.once('data', (d) => {
+        done(String(d).split('\r\n')[0]);
+        sock.destroy();
+      });
+      sock.on('error', fail);
+      sock.setTimeout(3000, () => {
+        fail(new Error('no answer'));
+        sock.destroy();
+      });
+    });
+  const status = (line) => raw(line).catch((e) => `no answer: ${e.message}`);
+  check('a path that is not a valid escape is a bad request', /^HTTP\/1\.1 400/.test(await status('GET /% HTTP/1.1')), await status('GET /% HTTP/1.1'));
+  check('so is a request line that is not a URL', /^HTTP\/1\.1 400/.test(await status('GET http://[ HTTP/1.1')), await status('GET http://[ HTTP/1.1'));
+  const alive = child.exitCode === null;
+  const answer = await fetch(`http://127.0.0.1:${port}/__rehearsal-studio`).then((r) => r.json()).catch(() => null);
+  check('and the server is still up and itself afterwards', alive && answer?.serving === 'rehearsal-tool-studio', `${alive} ${JSON.stringify(answer)}`);
+  child.kill();
 }
 
 /* --------------------------- region gates under a loop --------------------------- */

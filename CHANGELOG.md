@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Answer a malformed request with 400 instead of dying of it**
+
+The studio's server decoded each request's path outside any try, and a path that is not a valid escape — `/%` — threw out of the async handler, which is an unhandled rejection and ends Node: one bad request took the whole studio down under the open window. The file API's handler had the same shape around the URL it builds from the request line, which a request such as `GET http://[` makes throw. Both now answer such a request as the bad request it is and carry on, and the server logs anything that still slips out as a rejection rather than exiting on it. The self-test sends both requests raw, to the file API in-process and to the server started the way the launcher starts it, and checks each is still there afterwards.
+
 **Say when a check for updates failed rather than calling it current**
 
 File ▸ Check for Updates ran the launcher and then told the page the build being served, and the page, finding nothing newer, said "This is the newest build" — even when the build had failed, GitHub had never answered, or the server had not come up at all. The launcher now ends every run with one outcome line in its log — built, unchanged, failed or fetch-failed — and appends to that log rather than starting it afresh for a build, which used to wipe the update lines written moments before; it is trimmed when it grows long. The app reads the outcome the run wrote and sends it with the build, and its own dialog says the same when the page is not up. The page shows a failed build or an unanswered fetch as what they are, pointing at the log, gives a check a minute before saying the app has not answered, and always offers the notice's dismiss button, which the looking state used to hide.
