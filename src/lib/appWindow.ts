@@ -112,7 +112,9 @@ export const canCheckUpdates = (): boolean => updates;
  *
  * Only ever asked when nothing is being written: the last step replaces the
  * server, and a prepare talking to it would stop where it stood. The app
- * answers with `studio:checked` when it has finished.
+ * answers with `studio:checked` when it has finished, its detail carrying
+ * the build being served and an `outcome` — built, unchanged, failed or
+ * fetch-failed — so the page never calls a check that went wrong a success.
  */
 export const askAppToBuild = (): boolean => updates && askApp({ check: true });
 
