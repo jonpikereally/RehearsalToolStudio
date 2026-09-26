@@ -3723,6 +3723,18 @@ group('the file API');
   check('and written again', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
   check('a set that is not there yet may be written', (await putAls('Band/Yellow/Brand New.als')).status === 200);
   check('but not a second time', (await putAls('Band/Yellow/Brand New.als')).status === 403);
+  // Every copy a tool writes is named on one list, and the server lets each be written again.
+  {
+    const { STUDIO_COPY_KINDS, studioCopyPath, isStudioCopy } = await import('./studio-copies.mjs');
+    for (const kind of STUDIO_COPY_KINDS) {
+      const copy = studioCopyPath('Band/Yellow/Yellow.als', kind);
+      check(`the ${kind} copy is known as one`, isStudioCopy(copy) && !isStudioCopy('Band/Yellow/Yellow.als'), copy);
+      check(`and may be written twice over`, (await putAls(copy)).status === 200 && (await putAls(copy)).status === 200, copy);
+    }
+    check("Lyrics Studio's copy too", isStudioCopy('Yellow Lyrics.als') && (await putAls('Band/Yellow/Yellow Lyrics.als')).status === 200
+      && (await putAls('Band/Yellow/Yellow Lyrics.als')).status === 200);
+    check('the locator-text copy in particular, which used to be refused', (await putAls('Band/Yellow/Yellow (locators).als')).status === 200);
+  }
   // The same fence stands in front of every other way of putting a file down.
   check('nor may JSON be written over a set', (await call('write-json', { dir: songs, path: 'Band/Yellow/Yellow.als', data: {} })).status === 403);
   check('which is still exactly what it was', (await readFile(join(songs, 'Band/Yellow/Yellow.als'), 'utf8')) === 'not really gzip');

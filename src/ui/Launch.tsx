@@ -9,6 +9,7 @@ import { alwaysOpen, recentOutput, recentSession, setAlwaysOpen, takeAsk } from 
 import { choosingNew, chooserChose, isChooserWindow, type Intent } from '../lib/appWindow';
 import { SETS_FOLDER } from '../lib/prints';
 import { safeSetName } from '../lib/setName';
+import { isStudioCopy } from '../../scripts/studio-copies.mjs';
 
 /**
  * The window a launch opens with: what to do, then where it goes.
@@ -31,9 +32,6 @@ import { safeSetName } from '../lib/setName';
 const asPath = (dir: string, name: string) => `${dir}/${name}`;
 const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/'));
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
-
-/** Copies the studio's own tools wrote: sessions to open, not sets of yours. */
-const isStudioCopy = (name: string) => /( \((slates|chords|info|rig|lyrics|rehearsaltool|from stems|new songs)\)| Lyrics)\.als$/i.test(name);
 
 /** The three things a launch can be, in the order they are offered. */
 const INTENTS: { key: Intent; title: string; note: string }[] = [
