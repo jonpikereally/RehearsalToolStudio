@@ -307,6 +307,35 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   const rev = (st) => `${modified(st)}-${st.size}`;
   const there = async (p) => !!(await stat(p).catch(() => null));
 
+  /**
+   * An Ableton set is never overwritten, moved aside or removed. Everything
+   * the studio does to a set — slates, chords, rig patches, lyrics — goes
+   * into a copy beside it, named for what was added, and those copies are
+   * the only .als files this will write over. The rule sits here, below
+   * every operation that creates, replaces, renames or removes a file, so
+   * no page can break it by mistake and no new route can forget it.
+   */
+  const guardAls = async (full) => {
+    if (extname(full).toLowerCase() !== '.als' || OWN_SET_COPY.test(basename(full))) return;
+    if (await there(full)) throw new Refusal(403, `${basename(full)} is an Ableton set; the studio writes copies, never over one`);
+  };
+
+  /**
+   * Write a file whole: beside its destination first, then moved into
+   * place, so a write that dies halfway leaves the old file, never half a
+   * new one. `write` is handed the temporary path to fill.
+   */
+  const inWhole = async (full, write) => {
+    const part = `${full}.part`;
+    try {
+      await write(part);
+      await rename(part, full);
+    } catch (err) {
+      await rm(part, { force: true });
+      throw err;
+    }
+  };
+
   /** Where a prepare's previous files are kept, inside the set's folder; listings never look there. */
   const UNDO = '.undo';
   const MANIFEST = 'set.json';
@@ -433,6 +462,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       const name = songName(song);
       const current = join(full, name);
       if (!(await there(current))) return { kept: false };
+      await guardAls(current);
       const aside = join(full, UNDO, name);
       await mkdir(join(full, UNDO), { recursive: true });
       await rm(aside, { recursive: true, force: true });
@@ -450,6 +480,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         const name = songName(entry?.folder);
         const current = join(full, name);
         const aside = join(full, UNDO, name);
+        await guardAls(current);
         if (await there(aside)) {
           await rm(current, { recursive: true, force: true });
           await rename(aside, current);
@@ -549,6 +580,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       if (!/\[\s*submix\b[^\]]*\]/i.test(basename(full))) {
         throw new Refusal(400, `${basename(full)} is not a submix; the studio deletes nothing else`);
       }
+      await guardAls(full);
       await rm(full, { force: true });
       return { removed: basename(full) };
     },
@@ -737,8 +769,9 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
     async 'write-json'({ dir, path, data }) {
       const full = inside(dir, path);
+      await guardAls(full);
       await mkdir(dirname(full), { recursive: true });
-      await writeFile(full, JSON.stringify(data, null, 2));
+      await inWhole(full, (part) => writeFile(part, JSON.stringify(data, null, 2)));
       return { rev: rev(await stat(full)) };
     },
   };
@@ -826,28 +859,9 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
       if (op === 'write') {
         const full = inside(url.searchParams.get('dir') ?? '', url.searchParams.get('path') ?? '');
-        /*
-         * An Ableton set is never overwritten. Everything the studio does to
-         * a set — slates, chords, rig patches, lyrics — goes into a copy
-         * beside it, named for what was added, and those copies are the only
-         * .als files this will write over. The rule sits here, below every
-         * caller, so no page can break it by mistake.
-         */
-        if (extname(full).toLowerCase() === '.als' && !OWN_SET_COPY.test(basename(full))) {
-          const there = await stat(full).catch(() => null);
-          if (there) throw new Refusal(403, `${basename(full)} is an Ableton set; the studio writes copies, never over one`);
-        }
+        await guardAls(full);
         await mkdir(dirname(full), { recursive: true });
-        // Written beside its destination and moved in whole, so a write that
-        // dies halfway leaves the old file, never half a new one.
-        const part = `${full}.part`;
-        try {
-          await pipeline(req, createWriteStream(part));
-          await rename(part, full);
-        } catch (err) {
-          await rm(part, { force: true });
-          throw err;
-        }
+        await inWhole(full, (part) => pipeline(req, createWriteStream(part)));
         answer(res, 200, { path: url.searchParams.get('path'), rev: rev(await stat(full)) });
         return true;
       }
