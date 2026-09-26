@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Name the studio's set copies on one list the server and page share**
+
+The names of the copies the set tools write were kept three times over — in the file server's guard, in the launch chooser's filter, and in the naming of the app's own copy — and the three had drifted. The locator text tool writes "… (locators).als", which the server's list never had, so its second run was refused as an attempt to write over a set. One plain module, scripts/studio-copies.mjs, now holds the list and names each copy; the server's guard, the chooser and every tool build on it, so a copy a tool can write is a copy the server lets it write again. The self-test writes each kind twice. The packaged app carries the module beside the server; tsconfig allows the one JavaScript import.
+
 **Keep every file route from writing over an Ableton set**
 
 The rule that the studio never writes over a set lived in the byte `write` route alone. `write-json` put its file down with no such check, so a page asking for JSON at a set's path would have replaced the set; and undo's move-aside and restore, and removing a submix, could have moved or removed one named the right way. One helper now holds the rule, below every operation that creates, replaces, renames or removes a file, and each of them asks it first. `write-json` is also written whole the way `write` is — beside its destination and moved into place — so a write that dies halfway leaves the old file rather than half a new one. The self-test covers each route.

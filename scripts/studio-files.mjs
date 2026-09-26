@@ -52,6 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { STUDIO_COPY_NAME } from './studio-copies.mjs';
 
 /**
  * `songs` is read and written; `publish` is the band's folder; `resources`
@@ -63,8 +64,8 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 /** Where the launcher writes, and where the page's own errors go too. */
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
-/** The set copies the studio and Lyrics Studio make, and may make again. */
-export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i;
+/** The set copies the studio and Lyrics Studio make, and may make again: see studio-copies.mjs. */
+export const OWN_SET_COPY = STUDIO_COPY_NAME;
 
 /**
  * The running order AbleSet is playing right now, from its own log.

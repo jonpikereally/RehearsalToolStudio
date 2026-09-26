@@ -28,6 +28,7 @@ import { NOTATION_LABEL, parseKey, type ChordNotation } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
 import { ensureLyricsStudio, findLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack } from '../lib/lyricsStudio';
 import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyricClips';
+import { studioCopyPath } from '../../scripts/studio-copies.mjs';
 
 
 import SlatesPanel from './SlatesPanel';
@@ -414,7 +415,7 @@ export default function SetToolsView() {
       // Only the new track goes into the copy, on the set's own timeline.
       const only = keepOnlyAdded(result.xml, result.reusedTrack ? [result.trackName] : []);
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (slates).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'slates')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
         `${slates.length} slates in ${prefix}Slates, and ${result.clipsWritten} clip` +
@@ -487,7 +488,7 @@ export default function SetToolsView() {
       }
       const only = keepOnlyAdded(xml, wrote.map((w) => w.trackName));
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (chords).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'chords')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
 
       const songs = Math.max(...wrote.map((w) => w.songs));
@@ -531,7 +532,7 @@ export default function SetToolsView() {
       const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
       const only = keepOnlyAdded(result.xml, [result.trackName]);
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (info).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'info')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
         `${result.clipsWritten} song info clip${result.clipsWritten === 1 ? '' : 's'} on a “${result.trackName}” track, ` +
@@ -566,7 +567,7 @@ export default function SetToolsView() {
       const result = addChordTrack(await inflateAls(await setBytes()), clips, trackName, project);
       const only = keepOnlyAdded(result.xml, [result.trackName]);
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (locators).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'locators')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
         `${result.clipsWritten} locator text clip${result.clipsWritten === 1 ? '' : 's'} on a “${result.trackName}” track, ` +
@@ -704,7 +705,7 @@ export default function SetToolsView() {
       const only = keepOnlyAdded(result.xml, result.tracks.map((t) => t.name));
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
       const { dir, prefix, base } = await destination();
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (rig).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'rig')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       const dropped = result.tracks.reduce((n, t) => n + t.dropped, 0);
       setDone(
@@ -796,7 +797,7 @@ export default function SetToolsView() {
       const result = addChordTrack(await inflateAls(await setBytes()), clips, 'LYRICS +LYRICS', project);
       const only = keepOnlyAdded(result.xml, [result.trackName]);
       const gz = new Blob([only.xml]).stream().pipeThrough(new CompressionStream('gzip'));
-      const copyPath = `${prefix}${base.replace(/\.als$/i, '')} (lyrics).als`;
+      const copyPath = `${prefix}${studioCopyPath(base, 'lyrics')}`;
       await local.writeFile(dir, '', copyPath, await new Response(gz).blob());
       setDone(
         `${clips.length} lyric clip${clips.length === 1 ? '' : 's'} heard on ${where}, on “${result.trackName}” in ${copyPath.split('/').pop()} — ` +
