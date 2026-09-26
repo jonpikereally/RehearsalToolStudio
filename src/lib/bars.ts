@@ -1,4 +1,5 @@
 import type { Song, TempoPoint } from '../types';
+import type { AlsProject, AlsSong } from './alsParser.ts';
 
 /**
  * Bar ↔ time conversion.
@@ -9,10 +10,32 @@ import type { Song, TempoPoint } from '../types';
  * constant tempo, which is the common case.
  */
 
-type TimeSong = Pick<Song, 'bpm' | 'timeSigNum' | 'timeSigDen' | 'firstBarOffsetSec'> & {
+export type TimeSong = Pick<Song, 'bpm' | 'timeSigNum' | 'timeSigDen' | 'firstBarOffsetSec'> & {
   tempoMap?: TempoPoint[];
   tempoScale?: number;
 };
+
+/**
+ * A set's song as this maths sees it: bar 1 at its locator, its own time
+ * signature, the tempo Live's automation has in force where it starts, and
+ * its tempo changes. Everything downstream of the parser that turns a bar
+ * into seconds — the render's length, where a clip sits in it, the
+ * manifest's duration, the words' clock, the review's timings — goes
+ * through this, so a 3/4 song in a 4/4 set, or one that changes tempo
+ * partway, comes out the same length everywhere.
+ */
+export function songTiming(
+  song: Pick<AlsSong, 'startBpm' | 'bpm' | 'timeSigNum' | 'timeSigDen' | 'tempoChanges'>,
+  project: Pick<AlsProject, 'tempo' | 'timeSigNum' | 'timeSigDen'>,
+): TimeSong {
+  return {
+    bpm: song.startBpm ?? song.bpm ?? project.tempo,
+    timeSigNum: song.timeSigNum ?? project.timeSigNum,
+    timeSigDen: song.timeSigDen ?? project.timeSigDen,
+    firstBarOffsetSec: 0,
+    tempoMap: song.tempoChanges?.length ? song.tempoChanges : undefined,
+  };
+}
 
 /** Quarter notes per bar, honouring the denominator: 6/8 is three quarters. */
 function quartersPerBar(song: Pick<Song, 'timeSigNum' | 'timeSigDen'>): number {

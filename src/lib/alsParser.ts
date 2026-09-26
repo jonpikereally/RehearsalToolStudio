@@ -40,8 +40,20 @@ export interface AlsSong {
   title: string;
   /** The locator name exactly as written. */
   raw: string;
+  /**
+   * Where the song sits on the set's timeline, in the set's bars — the
+   * signature the set opens in, as everything that writes back into the
+   * set counts. Not the song's own bars where its signature differs.
+   */
   startBar: number;
   endBar: number;
+  /**
+   * How many of its own bars the song runs, from its locator to its end:
+   * what its sections, clips and tempo changes are numbered in, and what
+   * its length in seconds comes from. A 3/4 song in a 4/4 set has more of
+   * these than the set's bars it spans.
+   */
+  bars: number;
   /** Read from the locator name where present. */
   bpm: number | null;
   key: string | null;
@@ -1784,6 +1796,7 @@ export function parseAlsXml(xml: string): AlsProject {
       notes: group?.annotation.trim() ?? '',
       startBar: toBar(loc.beat),
       endBar: Number.isFinite(endBeat) ? toBar(endBeat) : toBar(loc.beat),
+      bars: Number.isFinite(endBeat) ? Math.max(0, relBar(endBeat) - 1) : 0,
       bpm: meta.bpm ?? region?.bpm ?? null,
       key: meta.key ?? region?.key ?? openingKey,
       keyChanges,

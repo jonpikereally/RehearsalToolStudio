@@ -3506,7 +3506,7 @@ group('checking a set before it matters');
   check('clips know whether they are warped',
     yellow.stems.find((s) => s.name === 'Bass')?.clips[0].warped === true);
 
-  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, 4), 32), songDurationSec(yellow, 4));
+  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, project), 32), songDurationSec(yellow, project));
 
   const findings = checkSet(project);
   {
@@ -3895,6 +3895,88 @@ group('region gates under a loop');
     events([{ startSec: 15, endSec: 25 }], loop, 10) === '100- 105+ 115- 120+ 125- 130+ 135-', events([{ startSec: 15, endSec: 25 }], loop, 10));
 }
 
+/* ------------------------- a waltz in a 4/4 set, through prepare ------------------------- */
+
+group('a waltz in a 4/4 set, through prepare');
+{
+  /*
+   * A set opens in 4/4 and its second song is in 3/4, slowing to half tempo
+   * from its ninth bar. Every figure the prepare writes about the song — how
+   * many bars it has, how long its render is, where a clip sits in it, what
+   * the manifest says, what the review times it at — has to come from the
+   * song's own signature and tempo map, and agree.
+   */
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { songTiming, barToSec } = await import('../src/lib/bars.ts');
+  const { songBars, songLengthSec } = await import('../src/lib/infoTrack.ts');
+  const { renderDurationSec, placementOf, lyricsFileFor } = await import('../src/lib/prepare.ts');
+  const { songInfoFor } = await import('../src/lib/updatePrepared.ts');
+  const { songDurationSec } = await import('../src/lib/setReview.ts');
+
+  const mixer = `<Mixer><Volume><LomId Value="0" /><Manual Value="1" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="9" /></EnvelopeTarget>
+      <Automation><Events>
+        <FloatEvent Id="1" Time="-63072000" Value="120" />
+        <FloatEvent Id="2" Time="88" Value="60" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <MainTrack><Mixer><TimeSignature><LomId Value="0" /><Manual Value="201" /><AutomationTarget Id="10"><LockEnvelope Value="0" /></AutomationTarget></TimeSignature></Mixer></MainTrack>
+    <AutomationEnvelope Id="2"><EnvelopeTarget><PointeeId Value="10" /></EnvelopeTarget>
+      <Automation><Events>
+        <EnumEvent Id="1" Time="-63072000" Value="201" />
+        <EnumEvent Id="2" Time="64" Value="200" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="Waltz" /></Locator>
+    <Locator Id="3"><Time Value="112" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" />${mixer}</GroupTrack>
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Waltz" />${mixer}</GroupTrack>
+    <AudioTrack Id="21"><TrackGroupId Value="20" /><EffectiveName Value="Drums" />
+      ${mixer}
+      <AudioClip Id="1" Time="64"><CurrentStart Value="64" /><CurrentEnd Value="112" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/Drums.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>
+    <MidiTrack Id="30"><TrackGroupId Value="-1" /><EffectiveName Value="+LYRICS" />
+      <MidiClip Id="1"><CurrentStart Value="88" /><Name Value="second half" /></MidiClip>
+    </MidiTrack>
+  </Ableton>`;
+  const project = parseAlsXml(xml);
+  const waltz = project.songs[1];
+  check('the song is read in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4, `${waltz.timeSigNum}/${waltz.timeSigDen}`);
+  check('with sixteen bars of its own across twelve of the set\'s',
+    Math.abs(songBars(waltz) - 16) < 1e-9 && Math.abs(waltz.endBar - waltz.startBar - 12) < 1e-9, `${songBars(waltz)} / ${waltz.endBar - waltz.startBar}`);
+  check('and the tempo change at its ninth bar', waltz.tempoChanges.length === 1 && waltz.tempoChanges[0].bar === 9 && waltz.tempoChanges[0].bpm === 60,
+    JSON.stringify(waltz.tempoChanges));
+
+  const timing = songTiming(waltz, project);
+  check('its timing is its own signature, tempo and map',
+    timing.timeSigNum === 3 && timing.bpm === 120 && timing.tempoMap?.[0]?.bar === 9, JSON.stringify(timing));
+  // Eight bars of three beats at 120, then eight at 60: 12 seconds and 24.
+  check('so it runs 36 seconds, not 24 at one tempo in 4/4', near(songLengthSec(waltz, project), 36), String(songLengthSec(waltz, project)));
+  check('the render is that long too', near(renderDurationSec(waltz, project), 36), String(renderDurationSec(waltz, project)));
+  check('as the review times it', near(songDurationSec(waltz, project), 36), String(songDurationSec(waltz, project)));
+
+  const clip = waltz.stems[0].clips[0];
+  const placed = placementOf(clip, {}, timing);
+  check('the clip covers the whole song', clip.startBar === 1 && clip.endBar === 17, `${clip.startBar}–${clip.endBar}`);
+  check('and is placed from the top to the end of the render', near(placed.startSec, 0) && near(placed.endSec, 36), `${placed.startSec}–${placed.endSec}`);
+  check('a bar past the change is placed through it', near(barToSec(13, timing), 12 + 4 * 3), String(barToSec(13, timing)));
+
+  const entry = songInfoFor(waltz, project, '/set.als', { folder: 'Waltz (2026-09-26)', firstBarOffsetSec: 0 });
+  check('the manifest carries the song\'s own signature, bars and length',
+    entry.timeSignature === '3/4' && entry.bars === 16 && entry.durationSec === 36, JSON.stringify(entry));
+  check('and its tempo map', entry.tempoMap?.[0]?.bar === 9 && entry.tempoMap?.[0]?.bpm === 60, JSON.stringify(entry.tempoMap));
+
+  const lrc = await lyricsFileFor(waltz, project).text();
+  check('the words are clocked through the same map', /\[00:12\.00\]\s*second half/.test(lrc), lrc.trim());
+}
+
 /* ------------------------ a group named a little differently ------------------------ */
 
 group('a group named a little differently');
@@ -4130,7 +4212,8 @@ group('the mix, as the set has it');
     JSON.stringify(yellow.caveats));
   check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
     `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
-  check('and its length in bars follows', Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, String(waltz.endBar - waltz.startBar));
+  check('and its length is in its own bars, not the set\'s',
+    Math.abs(waltz.bars - 16) < 1e-6 && Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, `${waltz.bars} of ${waltz.endBar - waltz.startBar}`);
 
   const asVariant = mixOf(bass, bass.clips);
   check('the part carries fader times clip gain, and the pan', Math.abs(asVariant.gain - 0.375) < 1e-9 && asVariant.pan === -1, JSON.stringify(asVariant));

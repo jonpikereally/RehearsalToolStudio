@@ -1,5 +1,6 @@
 import type { AlsProject, AlsSong } from './alsParser';
 import type { ChordClip } from './chordTrack.ts';
+import { barToSec, songTiming } from './bars.ts';
 
 /**
  * Song information as MIDI clips.
@@ -84,29 +85,15 @@ function clean(text: string): string {
  * bars rounds up. A "+ 1" here once made every song a bar longer than its
  * files, and than the click.
  */
-export function songBars(song: Pick<AlsSong, 'startBar' | 'endBar'>): number {
-  return Math.max(0, song.endBar - song.startBar);
+export function songBars(song: Pick<AlsSong, 'startBar' | 'endBar'> & Partial<Pick<AlsSong, 'bars'>>): number {
+  // The parser counts the song's own bars; a song read before it did is
+  // counted in the set's, which are the same unless the signature changed.
+  return song.bars ?? Math.max(0, song.endBar - song.startBar);
 }
 
-/** `3:55`, from a song's bars through its tempo map. */
+/** `3:55`, from a song's bars through its own signature and tempo map. */
 export function songLengthSec(song: AlsSong, project: AlsProject): number {
-  const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
-  const bars = songBars(song);
-  const changes = [...song.tempoChanges].sort((a, b) => a.bar - b.bar);
-  let bpm = song.bpm ?? song.startBpm ?? project.tempo;
-  let at = 1;
-  let sec = 0;
-  for (const change of changes) {
-    if (change.bar <= 1) {
-      bpm = change.bpm;
-      continue;
-    }
-    if (change.bar > bars + 1) break;
-    sec += ((change.bar - at) * beatsPerBar * 60) / bpm;
-    at = change.bar;
-    bpm = change.bpm;
-  }
-  return sec + ((bars + 1 - at) * beatsPerBar * 60) / bpm;
+  return barToSec(1 + songBars(song), songTiming(song, project));
 }
 
 function clock(seconds: number): string {
