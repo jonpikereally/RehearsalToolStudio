@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-26
+
+**Keep every file route from writing over an Ableton set**
+
+The rule that the studio never writes over a set lived in the byte `write` route alone. `write-json` put its file down with no such check, so a page asking for JSON at a set's path would have replaced the set; and undo's move-aside and restore, and removing a submix, could have moved or removed one named the right way. One helper now holds the rule, below every operation that creates, replaces, renames or removes a file, and each of them asks it first. `write-json` is also written whole the way `write` is — beside its destination and moved into place — so a write that dies halfway leaves the old file rather than half a new one. The self-test covers each route.
+
 ## 2026-09-25
 
 **Open with what to do, then where it goes**
@@ -220,7 +226,3 @@ The other repo has to be told what is in the band's folder now, and in one piece
 **Name a submix for what is in it, and write one file for everybody who wants it**
 
 A submix is a sum of parts and nothing else, so naming it after the person it was worked out for said the wrong thing about it: two members who keep the same things want the same sum, and a file called "submix robin" is one nobody else can be told to use. It is named for its contents now — "Cruel Summer [submix drums+bass+other+piano].mp3" — and a list of parts is written once however many people it serves, with their names on the entry rather than on the file. A list too long for a name is cut short and marked with four letters of its own hash, so two lists can never come out alike.
-
-**Read a submixes folder as its song's, and tell the band whose submix it is**
-
-Filing submixes in a folder of their own broke two things at once, and both only showed in the band's own library. The scan read each submixes/ folder as a song, so a set of nineteen songs published as thirty-eight, half of them called "submixes". And the library's variants never carried what makes a submix one — hidden, submixFor, submixOf are in the manifest, and the publish dropped them — so the band's app would have played a member's submix as an ordinary fader, on top of the very parts inside it.

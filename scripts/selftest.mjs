@@ -3723,6 +3723,31 @@ group('the file API');
   check('and written again', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
   check('a set that is not there yet may be written', (await putAls('Band/Yellow/Brand New.als')).status === 200);
   check('but not a second time', (await putAls('Band/Yellow/Brand New.als')).status === 403);
+  // The same fence stands in front of every other way of putting a file down.
+  check('nor may JSON be written over a set', (await call('write-json', { dir: songs, path: 'Band/Yellow/Yellow.als', data: {} })).status === 403);
+  check('which is still exactly what it was', (await readFile(join(songs, 'Band/Yellow/Yellow.als'), 'utf8')) === 'not really gzip');
+  check('JSON may go into a studio copy', (await call('write-json', { dir: songs, path: 'Band/Yellow/Yellow (info).als', data: {} })).status === 200);
+  check('and is written whole, nothing half-done beside it',
+    !(await ask('list', { dir: songs })).files.some((f) => f.name.endsWith('.part')));
+  {
+    const fsp = await import('node:fs/promises');
+    const has = async (p) => !!(await fsp.stat(p).catch(() => null));
+    // A prepared set's "song folder" that is really a set: undo never moves or removes it.
+    await fsp.mkdir(join(songs, 'Sets', 'Undo'), { recursive: true });
+    await fsp.writeFile(join(songs, 'Sets', 'Undo', 'Yellow.als'), 'a set, somehow');
+    await ask('undo-begin', { dir: songs, set: 'Sets/Undo' });
+    check('undo will not move a set aside', (await call('undo-keep', { dir: songs, set: 'Sets/Undo', song: 'Yellow.als' })).status === 403
+      && (await has(join(songs, 'Sets', 'Undo', 'Yellow.als'))));
+    check('nor remove one on restore',
+      (await call('undo-restore', { dir: songs, set: 'Sets/Undo', songs: [{ folder: 'Yellow.als', kept: false }] })).status === 403
+      && (await fsp.readFile(join(songs, 'Sets', 'Undo', 'Yellow.als'), 'utf8')) === 'a set, somehow');
+    await fsp.rm(join(songs, 'Sets', 'Undo'), { recursive: true, force: true });
+    // A set named like a submix is still a set.
+    await fsp.writeFile(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'), 'a set');
+    check('removing a submix never removes a set', (await call('remove-submix', { dir: songs, path: 'Band/Yellow/Yellow [submix].als' })).status === 403
+      && (await has(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'))));
+    await fsp.rm(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'), { force: true });
+  }
 
 
   answer = join(elsewhere, 'Neighbour.txt');
