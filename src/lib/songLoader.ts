@@ -180,16 +180,17 @@ function bufferBytes(buffer: AudioBuffer): number {
 
 /**
  * What a song's buffers depend on. The parts and their revisions, the key and
- * speed they are rendered at, whether the set's devices are imitated, the
- * context's own sample rate — and the tempo map, since where every clip is
- * placed is worked out in bars.
+ * speed they are rendered at, the context's own sample rate — and the tempo
+ * map, since where every clip is placed is worked out in bars. Not whether
+ * the set's devices are imitated: that is the chain the buffers play
+ * through, built when the song is installed, and the same buffers serve
+ * either way.
  */
 function readyKey(song: Song, opts: LoadOptions, sampleRate: number): string {
   return JSON.stringify([
     variantsToLoad(song).map((v) => `${v.id}@${v.rev}`),
     opts.semitones,
     opts.tempoScale ?? 1,
-    !!opts.effects,
     sampleRate,
     song.bpm,
     song.timeSigNum,
@@ -762,6 +763,27 @@ export async function installSong(
     preferred && configs.get(preferred)?.role === 'mix' ? preferred : ready.defaultActiveId;
   await engine.setTracks(configs, activeId, { effects: !!opts.effects });
   engine.useClickTrack(ready.clickId);
+}
+
+/**
+ * Put the song that is in the engine back into it with the set's devices
+ * imitated or not. Nothing is decoded again: the buffers are what they
+ * were, and only the chain they play through is built anew, so the switch
+ * costs what stepping between the songs of a run costs, not what opening
+ * one does. Playback picks up where it was. Nothing happens, and false is
+ * said, when the song is not held.
+ */
+export async function reinstallSong(engine: SongEngine, song: Song, opts: { effects?: boolean }): Promise<boolean> {
+  const ready = heldSongs.get(song.id);
+  if (!ready) return false;
+  const wasPlaying = engine.isPlaying;
+  // pause() folds the live position into pausedAt, which is what to resume at.
+  if (wasPlaying) engine.pause();
+  const at = engine.position;
+  await installSong(engine, song, ready, opts);
+  engine.seek(at);
+  if (wasPlaying) await engine.play();
+  return true;
 }
 
 /**

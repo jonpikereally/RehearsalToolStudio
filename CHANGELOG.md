@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Stop the device switch and the cache slider from reopening the song**
+
+Whether the set's devices are imitated was part of what a loaded song was keyed on, and both it and the cache budget were among the things the player watched to decide when to open a song again — so flicking the imitation on, or moving the cache slider in Settings, decoded every part of the song afresh. Neither changes what is decoded: the imitation is the chain the buffers play through, built when the song is put into the engine, and the budget only matters when a render is put into the cache. The key leaves the imitation out, the load reads both values when it happens rather than watching them, and a change to the imitation puts the held song back into the engine where it was — the same step that makes Next between the songs of a run instant.
+
 **Name the set's folder the same way from the one-song dialog**
 
 The one-song prepare cleaned the set's name with a bare regex in three places, while the set-wide dialog and the prepare itself go through safeSetName, which also folds runs of space. A name with a double space in it would have had the one-song run keep aside, and read the manifest from, a folder other than the one the prepare wrote. All three now use safeSetName.
