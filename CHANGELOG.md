@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Name the set's folder the same way from the one-song dialog**
+
+The one-song prepare cleaned the set's name with a bare regex in three places, while the set-wide dialog and the prepare itself go through safeSetName, which also folds runs of space. A name with a double space in it would have had the one-song run keep aside, and read the manifest from, a folder other than the one the prepare wrote. All three now use safeSetName.
+
 **Credit Signalsmith Stretch and lamejs by their own licences**
 
 Settings credited "SoundTouchJS (LGPL-2.1)" for pitch shifting, which the studio has not used since the shifter became Signalsmith Stretch — MIT, as its package says. The line now credits the stretcher and the MP3 encoder, lamejs, under LGPL-3.0, and the encoder's own comment says the same rather than pointing at SoundTouch.
