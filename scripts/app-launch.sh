@@ -175,7 +175,9 @@ start_studio_server() {
       *"\"server\":\"$stamped\""*) return ;;
     esac
     echo "replacing an outdated studio server" >>"$REPO/.studio-build.log"
-    /bin/kill $(/usr/sbin/lsof -ti tcp:5177 2>/dev/null) 2>/dev/null
+    # Only what listens on the port. The app's own networking process holds
+    # a socket to it too, and killing that took the open window's page down.
+    /bin/kill $(/usr/sbin/lsof -ti tcp:5177 -sTCP:LISTEN 2>/dev/null) 2>/dev/null
     sleep 0.5
   fi
   ( cd "$REPO" && /usr/bin/nohup "$NODE" scripts/serve-studio.mjs >/dev/null 2>&1 & )
