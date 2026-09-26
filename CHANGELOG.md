@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Restart only Lyrics Studio, and only on a port of its own**
+
+The page can ask the file server to restart Lyrics Studio on a given port, so that a copy started without the studio's leave to read a folder is replaced by one with it. The server stopped whatever listened on whatever port it was given. It now refuses a port outside 8765–8775, which are Lyrics Studio's, and asks what listens there for its version first, stopping it only when the answer is Lyrics Studio's own. The self-test refuses the wrong port and tells a stranger from the real thing by its answer, without reaching the start itself.
+
 **Stop the device switch and the cache slider from reopening the song**
 
 Whether the set's devices are imitated was part of what a loaded song was keyed on, and both it and the cache budget were among the things the player watched to decide when to open a song again — so flicking the imitation on, or moving the cache slider in Settings, decoded every part of the song afresh. Neither changes what is decoded: the imitation is the chain the buffers play through, built when the song is put into the engine, and the budget only matters when a render is put into the cache. The key leaves the imitation out, the load reads both values when it happens rather than watching them, and a change to the imitation puts the held song back into the engine where it was — the same step that makes Next between the songs of a run instant.
