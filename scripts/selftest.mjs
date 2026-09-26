@@ -3746,8 +3746,21 @@ group('the file API');
   });
   check('bytes are written where asked, folders and all',
     put.status === 200 && (await readFile(join(songs, 'Prints/Prepared/Yellow/Yellow (full mix).mp3'))).length === 3000);
-  check('with no half-written file left beside it',
-    !(await ask('list', { dir: songs })).files.some((f) => f.name.endsWith('.part')));
+  {
+    const { readdir } = await import('node:fs/promises');
+    const leftovers = (await readdir(join(songs, 'Prints/Prepared/Yellow'))).filter((n) => n.includes('.part'));
+    check('with no half-written file left beside it, dotfile or not', leftovers.length === 0, leftovers.join(', '));
+  }
+  {
+    // Two writes of one file at once: each lands whole, and neither fills the other's.
+    const write = (byte) => fetch(`${base()}/__fs/write?${new URLSearchParams({ dir: songs, path: 'Prints/Same.bin' })}`, {
+      method: 'POST', headers: { 'x-rehearsal-studio': 'test' }, body: Buffer.alloc(200000, byte),
+    });
+    const [a, b] = await Promise.all([write(1), write(2)]);
+    const bytes = await readFile(join(songs, 'Prints/Same.bin'));
+    check('two writes of one file at once both go through', a.status === 200 && b.status === 200);
+    check('and what is left is one of them, whole', bytes.length === 200000 && bytes.every((v) => v === bytes[0]), `${bytes.length} bytes, first ${bytes[0]}`);
+  }
 
   check('a path that climbs out is refused',
     (await call('read', { dir: songs, path: '../Elsewhere/Secret.als' })).status === 400);
