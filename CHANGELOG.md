@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Time every song by its own signature and tempo map, everywhere**
+
+The parser read a song's own time signature, but everything after it counted in the set's: a song's length in bars was its span in the set's bars, so a 3/4 song in a 4/4 set came out with three quarters of its bars; and the render's length and every clip's place in it were worked out at one constant tempo, while the manifest's duration and the words' clock went through the tempo map, so a song that changed tempo had files of one length and an entry of another. One helper now states a song's timing — bar 1 at its locator, its own signature, the tempo Live has in force there, its tempo changes — and every bar-to-seconds conversion downstream of the parser goes through the same bar maths the player uses with it: the render's length, where each clip sits, a frozen track's window, the manifest's duration, the review's timings, the words' clock. The parser counts the song's own bars beside its place on the set's timeline, and the manifest writes the song's own signature. The self-test runs a 3/4 song with a tempo change, in a 4/4 set, through each of them.
+
 **Keep two parts alike but for a number from writing one file**
 
 A part's file is named by its track with Live's numbering dropped, so "Bass 1" comes out as the bass. Two tracks in one song alike but for the number — "VOX 1" and "VOX 2" — dropped to the same name, and the second write replaced the first while the manifest listed two parts for one file. The label is now worked out among the song's parts: the number is dropped as before, unless another part of the song is the same but for it, when each keeps its own. Every place that names a part's file — the render, the manifest entry, the submix planning and the dialog's preview — is told the song's parts, and the self-test plans such a song.
