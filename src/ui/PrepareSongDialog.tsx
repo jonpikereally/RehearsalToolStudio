@@ -432,7 +432,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
                   </span>{' '}
                   in {publishFolderName ? `“${publishFolderName}”` : "the band's folder, asked for first"}
                   {' — '}
-                  {printing.map((s) => partFileName(song.title, s.name, s.reference)).join(', ')}
+                  {printing.map((s) => partFileName(song.title, s.name, s.reference, printing)).join(', ')}
                   {combining.length ? `${printing.length ? ', ' : ''}${partFileName(song.title, combinedName || 'band')}` : ''}.
                   {submixNames.length > 0 && (
                     <>

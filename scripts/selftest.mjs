@@ -1829,6 +1829,31 @@ group('preparing a set');
   const part = parseFileName(file.replace(/[.]mp3$/, ''));
   check('and it reads back as a part', part.role === 'stem' && part.label === 'bass', `${part.role}/${part.label}`);
 
+  // Two tracks alike but for the number would be one file: each keeps its number instead.
+  {
+    const { partsFor, partInfoFor } = await import('../src/lib/prepare.ts');
+    const twins = [{ name: 'VOX 1' }, { name: 'VOX 2' }, { name: 'Bass 1' }];
+    check('a number is kept when another part has the same name without it',
+      partFileName('Fix You', 'VOX 1', false, twins) === 'Fix You [vox 1].mp3' && partFileName('Fix You', 'VOX 2', false, twins) === 'Fix You [vox 2].mp3',
+      partFileName('Fix You', 'VOX 1', false, twins));
+    check('and dropped where nothing else is called that', partFileName('Fix You', 'Bass 1', false, twins) === 'Fix You [bass].mp3');
+    check('a plain name beside a numbered one keeps both apart',
+      partFileName('Fix You', 'Vox', false, [{ name: 'Vox' }, { name: 'Vox 2' }]) === 'Fix You [vox].mp3'
+        && partFileName('Fix You', 'Vox 2', false, [{ name: 'Vox' }, { name: 'Vox 2' }]) === 'Fix You [vox 2].mp3');
+    const refAndOwn = [{ name: 'Lead Vox 1', reference: true }, { name: 'Lead Vox 1' }];
+    check("the record's part is told apart by its mark, not a number",
+      partFileName('Fix You', 'Lead Vox 1', true, refAndOwn) === 'Fix You [ref lead vox].mp3'
+        && partFileName('Fix You', 'Lead Vox 1', false, refAndOwn) === 'Fix You [lead vox].mp3');
+    const stem = (name) => ({ name, reference: false, regions: null, clips: [], gain: 1 });
+    const song = { title: 'Fix You', stems: [stem('VOX 1'), stem('VOX 2'), stem('Bass 1')] };
+    const parts = partsFor(song);
+    const files = parts.map((p) => partFileName(song.title, p.name, p.reference, parts));
+    const labels = parts.map((p) => partInfoFor(song.title, p.name, p.reference, parts).label);
+    check('so a song planned with both writes two files, not one twice',
+      new Set(files).size === 3 && files.includes('Fix You [vox 1].mp3') && files.includes('Fix You [bass].mp3'), files.join(', '));
+    check('and the manifest labels them as the files are', labels.join(',') === 'vox 1,vox 2,bass', labels.join(','));
+  }
+
   // Lyrics follow the tempo map, or every line after a change drifts.
   const lrc = await lyricsFileFor(song, project).text();
   check('lyrics come out as LRC', /^\[00:07\.06\]early line$/m.test(lrc), lrc.split('\n')[0]);

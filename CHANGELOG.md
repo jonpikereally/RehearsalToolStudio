@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Keep two parts alike but for a number from writing one file**
+
+A part's file is named by its track with Live's numbering dropped, so "Bass 1" comes out as the bass. Two tracks in one song alike but for the number — "VOX 1" and "VOX 2" — dropped to the same name, and the second write replaced the first while the manifest listed two parts for one file. The label is now worked out among the song's parts: the number is dropped as before, unless another part of the song is the same but for it, when each keeps its own. Every place that names a part's file — the render, the manifest entry, the submix planning and the dialog's preview — is told the song's parts, and the self-test plans such a song.
+
 **Keep a stem's gate right through every pass of a loop**
 
 Under a loop each stem's region gate was laid down for every pass by shifting the whole region along by one loop length, without cutting it to the loop. A part whose region ran on past the loop's end — most of them, since a region is a stretch of the arrangement and a loop is a few bars of it — had its close land partway through the next pass, and from then on the part dropped out for the rest of every pass. The schedule is now worked out by one pure function that cuts each region to the pass's own window, the first pass running from where playback began to the loop's end and every later one the loop itself, and opens each pass with the state at its first moment. Setting, moving or lifting the loop while playing restarts the sources from where they are, so the schedule is rebuilt for the new loop and the old passes' automation goes with it. The self-test lays the cases out on a clock.
