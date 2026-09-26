@@ -3583,6 +3583,8 @@ group('the file API');
     return answer;
   };
   const stateFile = join(scratch, 'state', 'studio-folders.json');
+  // A port of this run's own, told to the API as the launcher tells the server its.
+  const port = 20000 + Math.floor(Math.random() * 40000);
   const serve = (api) =>
     new Promise((ready) => {
       const server = createServer(async (req, res) => {
@@ -3591,9 +3593,9 @@ group('the file API');
           res.end();
         }
       });
-      server.listen(0, '127.0.0.1', () => ready(server));
+      server.listen(port, '127.0.0.1', () => ready(server));
     });
-  let server = await serve(fileApi({ stateFile, pick }));
+  let server = await serve(fileApi({ stateFile, pick, port }));
   const base = () => `http://127.0.0.1:${server.address().port}`;
   const studio = { 'x-rehearsal-studio': 'test', 'content-type': 'application/json' };
   const call = (op, body, headers = studio) =>
@@ -3609,8 +3611,29 @@ group('the file API');
     (await call('stored', { slot: 'songs' }, { ...studio, origin: 'http://localhost:9999' })).status === 403);
   check("the server's own page is welcome",
     (await call('stored', { slot: 'songs' }, { ...studio, origin: base() })).status === 200);
+  check('by either of its names',
+    (await call('stored', { slot: 'songs' }, { ...studio, origin: `http://localhost:${port}` })).status === 200);
   check('as is the dev server, which passes calls along',
     (await call('stored', { slot: 'songs' }, { ...studio, origin: 'http://localhost:5174' })).status === 200);
+  {
+    // An Origin that merely agrees with the Host header is not the studio's page.
+    const { connect } = await import('node:net');
+    const status = await new Promise((done, fail) => {
+      const sock = connect(port, '127.0.0.1', () =>
+        sock.write('POST /__fs/stored HTTP/1.1\r\nHost: evil.example\r\nOrigin: http://evil.example\r\nx-rehearsal-studio: 1\r\n'
+          + 'content-type: application/json\r\ncontent-length: 16\r\nConnection: close\r\n\r\n{"slot":"songs"}'));
+      sock.once('data', (d) => {
+        done(String(d).split('\r\n')[0]);
+        sock.destroy();
+      });
+      sock.on('error', fail);
+      sock.setTimeout(3000, () => {
+        fail(new Error('no answer'));
+        sock.destroy();
+      });
+    }).catch((e) => e.message);
+    check('an origin that only matches the Host header it sent is refused', /^HTTP\/1\.1 403/.test(status), status);
+  }
   check("a preflight gets no allowance",
     !(await fetch(`${base()}/__fs/stored`, { method: 'OPTIONS' })).headers.has('access-control-allow-origin'));
   check('nothing is remembered at first', (await ask('stored', { slot: 'songs' })).dir === null);
@@ -3897,8 +3920,12 @@ group('the file API');
   }
 
   // A new server, the way tomorrow's launch makes one: the folder is still there.
-  server.close();
-  server = await serve(fileApi({ stateFile, pick }));
+  // On the same port, so the old one's kept-alive connections are closed with it first.
+  server.closeAllConnections();
+  await new Promise((closed) => server.close(closed));
+  // A moment for the client side to see them go, or the next call reuses one.
+  await new Promise((r) => setTimeout(r, 100));
+  server = await serve(fileApi({ stateFile, pick, port }));
   check('a remembered folder survives a restart, nothing to reopen',
     (await ask('stored', { slot: 'songs' })).dir === songs);
   check('and is usable at once', (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow.als' })).exists);

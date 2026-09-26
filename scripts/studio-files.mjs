@@ -190,6 +190,16 @@ export function liveSetlistFromLog(text) {
  */
 const DEV_ORIGINS = new Set(['http://localhost:5174', 'http://127.0.0.1:5174']);
 
+/**
+ * The origins a call may carry: this server's own page, by either name for
+ * this machine, and the dev server's. Named outright rather than matched
+ * against the request's Host header — a request can say any Host it likes,
+ * and an Origin that merely agreed with it was once let through.
+ */
+export function studioOrigins(port) {
+  return new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`, ...DEV_ORIGINS]);
+}
+
 export const STATE_FILE = join(
   homedir(),
   'Library',
@@ -258,10 +268,13 @@ export function nativePick({ kind, prompt, startIn }) {
 
 /**
  * Make the API. `pick` is injectable so the self-test can answer the dialog
- * itself; `stateFile` so it never touches the real remembered folders.
- * Returns a handler that answers `true` when the request was its business.
+ * itself; `stateFile` so it never touches the real remembered folders;
+ * `port` is the one this server answers on, which names the pages allowed
+ * to call it. Returns a handler that answers `true` when the request was
+ * its business.
  */
-export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
+export function fileApi({ stateFile = STATE_FILE, pick = nativePick, port = Number(process.env.STUDIO_PORT ?? 5177) } = {}) {
+  const allowedOrigins = studioOrigins(port);
   /** Slot → folder path, as remembered across restarts. */
   let slots = {};
   /** Folders picked while this server has been up, remembered or not. */
@@ -816,14 +829,8 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   const refuseStrangers = (req) => {
     if (!('x-rehearsal-studio' in req.headers)) throw new Refusal(403, 'not the studio');
     const origin = req.headers.origin;
-    if (!origin || DEV_ORIGINS.has(origin)) return;
-    let host = '';
-    try {
-      host = new URL(origin).host;
-    } catch {
-      /* not even a URL, then */
-    }
-    if (host !== req.headers.host) throw new Refusal(403, 'not the studio');
+    if (!origin || allowedOrigins.has(origin)) return;
+    throw new Refusal(403, 'not the studio');
   };
 
   const json = (req) =>

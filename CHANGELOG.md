@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Name the pages the file server answers, rather than trusting Host**
+
+A call to the file API had to come from the studio's own page or the dev server's, and "its own page" was judged by the Origin's host matching the request's Host header — which a request can set to anything, so an Origin that agreed with a Host it chose was let in. The allowed origins are now named outright: this server's page by either of the machine's names on the port it was started on, and the dev server's, as the voice helper has always done. The server tells the API its port; the self-test starts one on a port of its own and sends a request whose Origin and Host agree but are not the studio's.
+
 **Restart only Lyrics Studio, and only on a port of its own**
 
 The page can ask the file server to restart Lyrics Studio on a given port, so that a copy started without the studio's leave to read a folder is replaced by one with it. The server stopped whatever listened on whatever port it was given. It now refuses a port outside 8765–8775, which are Lyrics Studio's, and asks what listens there for its version first, stopping it only when the answer is Lyrics Studio's own. The self-test refuses the wrong port and tells a stranger from the real thing by its answer, without reaching the start itself.

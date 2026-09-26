@@ -57,7 +57,7 @@ const readStamp = () => readBuild().build;
 const STARTED = readBuild();
 const STARTED_WITH = STARTED.build;
 
-const files = fileApi(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {});
+const files = fileApi({ port: PORT, ...(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {}) });
 
 /*
  * A request this process must not die of. A malformed path — `/%`, a bad
