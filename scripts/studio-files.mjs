@@ -49,6 +49,7 @@ import { execFile, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -363,10 +364,14 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick, port = Numb
   /**
    * Write a file whole: beside its destination first, then moved into
    * place, so a write that dies halfway leaves the old file, never half a
-   * new one. `write` is handed the temporary path to fill.
+   * new one. `write` is handed the temporary path to fill. The temporary
+   * name is a dotfile of this process's own, with a random tail — two
+   * writes of one file at once used to share `<file>.part` and fill each
+   * other's, and a crash left the half-written file in plain sight, where
+   * a listing skips a dotfile.
    */
   const inWhole = async (full, write) => {
-    const part = `${full}.part`;
+    const part = join(dirname(full), `.${basename(full)}.${process.pid}.${randomBytes(4).toString('hex')}.part`);
     try {
       await write(part);
       await rename(part, full);

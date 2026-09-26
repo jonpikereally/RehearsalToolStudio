@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-09-26
 
+**Give each write its own hidden temporary file**
+
+A file was written beside its destination as `<file>.part` and moved into place — the same name for every write of that file, so two at once filled each other's, and a crash left `<file>.part` in plain sight in the folder. The temporary file is now a dotfile named for this process with a random tail: writes of one file at once cannot collide, and what a crash leaves is hidden the way every listing already hides dotfiles. The self-test writes one file twice at once and checks that one of the two is what is left, whole.
+
 **Name the pages the file server answers, rather than trusting Host**
 
 A call to the file API had to come from the studio's own page or the dev server's, and "its own page" was judged by the Origin's host matching the request's Host header — which a request can set to anything, so an Origin that agreed with a Host it chose was let in. The allowed origins are now named outright: this server's page by either of the machine's names on the port it was started on, and the dev server's, as the voice helper has always done. The server tells the API its port; the self-test starts one on a port of its own and sends a request whose Origin and Host agree but are not the studio's.
