@@ -1,4 +1,4 @@
-import { buildChain } from './fx';
+import { buildChain } from './fx.ts';
 import type { Device } from '../types';
 /**
  * Multi-track transport.
@@ -677,9 +677,24 @@ export class SongEngine {
 
   setLoop(region: LoopRegion | null): void {
     if (region && region.endSec - region.startSec < 0.05) region = null;
+    const was = this.loop;
+    const same = was === region || (!!was && !!region && was.startSec === region.startSec && was.endSec === region.endSec);
+    // Where the music is now, by the loop that was playing it, before it changes.
+    const pos = this.position;
     this.loop = region;
-    for (const track of this.tracks.values()) this.applyLoop(track.source, track.fileStartSec);
-    if (!this.playing && region && (this.pausedAt < region.startSec || this.pausedAt > region.endSec)) {
+    /*
+     * While playing, the sources are started again from where they are: the
+     * region gates were laid down pass by pass for the old loop, and a loop
+     * moved or lifted would leave that automation firing at the wrong times.
+     * A restart rebuilds it from the new loop, and takes the loop points
+     * with it. A loop set to what it already is — Escape with none set —
+     * changes nothing, and nothing is restarted for it.
+     */
+    if (this.playing) {
+      if (!same) this.seek(pos);
+      return;
+    }
+    if (region && (this.pausedAt < region.startSec || this.pausedAt > region.endSec)) {
       this.pausedAt = region.startSec;
     }
   }
@@ -933,27 +948,8 @@ export class SongEngine {
     if (!node || !track.regions) return;
     const g = node.gain;
     g.cancelScheduledValues(0);
-
-    const loop = this.loop;
-    const passLength = loop ? loop.endSec - loop.startSec : 0;
-    const passes = loop && passLength > 0.01 ? LOOP_PASSES_SCHEDULED : 1;
-    const from = loop ? loop.startSec : offset;
-
-    // Whatever the state is at the moment playback begins.
-    const startsInside = track.regions.some((r) => offset >= r.startSec && offset < r.endSec);
-    g.setValueAtTime(startsInside ? 1 : 0, when);
-
-    for (let pass = 0; pass < passes; pass++) {
-      const passStart = loop ? from + pass * passLength : offset;
-      const passEnd = loop ? passStart + passLength : Number.POSITIVE_INFINITY;
-      for (const region of track.regions) {
-        const openAt = when + (region.startSec - offset) + (loop ? pass * passLength : 0);
-        const closeAt = when + (region.endSec - offset) + (loop ? pass * passLength : 0);
-        if (closeAt <= when) continue;
-        if (loop && (region.startSec >= passEnd - passStart + from)) continue;
-        if (openAt > when) g.setValueAtTime(1, openAt);
-        if (closeAt > when) g.setValueAtTime(0, closeAt);
-      }
+    for (const event of regionEvents(track.regions, this.loop, offset, when, LOOP_PASSES_SCHEDULED)) {
+      g.setValueAtTime(event.on ? 1 : 0, event.at);
     }
     node.connect(track.into);
   }
@@ -982,7 +978,48 @@ export class SongEngine {
   }
 }
 
-/** A short pitched blip at each supplied time, accented on the downbeat. */
+/**
+ * When a stem's gate opens and closes, on the context's clock, for playback
+ * starting at song time `offset` at clock time `when`.
+ *
+ * Under a loop the source plays on from `offset` to the loop's end and then
+ * goes round from its start, so each pass is one window of song time — the
+ * first `[offset, end]`, every later one `[start, end]` — and only the part
+ * of a region inside that window belongs to the pass. A region running past
+ * the loop's end is open to the end of every pass, not closed partway
+ * through the next; one lying wholly outside the loop is never heard. Each
+ * pass opens with the state at its first moment, so a gate open across the
+ * loop point stays open and one closed there closes.
+ */
+export function regionEvents(
+  regions: { startSec: number; endSec: number }[],
+  loop: LoopRegion | null,
+  offset: number,
+  when: number,
+  passes: number,
+): { at: number; on: boolean }[] {
+  const inside = (t: number) => regions.some((r) => t >= r.startSec && t < r.endSec);
+  // A loop the playhead is already past does not come round: the source plays out.
+  const looping = !!loop && loop.endSec - loop.startSec > 0.01 && offset < loop.endSec;
+  const events: { at: number; on: boolean }[] = [];
+  // Song time `t` in the current pass plays at clock time `base + t`.
+  let base = when - offset;
+  for (let pass = 0; pass < (looping ? passes : 1); pass++) {
+    const from = pass === 0 ? offset : loop!.startSec;
+    const to = looping ? loop!.endSec : Number.POSITIVE_INFINITY;
+    events.push({ at: base + from, on: inside(from) });
+    for (const region of regions) {
+      const start = Math.max(region.startSec, from);
+      const end = Math.min(region.endSec, to);
+      if (end <= start) continue;
+      if (start > from) events.push({ at: base + start, on: true });
+      if (end < to) events.push({ at: base + end, on: false });
+    }
+    if (looping) base += to - loop!.startSec;
+  }
+  return events.sort((a, b) => a.at - b.at);
+}
+
 /**
  * Half a second of silence as a playable WAV, for the iOS unlock.
  *

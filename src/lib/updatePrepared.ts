@@ -223,7 +223,7 @@ export function songInfoFor(
     renderedAt,
     submixesAt,
     tempo: Math.round(tempoOf(song, project) * 10) / 10,
-    timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
+    timeSignature: `${song.timeSigNum ?? project.timeSigNum}/${song.timeSigDen ?? project.timeSigDen}`,
     bars: Math.round(songBars(song) * 1000) / 1000,
     durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
     firstBarOffsetSec,

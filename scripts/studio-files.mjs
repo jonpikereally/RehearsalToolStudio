@@ -49,9 +49,11 @@ import { execFile, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { STUDIO_COPY_NAME } from './studio-copies.mjs';
 
 /**
  * `songs` is read and written; `publish` is the band's folder; `resources`
@@ -63,8 +65,34 @@ export const SLOTS = new Set(['songs', 'publish', 'resources']);
 /** Where the launcher writes, and where the page's own errors go too. */
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');
 
-/** The set copies the studio and Lyrics Studio make, and may make again. */
-export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)| Lyrics)\.als$/i;
+/**
+ * Where Lyrics Studio listens: home is 8765, and it steps up to the next
+ * free port when something else has that one, as far as 8775.
+ */
+export const LYRICS_STUDIO_PORTS = { first: 8765, last: 8775 };
+
+/**
+ * Whether what listens on `port` is Lyrics Studio, by asking it: its
+ * `/api/version` says `app: "lyrics-studio"`, and nothing else does. A
+ * stranger on one of its ports — a light controller took to 8765 once —
+ * answers otherwise or not at all, and is nobody's to stop.
+ */
+export async function lyricsStudioAt(port, { timeoutMs = 1500 } = {}) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/version`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) return false;
+    const doc = await res.json();
+    return !!doc && typeof doc === 'object' && doc.app === 'lyrics-studio';
+  } catch {
+    return false;
+  }
+}
+
+/** The set copies the studio and Lyrics Studio make, and may make again: see studio-copies.mjs. */
+export const OWN_SET_COPY = STUDIO_COPY_NAME;
 
 /**
  * The running order AbleSet is playing right now, from its own log.
@@ -163,6 +191,16 @@ export function liveSetlistFromLog(text) {
  */
 const DEV_ORIGINS = new Set(['http://localhost:5174', 'http://127.0.0.1:5174']);
 
+/**
+ * The origins a call may carry: this server's own page, by either name for
+ * this machine, and the dev server's. Named outright rather than matched
+ * against the request's Host header — a request can say any Host it likes,
+ * and an Origin that merely agreed with it was once let through.
+ */
+export function studioOrigins(port) {
+  return new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`, ...DEV_ORIGINS]);
+}
+
 export const STATE_FILE = join(
   homedir(),
   'Library',
@@ -231,10 +269,13 @@ export function nativePick({ kind, prompt, startIn }) {
 
 /**
  * Make the API. `pick` is injectable so the self-test can answer the dialog
- * itself; `stateFile` so it never touches the real remembered folders.
- * Returns a handler that answers `true` when the request was its business.
+ * itself; `stateFile` so it never touches the real remembered folders;
+ * `port` is the one this server answers on, which names the pages allowed
+ * to call it. Returns a handler that answers `true` when the request was
+ * its business.
  */
-export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
+export function fileApi({ stateFile = STATE_FILE, pick = nativePick, port = Number(process.env.STUDIO_PORT ?? 5177) } = {}) {
+  const allowedOrigins = studioOrigins(port);
   /** Slot → folder path, as remembered across restarts. */
   let slots = {};
   /** Folders picked while this server has been up, remembered or not. */
@@ -306,6 +347,39 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   const modified = (st) => Math.round(st.mtimeMs);
   const rev = (st) => `${modified(st)}-${st.size}`;
   const there = async (p) => !!(await stat(p).catch(() => null));
+
+  /**
+   * An Ableton set is never overwritten, moved aside or removed. Everything
+   * the studio does to a set — slates, chords, rig patches, lyrics — goes
+   * into a copy beside it, named for what was added, and those copies are
+   * the only .als files this will write over. The rule sits here, below
+   * every operation that creates, replaces, renames or removes a file, so
+   * no page can break it by mistake and no new route can forget it.
+   */
+  const guardAls = async (full) => {
+    if (extname(full).toLowerCase() !== '.als' || OWN_SET_COPY.test(basename(full))) return;
+    if (await there(full)) throw new Refusal(403, `${basename(full)} is an Ableton set; the studio writes copies, never over one`);
+  };
+
+  /**
+   * Write a file whole: beside its destination first, then moved into
+   * place, so a write that dies halfway leaves the old file, never half a
+   * new one. `write` is handed the temporary path to fill. The temporary
+   * name is a dotfile of this process's own, with a random tail — two
+   * writes of one file at once used to share `<file>.part` and fill each
+   * other's, and a crash left the half-written file in plain sight, where
+   * a listing skips a dotfile.
+   */
+  const inWhole = async (full, write) => {
+    const part = join(dirname(full), `.${basename(full)}.${process.pid}.${randomBytes(4).toString('hex')}.part`);
+    try {
+      await write(part);
+      await rename(part, full);
+    } catch (err) {
+      await rm(part, { force: true });
+      throw err;
+    }
+  };
 
   /** Where a prepare's previous files are kept, inside the set's folder; listings never look there. */
   const UNDO = '.undo';
@@ -433,6 +507,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       const name = songName(song);
       const current = join(full, name);
       if (!(await there(current))) return { kept: false };
+      await guardAls(current);
       const aside = join(full, UNDO, name);
       await mkdir(join(full, UNDO), { recursive: true });
       await rm(aside, { recursive: true, force: true });
@@ -450,6 +525,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         const name = songName(entry?.folder);
         const current = join(full, name);
         const aside = join(full, UNDO, name);
+        await guardAls(current);
         if (await there(aside)) {
           await rm(current, { recursive: true, force: true });
           await rename(aside, current);
@@ -480,8 +556,17 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
        * read Downloads — cannot read a set that this server can: macOS grants
        * a folder per app, and a child of this server has the studio's leave.
        * So on request the one on `port` is stopped and another started here.
+       * Only on a port of its own, and only when what answers there is Lyrics
+       * Studio: a page could otherwise name any port on this Mac and have
+       * whatever listens there stopped.
        */
-      if (restart && Number.isInteger(port)) {
+      if (restart) {
+        if (!Number.isInteger(port) || port < LYRICS_STUDIO_PORTS.first || port > LYRICS_STUDIO_PORTS.last) {
+          throw new Refusal(400, `Lyrics Studio listens between ${LYRICS_STUDIO_PORTS.first} and ${LYRICS_STUDIO_PORTS.last}, not on ${port}`);
+        }
+        if (!(await lyricsStudioAt(port))) {
+          throw new Refusal(409, `what listens on ${port} is not Lyrics Studio; it is left alone`);
+        }
         const pids = await new Promise((done) =>
           execFile('lsof', ['-ti', `tcp:${port}`], (err, out) => done(err ? [] : String(out).split(/\s+/).filter(Boolean))),
         );
@@ -549,6 +634,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       if (!/\[\s*submix\b[^\]]*\]/i.test(basename(full))) {
         throw new Refusal(400, `${basename(full)} is not a submix; the studio deletes nothing else`);
       }
+      await guardAls(full);
       await rm(full, { force: true });
       return { removed: basename(full) };
     },
@@ -737,8 +823,9 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
     async 'write-json'({ dir, path, data }) {
       const full = inside(dir, path);
+      await guardAls(full);
       await mkdir(dirname(full), { recursive: true });
-      await writeFile(full, JSON.stringify(data, null, 2));
+      await inWhole(full, (part) => writeFile(part, JSON.stringify(data, null, 2)));
       return { rev: rev(await stat(full)) };
     },
   };
@@ -747,14 +834,8 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   const refuseStrangers = (req) => {
     if (!('x-rehearsal-studio' in req.headers)) throw new Refusal(403, 'not the studio');
     const origin = req.headers.origin;
-    if (!origin || DEV_ORIGINS.has(origin)) return;
-    let host = '';
-    try {
-      host = new URL(origin).host;
-    } catch {
-      /* not even a URL, then */
-    }
-    if (host !== req.headers.host) throw new Refusal(403, 'not the studio');
+    if (!origin || allowedOrigins.has(origin)) return;
+    throw new Refusal(403, 'not the studio');
   };
 
   const json = (req) =>
@@ -782,7 +863,19 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
   };
 
   return async function handle(req, res) {
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    /*
+     * A request line that is not a URL — `GET http://[` — is a request the
+     * parser throws on, and a throw here, outside the try below, ended the
+     * process. It is answered as a bad request instead; a path that is not
+     * this API's is simply not this API's business.
+     */
+    let url;
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost');
+    } catch {
+      answer(res, 400, { error: 'bad request' });
+      return true;
+    }
     if (!url.pathname.startsWith('/__fs/')) return false;
     const op = url.pathname.slice('/__fs/'.length);
 
@@ -826,28 +919,9 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
 
       if (op === 'write') {
         const full = inside(url.searchParams.get('dir') ?? '', url.searchParams.get('path') ?? '');
-        /*
-         * An Ableton set is never overwritten. Everything the studio does to
-         * a set — slates, chords, rig patches, lyrics — goes into a copy
-         * beside it, named for what was added, and those copies are the only
-         * .als files this will write over. The rule sits here, below every
-         * caller, so no page can break it by mistake.
-         */
-        if (extname(full).toLowerCase() === '.als' && !OWN_SET_COPY.test(basename(full))) {
-          const there = await stat(full).catch(() => null);
-          if (there) throw new Refusal(403, `${basename(full)} is an Ableton set; the studio writes copies, never over one`);
-        }
+        await guardAls(full);
         await mkdir(dirname(full), { recursive: true });
-        // Written beside its destination and moved in whole, so a write that
-        // dies halfway leaves the old file, never half a new one.
-        const part = `${full}.part`;
-        try {
-          await pipeline(req, createWriteStream(part));
-          await rename(part, full);
-        } catch (err) {
-          await rm(part, { force: true });
-          throw err;
-        }
+        await inWhole(full, (part) => pipeline(req, createWriteStream(part)));
         answer(res, 200, { path: url.searchParams.get('path'), rev: rev(await stat(full)) });
         return true;
       }

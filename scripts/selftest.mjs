@@ -1829,6 +1829,31 @@ group('preparing a set');
   const part = parseFileName(file.replace(/[.]mp3$/, ''));
   check('and it reads back as a part', part.role === 'stem' && part.label === 'bass', `${part.role}/${part.label}`);
 
+  // Two tracks alike but for the number would be one file: each keeps its number instead.
+  {
+    const { partsFor, partInfoFor } = await import('../src/lib/prepare.ts');
+    const twins = [{ name: 'VOX 1' }, { name: 'VOX 2' }, { name: 'Bass 1' }];
+    check('a number is kept when another part has the same name without it',
+      partFileName('Fix You', 'VOX 1', false, twins) === 'Fix You [vox 1].mp3' && partFileName('Fix You', 'VOX 2', false, twins) === 'Fix You [vox 2].mp3',
+      partFileName('Fix You', 'VOX 1', false, twins));
+    check('and dropped where nothing else is called that', partFileName('Fix You', 'Bass 1', false, twins) === 'Fix You [bass].mp3');
+    check('a plain name beside a numbered one keeps both apart',
+      partFileName('Fix You', 'Vox', false, [{ name: 'Vox' }, { name: 'Vox 2' }]) === 'Fix You [vox].mp3'
+        && partFileName('Fix You', 'Vox 2', false, [{ name: 'Vox' }, { name: 'Vox 2' }]) === 'Fix You [vox 2].mp3');
+    const refAndOwn = [{ name: 'Lead Vox 1', reference: true }, { name: 'Lead Vox 1' }];
+    check("the record's part is told apart by its mark, not a number",
+      partFileName('Fix You', 'Lead Vox 1', true, refAndOwn) === 'Fix You [ref lead vox].mp3'
+        && partFileName('Fix You', 'Lead Vox 1', false, refAndOwn) === 'Fix You [lead vox].mp3');
+    const stem = (name) => ({ name, reference: false, regions: null, clips: [], gain: 1 });
+    const song = { title: 'Fix You', stems: [stem('VOX 1'), stem('VOX 2'), stem('Bass 1')] };
+    const parts = partsFor(song);
+    const files = parts.map((p) => partFileName(song.title, p.name, p.reference, parts));
+    const labels = parts.map((p) => partInfoFor(song.title, p.name, p.reference, parts).label);
+    check('so a song planned with both writes two files, not one twice',
+      new Set(files).size === 3 && files.includes('Fix You [vox 1].mp3') && files.includes('Fix You [bass].mp3'), files.join(', '));
+    check('and the manifest labels them as the files are', labels.join(',') === 'vox 1,vox 2,bass', labels.join(','));
+  }
+
   // Lyrics follow the tempo map, or every line after a change drifts.
   const lrc = await lyricsFileFor(song, project).text();
   check('lyrics come out as LRC', /^\[00:07\.06\]early line$/m.test(lrc), lrc.split('\n')[0]);
@@ -3481,7 +3506,7 @@ group('checking a set before it matters');
   check('clips know whether they are warped',
     yellow.stems.find((s) => s.name === 'Bass')?.clips[0].warped === true);
 
-  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, 4), 32), songDurationSec(yellow, 4));
+  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, project), 32), songDurationSec(yellow, project));
 
   const findings = checkSet(project);
   {
@@ -3558,6 +3583,8 @@ group('the file API');
     return answer;
   };
   const stateFile = join(scratch, 'state', 'studio-folders.json');
+  // A port of this run's own, told to the API as the launcher tells the server its.
+  const port = 20000 + Math.floor(Math.random() * 40000);
   const serve = (api) =>
     new Promise((ready) => {
       const server = createServer(async (req, res) => {
@@ -3566,9 +3593,9 @@ group('the file API');
           res.end();
         }
       });
-      server.listen(0, '127.0.0.1', () => ready(server));
+      server.listen(port, '127.0.0.1', () => ready(server));
     });
-  let server = await serve(fileApi({ stateFile, pick }));
+  let server = await serve(fileApi({ stateFile, pick, port }));
   const base = () => `http://127.0.0.1:${server.address().port}`;
   const studio = { 'x-rehearsal-studio': 'test', 'content-type': 'application/json' };
   const call = (op, body, headers = studio) =>
@@ -3584,8 +3611,29 @@ group('the file API');
     (await call('stored', { slot: 'songs' }, { ...studio, origin: 'http://localhost:9999' })).status === 403);
   check("the server's own page is welcome",
     (await call('stored', { slot: 'songs' }, { ...studio, origin: base() })).status === 200);
+  check('by either of its names',
+    (await call('stored', { slot: 'songs' }, { ...studio, origin: `http://localhost:${port}` })).status === 200);
   check('as is the dev server, which passes calls along',
     (await call('stored', { slot: 'songs' }, { ...studio, origin: 'http://localhost:5174' })).status === 200);
+  {
+    // An Origin that merely agrees with the Host header is not the studio's page.
+    const { connect } = await import('node:net');
+    const status = await new Promise((done, fail) => {
+      const sock = connect(port, '127.0.0.1', () =>
+        sock.write('POST /__fs/stored HTTP/1.1\r\nHost: evil.example\r\nOrigin: http://evil.example\r\nx-rehearsal-studio: 1\r\n'
+          + 'content-type: application/json\r\ncontent-length: 16\r\nConnection: close\r\n\r\n{"slot":"songs"}'));
+      sock.once('data', (d) => {
+        done(String(d).split('\r\n')[0]);
+        sock.destroy();
+      });
+      sock.on('error', fail);
+      sock.setTimeout(3000, () => {
+        fail(new Error('no answer'));
+        sock.destroy();
+      });
+    }).catch((e) => e.message);
+    check('an origin that only matches the Host header it sent is refused', /^HTTP\/1\.1 403/.test(status), status);
+  }
   check("a preflight gets no allowance",
     !(await fetch(`${base()}/__fs/stored`, { method: 'OPTIONS' })).headers.has('access-control-allow-origin'));
   check('nothing is remembered at first', (await ask('stored', { slot: 'songs' })).dir === null);
@@ -3698,8 +3746,21 @@ group('the file API');
   });
   check('bytes are written where asked, folders and all',
     put.status === 200 && (await readFile(join(songs, 'Prints/Prepared/Yellow/Yellow (full mix).mp3'))).length === 3000);
-  check('with no half-written file left beside it',
-    !(await ask('list', { dir: songs })).files.some((f) => f.name.endsWith('.part')));
+  {
+    const { readdir } = await import('node:fs/promises');
+    const leftovers = (await readdir(join(songs, 'Prints/Prepared/Yellow'))).filter((n) => n.includes('.part'));
+    check('with no half-written file left beside it, dotfile or not', leftovers.length === 0, leftovers.join(', '));
+  }
+  {
+    // Two writes of one file at once: each lands whole, and neither fills the other's.
+    const write = (byte) => fetch(`${base()}/__fs/write?${new URLSearchParams({ dir: songs, path: 'Prints/Same.bin' })}`, {
+      method: 'POST', headers: { 'x-rehearsal-studio': 'test' }, body: Buffer.alloc(200000, byte),
+    });
+    const [a, b] = await Promise.all([write(1), write(2)]);
+    const bytes = await readFile(join(songs, 'Prints/Same.bin'));
+    check('two writes of one file at once both go through', a.status === 200 && b.status === 200);
+    check('and what is left is one of them, whole', bytes.length === 200000 && bytes.every((v) => v === bytes[0]), `${bytes.length} bytes, first ${bytes[0]}`);
+  }
 
   check('a path that climbs out is refused',
     (await call('read', { dir: songs, path: '../Elsewhere/Secret.als' })).status === 400);
@@ -3723,6 +3784,43 @@ group('the file API');
   check('and written again', (await putAls('Band/Yellow/Yellow (slates).als')).status === 200);
   check('a set that is not there yet may be written', (await putAls('Band/Yellow/Brand New.als')).status === 200);
   check('but not a second time', (await putAls('Band/Yellow/Brand New.als')).status === 403);
+  // Every copy a tool writes is named on one list, and the server lets each be written again.
+  {
+    const { STUDIO_COPY_KINDS, studioCopyPath, isStudioCopy } = await import('./studio-copies.mjs');
+    for (const kind of STUDIO_COPY_KINDS) {
+      const copy = studioCopyPath('Band/Yellow/Yellow.als', kind);
+      check(`the ${kind} copy is known as one`, isStudioCopy(copy) && !isStudioCopy('Band/Yellow/Yellow.als'), copy);
+      check(`and may be written twice over`, (await putAls(copy)).status === 200 && (await putAls(copy)).status === 200, copy);
+    }
+    check("Lyrics Studio's copy too", isStudioCopy('Yellow Lyrics.als') && (await putAls('Band/Yellow/Yellow Lyrics.als')).status === 200
+      && (await putAls('Band/Yellow/Yellow Lyrics.als')).status === 200);
+    check('the locator-text copy in particular, which used to be refused', (await putAls('Band/Yellow/Yellow (locators).als')).status === 200);
+  }
+  // The same fence stands in front of every other way of putting a file down.
+  check('nor may JSON be written over a set', (await call('write-json', { dir: songs, path: 'Band/Yellow/Yellow.als', data: {} })).status === 403);
+  check('which is still exactly what it was', (await readFile(join(songs, 'Band/Yellow/Yellow.als'), 'utf8')) === 'not really gzip');
+  check('JSON may go into a studio copy', (await call('write-json', { dir: songs, path: 'Band/Yellow/Yellow (info).als', data: {} })).status === 200);
+  check('and is written whole, nothing half-done beside it',
+    !(await ask('list', { dir: songs })).files.some((f) => f.name.endsWith('.part')));
+  {
+    const fsp = await import('node:fs/promises');
+    const has = async (p) => !!(await fsp.stat(p).catch(() => null));
+    // A prepared set's "song folder" that is really a set: undo never moves or removes it.
+    await fsp.mkdir(join(songs, 'Sets', 'Undo'), { recursive: true });
+    await fsp.writeFile(join(songs, 'Sets', 'Undo', 'Yellow.als'), 'a set, somehow');
+    await ask('undo-begin', { dir: songs, set: 'Sets/Undo' });
+    check('undo will not move a set aside', (await call('undo-keep', { dir: songs, set: 'Sets/Undo', song: 'Yellow.als' })).status === 403
+      && (await has(join(songs, 'Sets', 'Undo', 'Yellow.als'))));
+    check('nor remove one on restore',
+      (await call('undo-restore', { dir: songs, set: 'Sets/Undo', songs: [{ folder: 'Yellow.als', kept: false }] })).status === 403
+      && (await fsp.readFile(join(songs, 'Sets', 'Undo', 'Yellow.als'), 'utf8')) === 'a set, somehow');
+    await fsp.rm(join(songs, 'Sets', 'Undo'), { recursive: true, force: true });
+    // A set named like a submix is still a set.
+    await fsp.writeFile(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'), 'a set');
+    check('removing a submix never removes a set', (await call('remove-submix', { dir: songs, path: 'Band/Yellow/Yellow [submix].als' })).status === 403
+      && (await has(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'))));
+    await fsp.rm(join(songs, 'Band', 'Yellow', 'Yellow [submix].als'), { force: true });
+  }
 
 
   answer = join(elsewhere, 'Neighbour.txt');
@@ -3785,9 +3883,62 @@ group('the file API');
   check('and the file it was refused for is still there',
     (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow [keys].mp3' })).exists);
 
+  /*
+   * Restarting Lyrics Studio stops whatever listens on the port the page
+   * names — so the port must be one of Lyrics Studio's, and what answers
+   * there must be Lyrics Studio, before anything is stopped. Neither case
+   * reaches the start itself, which would run the real thing here.
+   */
+  {
+    const { lyricsStudioAt, LYRICS_STUDIO_PORTS } = await import('./studio-files.mjs');
+    check('a restart names a port outside Lyrics Studio\'s and is refused',
+      (await call('lyrics-studio-start', { restart: true, port: server.address().port })).status === 400);
+    check('as is one that is not a port at all', (await call('lyrics-studio-start', { restart: true, port: '8765' })).status === 400);
+    let who = 'light-controller';
+    const stranger = await new Promise((ready) => {
+      const s = createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(req.url === '/api/version' ? { app: who } : {}));
+      });
+      s.listen(0, '127.0.0.1', () => ready(s));
+    });
+    check('a stranger on the port is known not to be Lyrics Studio', !(await lyricsStudioAt(stranger.address().port)));
+    who = 'lyrics-studio';
+    check('and Lyrics Studio is known by its answer', await lyricsStudioAt(stranger.address().port));
+    check('nothing at all is not it either', !(await lyricsStudioAt(1)));
+    check("the port range is Lyrics Studio's own", LYRICS_STUDIO_PORTS.first === 8765 && LYRICS_STUDIO_PORTS.last === 8775);
+    stranger.close();
+  }
+
+  // A request line that is not a URL is answered, not died of.
+  {
+    const { connect } = await import('node:net');
+    const raw = (line) =>
+      new Promise((done, fail) => {
+        const sock = connect(server.address().port, '127.0.0.1', () => sock.write(`${line}\r\nHost: x\r\nConnection: close\r\n\r\n`));
+        // The status line is in the first chunk; nothing else is wanted.
+        sock.once('data', (d) => {
+          done(String(d).split('\r\n')[0]);
+          sock.destroy();
+        });
+        sock.on('error', fail);
+        sock.setTimeout(3000, () => {
+          fail(new Error('no answer'));
+          sock.destroy();
+        });
+      });
+    const bad = await raw('GET http://[ HTTP/1.1').catch((e) => e.message);
+    check('a request whose line is not a URL is refused, not fatal', /^HTTP\/1\.1 400/.test(bad), bad);
+    check('and the server is still there to answer the next', (await ask('stored', { slot: 'songs' })).dir === songs);
+  }
+
   // A new server, the way tomorrow's launch makes one: the folder is still there.
-  server.close();
-  server = await serve(fileApi({ stateFile, pick }));
+  // On the same port, so the old one's kept-alive connections are closed with it first.
+  server.closeAllConnections();
+  await new Promise((closed) => server.close(closed));
+  // A moment for the client side to see them go, or the next call reuses one.
+  await new Promise((r) => setTimeout(r, 100));
+  server = await serve(fileApi({ stateFile, pick, port }));
   check('a remembered folder survives a restart, nothing to reopen',
     (await ask('stored', { slot: 'songs' })).dir === songs);
   check('and is usable at once', (await ask('exists', { dir: songs, path: 'Band/Yellow/Yellow.als' })).exists);
@@ -3796,6 +3947,179 @@ group('the file API');
   check('forgetting forgets', (await ask('stored', { slot: 'songs' })).dir === null);
   check('and an unknown slot is refused', (await call('stored', { slot: 'attic' })).status === 400);
   server.close();
+}
+
+/* ------------------------------ the studio's server ------------------------------ */
+
+group("the studio's server");
+{
+  /*
+   * The server that serves the page and carries the file API, started the
+   * way the launcher starts it, on a port of its own. What matters here is
+   * that a request it cannot make sense of does not end it: the page in the
+   * window would be talking to nothing.
+   */
+  const { spawn } = await import('node:child_process');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { connect } = await import('node:net');
+  const scratch = await mkdtemp(join(tmpdir(), 'studio-serve-'));
+  const port = 5177 + 100 + Math.floor(Math.random() * 400);
+  const child = spawn(process.execPath, ['scripts/serve-studio.mjs'], {
+    env: { ...process.env, STUDIO_PORT: String(port), STUDIO_STATE_FILE: join(scratch, 'state.json') },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.on('data', (d) => (output += d));
+  child.stderr.on('data', (d) => (output += d));
+  const up = await new Promise((done) => {
+    const started = Date.now();
+    const poll = () => {
+      if (output.includes('studio at')) return done(true);
+      if (child.exitCode !== null || Date.now() - started > 8000) return done(false);
+      setTimeout(poll, 50);
+    };
+    poll();
+  });
+  check('the server comes up on the port it is given', up, output);
+  const raw = (line) =>
+    new Promise((done, fail) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(`${line}\r\nHost: x\r\nConnection: close\r\n\r\n`));
+      sock.once('data', (d) => {
+        done(String(d).split('\r\n')[0]);
+        sock.destroy();
+      });
+      sock.on('error', fail);
+      sock.setTimeout(3000, () => {
+        fail(new Error('no answer'));
+        sock.destroy();
+      });
+    });
+  const status = (line) => raw(line).catch((e) => `no answer: ${e.message}`);
+  check('a path that is not a valid escape is a bad request', /^HTTP\/1\.1 400/.test(await status('GET /% HTTP/1.1')), await status('GET /% HTTP/1.1'));
+  check('so is a request line that is not a URL', /^HTTP\/1\.1 400/.test(await status('GET http://[ HTTP/1.1')), await status('GET http://[ HTTP/1.1'));
+  const alive = child.exitCode === null;
+  const answer = await fetch(`http://127.0.0.1:${port}/__rehearsal-studio`).then((r) => r.json()).catch(() => null);
+  check('and the server is still up and itself afterwards', alive && answer?.serving === 'rehearsal-tool-studio', `${alive} ${JSON.stringify(answer)}`);
+  child.kill();
+}
+
+/* --------------------------- region gates under a loop --------------------------- */
+
+group('region gates under a loop');
+{
+  /*
+   * A stem's file runs the whole song; the gate opens and closes it where
+   * the arrangement has the part. Under a loop the source goes round on its
+   * own, so the gate is laid down pass by pass — and each pass may only
+   * hold the part of a region inside the loop, or a region running past
+   * the loop's end closes partway through every pass after the first.
+   */
+  const { regionEvents } = await import('../src/lib/audioEngine.ts');
+  const loop = { startSec: 20, endSec: 30 };
+  // Started at the loop's top, at clock time 100, three passes: 100–110, 110–120, 120–130.
+  const events = (regions, at = loop, offset = 20) => regionEvents(regions, at, offset, 100, 3).map((e) => `${e.at}${e.on ? '+' : '-'}`).join(' ');
+
+  check('a region running past the loop stays open through every pass',
+    events([{ startSec: 0, endSec: 35 }]) === '100+ 110+ 120+', events([{ startSec: 0, endSec: 35 }]));
+  check('one wholly before the loop is never heard',
+    events([{ startSec: 0, endSec: 10 }]) === '100- 110- 120-', events([{ startSec: 0, endSec: 10 }]));
+  check('one inside the loop opens and closes in each pass',
+    events([{ startSec: 25, endSec: 28 }]) === '100- 105+ 108- 110- 115+ 118- 120- 125+ 128-', events([{ startSec: 25, endSec: 28 }]));
+  check('one starting inside and running past closes only at the loop point',
+    events([{ startSec: 25, endSec: 35 }]) === '100- 105+ 110- 115+ 120- 125+', events([{ startSec: 25, endSec: 35 }]));
+  check('without a loop the schedule is laid down once, to the end',
+    events([{ startSec: 25, endSec: 28 }], null) === '100- 105+ 108-', events([{ startSec: 25, endSec: 28 }], null));
+  check('and a region already begun is open from the start, closing where it ends',
+    events([{ startSec: 0, endSec: 35 }], null) === '100+ 115-', events([{ startSec: 0, endSec: 35 }], null));
+  // Started partway through the loop: the first pass is shorter, the rest are whole.
+  check('a start inside the loop makes a short first pass',
+    events([{ startSec: 25, endSec: 28 }], loop, 26) === '100+ 102- 104- 109+ 112- 114- 119+ 122-', events([{ startSec: 25, endSec: 28 }], loop, 26));
+  check('a start before the loop plays up to it first',
+    events([{ startSec: 15, endSec: 25 }], loop, 10) === '100- 105+ 115- 120+ 125- 130+ 135-', events([{ startSec: 15, endSec: 25 }], loop, 10));
+}
+
+/* ------------------------- a waltz in a 4/4 set, through prepare ------------------------- */
+
+group('a waltz in a 4/4 set, through prepare');
+{
+  /*
+   * A set opens in 4/4 and its second song is in 3/4, slowing to half tempo
+   * from its ninth bar. Every figure the prepare writes about the song — how
+   * many bars it has, how long its render is, where a clip sits in it, what
+   * the manifest says, what the review times it at — has to come from the
+   * song's own signature and tempo map, and agree.
+   */
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { songTiming, barToSec } = await import('../src/lib/bars.ts');
+  const { songBars, songLengthSec } = await import('../src/lib/infoTrack.ts');
+  const { renderDurationSec, placementOf, lyricsFileFor } = await import('../src/lib/prepare.ts');
+  const { songInfoFor } = await import('../src/lib/updatePrepared.ts');
+  const { songDurationSec } = await import('../src/lib/setReview.ts');
+
+  const mixer = `<Mixer><Volume><LomId Value="0" /><Manual Value="1" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="9" /></EnvelopeTarget>
+      <Automation><Events>
+        <FloatEvent Id="1" Time="-63072000" Value="120" />
+        <FloatEvent Id="2" Time="88" Value="60" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <MainTrack><Mixer><TimeSignature><LomId Value="0" /><Manual Value="201" /><AutomationTarget Id="10"><LockEnvelope Value="0" /></AutomationTarget></TimeSignature></Mixer></MainTrack>
+    <AutomationEnvelope Id="2"><EnvelopeTarget><PointeeId Value="10" /></EnvelopeTarget>
+      <Automation><Events>
+        <EnumEvent Id="1" Time="-63072000" Value="201" />
+        <EnumEvent Id="2" Time="64" Value="200" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="Waltz" /></Locator>
+    <Locator Id="3"><Time Value="112" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" />${mixer}</GroupTrack>
+    <GroupTrack Id="20"><TrackGroupId Value="-1" /><EffectiveName Value="Waltz" />${mixer}</GroupTrack>
+    <AudioTrack Id="21"><TrackGroupId Value="20" /><EffectiveName Value="Drums" />
+      ${mixer}
+      <AudioClip Id="1" Time="64"><CurrentStart Value="64" /><CurrentEnd Value="112" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/Drums.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>
+    <MidiTrack Id="30"><TrackGroupId Value="-1" /><EffectiveName Value="+LYRICS" />
+      <MidiClip Id="1"><CurrentStart Value="88" /><Name Value="second half" /></MidiClip>
+    </MidiTrack>
+  </Ableton>`;
+  const project = parseAlsXml(xml);
+  const waltz = project.songs[1];
+  check('the song is read in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4, `${waltz.timeSigNum}/${waltz.timeSigDen}`);
+  check('with sixteen bars of its own across twelve of the set\'s',
+    Math.abs(songBars(waltz) - 16) < 1e-9 && Math.abs(waltz.endBar - waltz.startBar - 12) < 1e-9, `${songBars(waltz)} / ${waltz.endBar - waltz.startBar}`);
+  check('and the tempo change at its ninth bar', waltz.tempoChanges.length === 1 && waltz.tempoChanges[0].bar === 9 && waltz.tempoChanges[0].bpm === 60,
+    JSON.stringify(waltz.tempoChanges));
+
+  const timing = songTiming(waltz, project);
+  check('its timing is its own signature, tempo and map',
+    timing.timeSigNum === 3 && timing.bpm === 120 && timing.tempoMap?.[0]?.bar === 9, JSON.stringify(timing));
+  // Eight bars of three beats at 120, then eight at 60: 12 seconds and 24.
+  check('so it runs 36 seconds, not 24 at one tempo in 4/4', near(songLengthSec(waltz, project), 36), String(songLengthSec(waltz, project)));
+  check('the render is that long too', near(renderDurationSec(waltz, project), 36), String(renderDurationSec(waltz, project)));
+  check('as the review times it', near(songDurationSec(waltz, project), 36), String(songDurationSec(waltz, project)));
+
+  const clip = waltz.stems[0].clips[0];
+  const placed = placementOf(clip, {}, timing);
+  check('the clip covers the whole song', clip.startBar === 1 && clip.endBar === 17, `${clip.startBar}–${clip.endBar}`);
+  check('and is placed from the top to the end of the render', near(placed.startSec, 0) && near(placed.endSec, 36), `${placed.startSec}–${placed.endSec}`);
+  check('a bar past the change is placed through it', near(barToSec(13, timing), 12 + 4 * 3), String(barToSec(13, timing)));
+
+  const entry = songInfoFor(waltz, project, '/set.als', { folder: 'Waltz (2026-09-26)', firstBarOffsetSec: 0 });
+  check('the manifest carries the song\'s own signature, bars and length',
+    entry.timeSignature === '3/4' && entry.bars === 16 && entry.durationSec === 36, JSON.stringify(entry));
+  check('and its tempo map', entry.tempoMap?.[0]?.bar === 9 && entry.tempoMap?.[0]?.bpm === 60, JSON.stringify(entry.tempoMap));
+
+  const lrc = await lyricsFileFor(waltz, project).text();
+  check('the words are clocked through the same map', /\[00:12\.00\]\s*second half/.test(lrc), lrc.trim());
 }
 
 /* ------------------------ a group named a little differently ------------------------ */
@@ -4033,7 +4357,8 @@ group('the mix, as the set has it');
     JSON.stringify(yellow.caveats));
   check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
     `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
-  check('and its length in bars follows', Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, String(waltz.endBar - waltz.startBar));
+  check('and its length is in its own bars, not the set\'s',
+    Math.abs(waltz.bars - 16) < 1e-6 && Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, `${waltz.bars} of ${waltz.endBar - waltz.startBar}`);
 
   const asVariant = mixOf(bass, bass.clips);
   check('the part carries fader times clip gain, and the pan', Math.abs(asVariant.gain - 0.375) < 1e-9 && asVariant.pan === -1, JSON.stringify(asVariant));

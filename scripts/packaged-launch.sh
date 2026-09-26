@@ -44,7 +44,8 @@ if listening 5177; then
     *"\"server\":\"$(stamp)\""*) exit 0 ;;
   esac
   echo "$(date '+%F %T') replacing a studio server from another build" >>"$LOG"
-  /bin/kill $(/usr/sbin/lsof -nP -ti tcp:5177 2>/dev/null) 2>/dev/null
+  # Only what listens on the port, never the app's own connection to it.
+  /bin/kill $(/usr/sbin/lsof -nP -ti tcp:5177 -sTCP:LISTEN 2>/dev/null) 2>/dev/null
   sleep 0.5
 fi
 

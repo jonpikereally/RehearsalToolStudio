@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Song } from '../types';
 import { SongEngine, type LoopRegion } from './audioEngine';
-import { clearDecodedCache, filesReport, heldSongIds, keepReady, loadSong, onHeldChange, prepareSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
+import { clearDecodedCache, filesReport, heldSongIds, keepReady, loadSong, onHeldChange, prepareSong, reinstallSong, variantsToLoad, visibleVariants, type FilesReport, type LoadProgress } from './songLoader';
 import { barToSec, clickBeats, nudgeBars, secToBar } from './bars';
 import { resetMix, saveSetting } from './stemMix';
 
@@ -107,6 +107,19 @@ export function usePlayer(
     setFxChoice(readFxChoice(songId));
   }, [songId]);
   const effects = fxChoice === 'approx';
+  /*
+   * Read by the load when it happens rather than watched by it: neither the
+   * device imitation nor the cache budget changes what is decoded, so
+   * neither is a reason to open the song again. The imitation is applied
+   * below by putting the held song back into the engine; the budget only
+   * matters when a render is put into the cache.
+   */
+  const effectsRef = useRef(effects);
+  effectsRef.current = effects;
+  const budgetRef = useRef(cacheBudgetGB);
+  budgetRef.current = cacheBudgetGB;
+  /** Whether the set's devices were imitated when the song was last put into the engine. */
+  const installedEffectsRef = useRef<boolean | null>(null);
   const setEffects = useCallback(
     (on: boolean) => {
       if (!songId) return;
@@ -228,17 +241,19 @@ export function usePlayer(
 
     void (async () => {
       try {
+        const withEffects = effectsRef.current;
         await loadSong(engine, song, {
           semitones: song.transpose,
           tempoScale: song.tempoScale ?? 1,
-          budgetBytes: Math.max(0.1, cacheBudgetGB) * 1024 * 1024 * 1024,
-          effects,
+          budgetBytes: Math.max(0.1, budgetRef.current) * 1024 * 1024 * 1024,
+          effects: withEffects,
           signal: controller.signal,
           onProgress: reportProgress,
           onSkip: (variant, reason) =>
             setFiles((f) => ({ ...f, failed: [...f.failed.filter((x) => x.part !== variant.name), { part: variant.name, reason }] })),
         });
         if (controller.signal.aborted) return;
+        installedEffectsRef.current = withEffects;
 
         engine.seek(resumeAt);
         // Awaited, so `playing` below reflects the engine rather than racing it.
@@ -261,9 +276,26 @@ export function usePlayer(
     })();
 
     return () => controller.abort();
-    // Reload only when the song or its key changes.
+    // Reload only when the song, its parts, its key or its speed change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songId, transpose, tempoScale, cacheBudgetGB, loadKey, effects]);
+  }, [songId, transpose, tempoScale, loadKey]);
+
+  /*
+   * Turning the device imitation on or off changes nothing the load made —
+   * the buffers are the same files, decoded the same — only the chain they
+   * play through, so the song is put back into the engine rather than opened
+   * again. It used to reload every part for the flick of a switch. A change
+   * made while the song was still loading is caught up with once it is ready.
+   */
+  useEffect(() => {
+    if (!song || !state.ready || installedEffectsRef.current === effects) return;
+    installedEffectsRef.current = effects;
+    void reinstallSong(engine, song, { effects }).then((done) => {
+      if (!done) return;
+      setState((s) => ({ ...s, playing: engine.isPlaying, position: engine.position, activeVariantId: engine.activeVariantId }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effects, state.ready, songId]);
 
   // Free decoded audio when leaving a song entirely. What a run is holding is
   // kept elsewhere, and survives this.
@@ -297,8 +329,7 @@ export function usePlayer(
           await prepareSong(engine, other, {
             semitones: other.transpose,
             tempoScale: other.tempoScale ?? 1,
-            budgetBytes: Math.max(0.1, cacheBudgetGB) * 1024 * 1024 * 1024,
-            effects: readFxChoice(other.id) === 'approx',
+            budgetBytes: Math.max(0.1, budgetRef.current) * 1024 * 1024 * 1024,
           });
         } catch {
           // A song of the run that will not build is not this song's problem;
@@ -311,7 +342,7 @@ export function usePlayer(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.ready, songId, aheadKey, cacheBudgetGB]);
+  }, [state.ready, songId, aheadKey]);
 
   /* ------------------------------- click track ------------------------------ */
 

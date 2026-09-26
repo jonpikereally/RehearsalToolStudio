@@ -12,7 +12,7 @@
  */
 
 import type { AlsProject, AlsSong } from './alsParser.ts';
-import { songBars } from './infoTrack.ts';
+import { songBars, songLengthSec } from './infoTrack.ts';
 
 export type Severity = 'problem' | 'warning' | 'info';
 
@@ -50,29 +50,15 @@ export interface Finding {
   message: string;
 }
 
-const beatsPerBarOf = (p: AlsProject) => p.timeSigNum * (4 / p.timeSigDen);
-
 /**
- * How long the song actually runs, from its bars and its tempo automation.
+ * How long the song actually runs, from its bars through its own signature
+ * and tempo automation — the same maths as the manifest and the render.
  *
  * Deliberately not the `[3:20]` a locator pins — that is what somebody once
  * wrote, and the whole point of computing is catching the two disagreeing.
  */
-export function songDurationSec(song: AlsSong, beatsPerBar: number): number {
-  const totalBars = songBars(song);
-  if (totalBars <= 0) return 0;
-
-  // Piecewise: each stretch runs at its tempo until the next change.
-  const changes = song.tempoChanges.filter((c) => c.bar > 1 && c.bar < 1 + totalBars);
-  let atBar = 1;
-  let bpm = song.startBpm || 120;
-  let sec = 0;
-  for (const next of [...changes, { bar: 1 + totalBars, bpm: 0 }]) {
-    sec += ((next.bar - atBar) * beatsPerBar * 60) / bpm;
-    atBar = next.bar;
-    if (next.bpm) bpm = next.bpm;
-  }
-  return sec;
+export function songDurationSec(song: AlsSong, project: AlsProject): number {
+  return songLengthSec(song, project);
 }
 
 export function formatSec(sec: number): string {
@@ -96,7 +82,6 @@ const UNWARPED_BARS = 8;
 const DURATION_SLACK_SEC = 5;
 
 export function checkSet(project: AlsProject): Finding[] {
-  const beatsPerBar = beatsPerBarOf(project);
   const out: Finding[] = [];
 
   if (!project.songs.length) {
@@ -242,7 +227,7 @@ export function checkSet(project: AlsProject): Finding[] {
     const bars = songBars(song);
     if (song.durationText && bars > 0) {
       const pinned = parseTimeText(song.durationText);
-      const actual = songDurationSec(song, beatsPerBar);
+      const actual = songDurationSec(song, project);
       if (pinned != null && Math.abs(pinned - actual) > DURATION_SLACK_SEC) {
         push(
           'length',
@@ -304,12 +289,11 @@ export function checkSet(project: AlsProject): Finding[] {
  * a locator pins, for the same reason the checker compares them.
  */
 export function setlistText(project: AlsProject, only?: Set<string>): string {
-  const beatsPerBar = beatsPerBarOf(project);
   const songs = project.songs.filter((s) => !only || only.has(s.title));
   let totalSec = 0;
 
   const lines = songs.map((song, i) => {
-    const sec = songDurationSec(song, beatsPerBar);
+    const sec = songDurationSec(song, project);
     totalSec += sec;
     const facts = [
       sec > 0 ? formatSec(sec) : song.durationText,

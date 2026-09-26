@@ -92,7 +92,7 @@ make_icns "$RES/app.icns"
 cp "$NODE_BIN" "$RES/node" && chmod 755 "$RES/node"
 cp -R "$BUILD/dist" "$RES/dist"
 # The servers, laid out as they are here, so serve-studio finds ../dist unchanged.
-cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/slate-helper.mjs "$RES/scripts/"
+cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/studio-copies.mjs scripts/slate-helper.mjs "$RES/scripts/"
 cp scripts/packaged-launch.sh "$RES/launch.sh" && chmod 755 "$RES/launch.sh"
 
 # No RTSRepo: its absence is how the window knows it is the packaged kind.

@@ -57,11 +57,28 @@ const readStamp = () => readBuild().build;
 const STARTED = readBuild();
 const STARTED_WITH = STARTED.build;
 
-const files = fileApi(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {});
+const files = fileApi({ port: PORT, ...(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {}) });
+
+/*
+ * A request this process must not die of. A malformed path — `/%`, a bad
+ * escape — used to throw out of the handler, and a throw in an async
+ * handler is an unhandled rejection, which ends Node and took the studio
+ * with it. Such a request is answered as what it is, and anything that
+ * still escapes is logged rather than fatal.
+ */
+process.on('unhandledRejection', (err) => {
+  console.error(`studio server: unhandled rejection: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+});
 
 const server = createServer(async (req, res) => {
   if (await files(req, res)) return;
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  let path;
+  try {
+    path = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('bad request');
+  }
 
   if (path === '/__rehearsal-studio') {
     /*

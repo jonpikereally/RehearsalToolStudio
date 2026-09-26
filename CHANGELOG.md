@@ -5,6 +5,64 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-09-26
+
+**Give each write its own hidden temporary file**
+
+A file was written beside its destination as `<file>.part` and moved into place — the same name for every write of that file, so two at once filled each other's, and a crash left `<file>.part` in plain sight in the folder. The temporary file is now a dotfile named for this process with a random tail: writes of one file at once cannot collide, and what a crash leaves is hidden the way every listing already hides dotfiles. The self-test writes one file twice at once and checks that one of the two is what is left, whole.
+
+**Name the pages the file server answers, rather than trusting Host**
+
+A call to the file API had to come from the studio's own page or the dev server's, and "its own page" was judged by the Origin's host matching the request's Host header — which a request can set to anything, so an Origin that agreed with a Host it chose was let in. The allowed origins are now named outright: this server's page by either of the machine's names on the port it was started on, and the dev server's, as the voice helper has always done. The server tells the API its port; the self-test starts one on a port of its own and sends a request whose Origin and Host agree but are not the studio's.
+
+**Restart only Lyrics Studio, and only on a port of its own**
+
+The page can ask the file server to restart Lyrics Studio on a given port, so that a copy started without the studio's leave to read a folder is replaced by one with it. The server stopped whatever listened on whatever port it was given. It now refuses a port outside 8765–8775, which are Lyrics Studio's, and asks what listens there for its version first, stopping it only when the answer is Lyrics Studio's own. The self-test refuses the wrong port and tells a stranger from the real thing by its answer, without reaching the start itself.
+
+**Stop the device switch and the cache slider from reopening the song**
+
+Whether the set's devices are imitated was part of what a loaded song was keyed on, and both it and the cache budget were among the things the player watched to decide when to open a song again — so flicking the imitation on, or moving the cache slider in Settings, decoded every part of the song afresh. Neither changes what is decoded: the imitation is the chain the buffers play through, built when the song is put into the engine, and the budget only matters when a render is put into the cache. The key leaves the imitation out, the load reads both values when it happens rather than watching them, and a change to the imitation puts the held song back into the engine where it was — the same step that makes Next between the songs of a run instant.
+
+**Name the set's folder the same way from the one-song dialog**
+
+The one-song prepare cleaned the set's name with a bare regex in three places, while the set-wide dialog and the prepare itself go through safeSetName, which also folds runs of space. A name with a double space in it would have had the one-song run keep aside, and read the manifest from, a folder other than the one the prepare wrote. All three now use safeSetName.
+
+**Credit Signalsmith Stretch and lamejs by their own licences**
+
+Settings credited "SoundTouchJS (LGPL-2.1)" for pitch shifting, which the studio has not used since the shifter became Signalsmith Stretch — MIT, as its package says. The line now credits the stretcher and the MP3 encoder, lamejs, under LGPL-3.0, and the encoder's own comment says the same rather than pointing at SoundTouch.
+
+**Replace only the process listening on 5177, never the app's own**
+
+When the launcher found a studio server behind the build on disk it killed every process with a socket on port 5177 — the listener, and with it the app's own WebKit networking process, which holds a connection to that port for the open window. Both launchers now ask lsof for the listener alone. Not run here: the launchers are Mac shell scripts, edited by reading.
+
+**Answer a malformed request with 400 instead of dying of it**
+
+The studio's server decoded each request's path outside any try, and a path that is not a valid escape — `/%` — threw out of the async handler, which is an unhandled rejection and ends Node: one bad request took the whole studio down under the open window. The file API's handler had the same shape around the URL it builds from the request line, which a request such as `GET http://[` makes throw. Both now answer such a request as the bad request it is and carry on, and the server logs anything that still slips out as a rejection rather than exiting on it. The self-test sends both requests raw, to the file API in-process and to the server started the way the launcher starts it, and checks each is still there afterwards.
+
+**Say when a check for updates failed rather than calling it current**
+
+File ▸ Check for Updates ran the launcher and then told the page the build being served, and the page, finding nothing newer, said "This is the newest build" — even when the build had failed, GitHub had never answered, or the server had not come up at all. The launcher now ends every run with one outcome line in its log — built, unchanged, failed or fetch-failed — and appends to that log rather than starting it afresh for a build, which used to wipe the update lines written moments before; it is trimmed when it grows long. The app reads the outcome the run wrote and sends it with the build, and its own dialog says the same when the page is not up. The page shows a failed build or an unanswered fetch as what they are, pointing at the log, gives a check a minute before saying the app has not answered, and always offers the notice's dismiss button, which the looking state used to hide.
+
+**Time every song by its own signature and tempo map, everywhere**
+
+The parser read a song's own time signature, but everything after it counted in the set's: a song's length in bars was its span in the set's bars, so a 3/4 song in a 4/4 set came out with three quarters of its bars; and the render's length and every clip's place in it were worked out at one constant tempo, while the manifest's duration and the words' clock went through the tempo map, so a song that changed tempo had files of one length and an entry of another. One helper now states a song's timing — bar 1 at its locator, its own signature, the tempo Live has in force there, its tempo changes — and every bar-to-seconds conversion downstream of the parser goes through the same bar maths the player uses with it: the render's length, where each clip sits, a frozen track's window, the manifest's duration, the review's timings, the words' clock. The parser counts the song's own bars beside its place on the set's timeline, and the manifest writes the song's own signature. The self-test runs a 3/4 song with a tempo change, in a 4/4 set, through each of them.
+
+**Keep two parts alike but for a number from writing one file**
+
+A part's file is named by its track with Live's numbering dropped, so "Bass 1" comes out as the bass. Two tracks in one song alike but for the number — "VOX 1" and "VOX 2" — dropped to the same name, and the second write replaced the first while the manifest listed two parts for one file. The label is now worked out among the song's parts: the number is dropped as before, unless another part of the song is the same but for it, when each keeps its own. Every place that names a part's file — the render, the manifest entry, the submix planning and the dialog's preview — is told the song's parts, and the self-test plans such a song.
+
+**Keep a stem's gate right through every pass of a loop**
+
+Under a loop each stem's region gate was laid down for every pass by shifting the whole region along by one loop length, without cutting it to the loop. A part whose region ran on past the loop's end — most of them, since a region is a stretch of the arrangement and a loop is a few bars of it — had its close land partway through the next pass, and from then on the part dropped out for the rest of every pass. The schedule is now worked out by one pure function that cuts each region to the pass's own window, the first pass running from where playback began to the loop's end and every later one the loop itself, and opens each pass with the state at its first moment. Setting, moving or lifting the loop while playing restarts the sources from where they are, so the schedule is rebuilt for the new loop and the old passes' automation goes with it. The self-test lays the cases out on a clock.
+
+**Name the studio's set copies on one list the server and page share**
+
+The names of the copies the set tools write were kept three times over — in the file server's guard, in the launch chooser's filter, and in the naming of the app's own copy — and the three had drifted. The locator text tool writes "… (locators).als", which the server's list never had, so its second run was refused as an attempt to write over a set. One plain module, scripts/studio-copies.mjs, now holds the list and names each copy; the server's guard, the chooser and every tool build on it, so a copy a tool can write is a copy the server lets it write again. The self-test writes each kind twice. The packaged app carries the module beside the server; tsconfig allows the one JavaScript import.
+
+**Keep every file route from writing over an Ableton set**
+
+The rule that the studio never writes over a set lived in the byte `write` route alone. `write-json` put its file down with no such check, so a page asking for JSON at a set's path would have replaced the set; and undo's move-aside and restore, and removing a submix, could have moved or removed one named the right way. One helper now holds the rule, below every operation that creates, replaces, renames or removes a file, and each of them asks it first. `write-json` is also written whole the way `write` is — beside its destination and moved into place — so a write that dies halfway leaves the old file rather than half a new one. The self-test covers each route.
+
 ## 2026-09-25
 
 **Open with what to do, then where it goes**
@@ -220,7 +278,3 @@ The other repo has to be told what is in the band's folder now, and in one piece
 **Name a submix for what is in it, and write one file for everybody who wants it**
 
 A submix is a sum of parts and nothing else, so naming it after the person it was worked out for said the wrong thing about it: two members who keep the same things want the same sum, and a file called "submix robin" is one nobody else can be told to use. It is named for its contents now — "Cruel Summer [submix drums+bass+other+piano].mp3" — and a list of parts is written once however many people it serves, with their names on the entry rather than on the file. A list too long for a name is cut short and marked with four letters of its own hash, so two lists can never come out alike.
-
-**Read a submixes folder as its song's, and tell the band whose submix it is**
-
-Filing submixes in a folder of their own broke two things at once, and both only showed in the band's own library. The scan read each submixes/ folder as a song, so a set of nineteen songs published as thirty-eight, half of them called "submixes". And the library's variants never carried what makes a submix one — hidden, submixFor, submixOf are in the manifest, and the publish dropped them — so the band's app would have played a member's submix as an ordinary fader, on top of the very parts inside it.

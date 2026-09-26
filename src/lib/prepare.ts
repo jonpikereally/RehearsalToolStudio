@@ -9,7 +9,7 @@ import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { SUBMIX_FOLDER, isClickOrCue, isWholeSong, keepsPart, submixLabel, type MemberMix } from './members.ts';
-import { barToSec } from './bars.ts';
+import { barToSec, songTiming, type TimeSong } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
 
@@ -312,7 +312,7 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
   const byList = new Map<string, PlannedPart>();
   const named = parts
     .filter((part) => !part.submix)
-    .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference) }));
+    .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference, parts) }));
   for (const member of members) {
     if (member.off || !member.member.trim()) continue;
     const folded = named.filter(({ part, info }) =>
@@ -482,7 +482,7 @@ export function songFolderName(song: AlsSong, renderedOn: string = renderStamp()
  * asks about a stem — which tracks, whether it was frozen or shifted, how
  * much of the song it covers, how loud, and how big the file came out.
  */
-function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
+function stemFacts(song: AlsSong, part: PlannedPart, among: PlannedPart[], sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
   const clips = part.stems.flatMap((s) => s.clips.filter((c) => !c.disabled));
   const shifted = clips.find((c) => (c.semitones ?? 0) !== 0 || Math.abs((c.speed ?? 1) - 1) > 1e-6);
   const bars = Math.ceil(songBars(song) - 1e-6);
@@ -493,8 +493,8 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
     // A submix lives in the song's submixes/ folder; every other part sits in
     // the song folder itself, and its name is all the manifest has ever said.
     file: part.submix
-      ? `${SUBMIX_FOLDER}/${partFileName(song.title, part.name, part.reference)}`
-      : partFileName(song.title, part.name, part.reference),
+      ? `${SUBMIX_FOLDER}/${partFileName(song.title, part.name, part.reference, among)}`
+      : partFileName(song.title, part.name, part.reference, among),
     /*
      * A submix is declared hidden, and says whose it is and what it stands
      * for. Hidden is what makes it safe to write before anything reads it:
@@ -515,12 +515,33 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
   };
 }
 
+/** A part as its neighbours see it: what it is called, and whether it is a reference. */
+type PartName = { name: string; reference?: boolean };
+
+/**
+ * What a part is called in its file's brackets, before the reference mark.
+ *
+ * Through the same label cleaner the importer uses, so Ableton's track
+ * numbering doesn't end up in the name: "Bass 1" is the first bass track, not
+ * a part called "bass 1". Unless another part of the same song is the same
+ * but for the number — "VOX 1" beside "VOX 2" — when each keeps its number:
+ * two parts under one label are two writes to one file, the second replacing
+ * the first while the manifest lists both. `among` is the song's parts, this
+ * one included or not.
+ */
+export function partLabel(partName: string, reference = false, among: PartName[] = []): string {
+  const label = stemLabel(partName);
+  const twin = among.some(
+    (other) => other.name !== partName && !!other.reference === reference && stemLabel(other.name).toLowerCase() === label.toLowerCase(),
+  );
+  return twin ? partName.trim() : label;
+}
+
 /**
  * `Fix You [bass].mp3` — square brackets are what make it a part.
  *
- * Through the same label cleaner the importer uses, so Ableton's track
- * numbering doesn't end up in the file name: "Bass 1" is the first bass track,
- * not a part called "bass 1".
+ * The label is the part's name as partLabel cleans it, kept apart from the
+ * song's other parts when `among` says what they are.
  *
  * A reference part says so in its label even when the track didn't — a "Lead
  * Vox 1" filed under REF is the record's lead vocal, and a prepared folder
@@ -528,8 +549,8 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
  * nobody can read. The label is the only carrier: what comes out is an
  * ordinary library, understood by the same name rules as a hand-made one.
  */
-export function partFileName(songTitle: string, partName: string, reference = false): string {
-  const label = safeName(stemLabel(partName)).toLowerCase();
+export function partFileName(songTitle: string, partName: string, reference = false, among: PartName[] = []): string {
+  const label = safeName(partLabel(partName, reference, among)).toLowerCase();
   const marked = reference && !/\bref(erence)?\b/.test(label) ? `ref ${label}` : label;
   return `${safeName(songTitle)} [${marked}].mp3`;
 }
@@ -550,8 +571,8 @@ export function partFileName(songTitle: string, partName: string, reference = fa
  * song is the `record`, and it is a `mix` rather than a stem. The band's own
  * full bounce is a mix too, but not the record.
  */
-export function partInfoFor(songTitle: string, partName: string, reference: boolean): PreparedPart {
-  const file = partFileName(songTitle, partName, reference);
+export function partInfoFor(songTitle: string, partName: string, reference: boolean, among: PartName[] = []): PreparedPart {
+  const file = partFileName(songTitle, partName, reference, among);
   const label = file.slice(file.lastIndexOf('[') + 1, file.lastIndexOf(']'));
   const name = reference ? label.replace(/\bref(erence)?\b/i, ' ').replace(/\s+/g, ' ').trim() : label;
   const role = roleForTrack(partName);
@@ -684,18 +705,18 @@ async function sha1Hex(bytes: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** The tempo Live plays the song at: the automation's where there is any. *//** The tempo Live plays the song at: the automation's where there is any. */
+/** The tempo Live plays the song at: the automation's where there is any. */
 export function tempoOf(song: AlsSong, project: AlsProject): number {
-  return song.startBpm ?? song.bpm ?? project.tempo;
+  return songTiming(song, project).bpm;
 }
 
-function beatsPerBar(project: AlsProject): number {
-  return project.timeSigNum * (4 / project.timeSigDen);
-}
-
-/** Bars to seconds at the song's own tempo, for placing clips. */
-function barToSeconds(bar: number, bpm: number, project: AlsProject): number {
-  return ((bar - 1) * beatsPerBar(project) * 60) / bpm;
+/**
+ * How long the song's render runs: from bar 1 to the bar line after its
+ * last, through its own signature and tempo map — the same figure the
+ * manifest writes as its duration, so the files and the entry agree.
+ */
+export function renderDurationSec(song: AlsSong, project: AlsProject): number {
+  return barToSec(1 + songBars(song), songTiming(song, project));
 }
 
 /**
@@ -863,9 +884,9 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   for (const [index, song] of chosen.entries()) {
     if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
-    const bpm = tempoOf(song, project);
+    const timing = songTiming(song, project);
     // The song runs from bar 1 to the bar line after its last: the render is that long.
-    const durationSec = barToSeconds(1 + songBars(song), bpm, project);
+    const durationSec = renderDurationSec(song, project);
     /*
      * Today's folder for a song being rendered; the folder it already has for
      * a submix-only run, which is not a new render of the song and must land
@@ -1055,8 +1076,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
             const window = clip.frozen
               ? {
                   startSec: clip.sourceStartSec,
-                  durationSec:
-                    barToSeconds(clip.endBar, bpm, project) - barToSeconds(clip.startBar, bpm, project) + clip.fadeOutSec + 0.25,
+                  durationSec: barToSec(clip.endBar, timing) - barToSec(clip.startBar, timing) + clip.fadeOutSec + 0.25,
                 }
               : undefined;
             let buffer = await loadFile(clip.path, clip.absPath, window);
@@ -1081,7 +1101,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
                 })) ??
                 buffer;
             }
-            placements.push(placementOf(placed, buffer, bpm, project, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
+            placements.push(placementOf(placed, buffer, timing, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
         }
         if (!placements.length) continue;
@@ -1136,12 +1156,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         }
         report('writing', 1);
         await writeFile(
-          `${songFolder}/${part.submix ? `${SUBMIX_FOLDER}/` : ''}${partFileName(song.title, part.name, part.reference)}`,
+          `${songFolder}/${part.submix ? `${SUBMIX_FOLDER}/` : ''}${partFileName(song.title, part.name, part.reference, parts)}`,
           blob,
         );
         const info = {
-          ...partInfoFor(song.title, part.name, part.reference),
-          ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate),
+          ...partInfoFor(song.title, part.name, part.reference, parts),
+          ...stemFacts(song, part, parts, blob.size, bitrate, flat.sampleRate),
           // When this file was written. Every part of a full render carries
           // the same moment; a submix written on its own carries its own.
           renderedAt,
@@ -1216,7 +1236,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         // song has none.
         ...(mixedNow ? { submixesAt: renderedAt } : {}),
         tempo: Math.round(tempoOf(song, project) * 10) / 10,
-        timeSignature: `${project.timeSigNum}/${project.timeSigDen}`,
+        timeSignature: `${song.timeSigNum ?? project.timeSigNum}/${song.timeSigDen ?? project.timeSigDen}`,
         bars: Math.round(songBars(song) * 1000) / 1000,
         durationSec: Math.round(songLengthSec(song, project) * 100) / 100,
         firstBarOffsetSec: paddingSec,
@@ -1274,20 +1294,19 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   return { folder, songsWritten, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
 }
 
-/** Where a clip sits and which slice of its file it plays, in seconds. */
-function placementOf(
+/** Where a clip sits and which slice of its file it plays, in seconds, through the song's timing. */
+export function placementOf(
   clip: AlsClip,
   buffer: AudioBuffer,
-  bpm: number,
-  project: AlsProject,
+  timing: TimeSong,
   speed = 1,
   gain = 1,
 ): ClipPlacement {
   return {
     buffer,
     gain,
-    startSec: barToSeconds(clip.startBar, bpm, project),
-    endSec: barToSeconds(clip.endBar, bpm, project),
+    startSec: barToSec(clip.startBar, timing),
+    endSec: barToSec(clip.endBar, timing),
     // A stretched file's seconds are shorter by the same factor.
     sourceStartSec: clip.sourceStartSec / speed,
     fadeInSec: clip.fadeInSec,
@@ -1309,13 +1328,7 @@ export function lyricsFileFor(song: AlsSong, project: AlsProject): Blob | null {
    * same bar maths the player uses — tempo map included. A song that speeds up
    * halfway would otherwise have every later line drifting further out.
    */
-  const timing = {
-    bpm: tempoOf(song, project),
-    timeSigNum: project.timeSigNum,
-    timeSigDen: project.timeSigDen,
-    firstBarOffsetSec: 0,
-    tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
-  };
+  const timing = songTiming(song, project);
 
   const lines = song.lyrics.map((line) => {
     const seconds = barToSec(line.bar, timing);

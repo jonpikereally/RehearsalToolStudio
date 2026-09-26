@@ -1,4 +1,5 @@
 import type { Patch, PatchClip } from '../types';
+import { studioCopyPath } from '../../scripts/studio-copies.mjs';
 
 /**
  * Patch changes, written into an Ableton set as locators.
@@ -98,10 +99,11 @@ function readMessages(text: string, channel: number, source?: string): Patch | n
 /* ------------------------------- file naming ------------------------------ */
 
 /** What the app calls the set it writes, so it can't be mistaken for yours. */
-export const COPY_SUFFIX = ' (rehearsaltool)';
+const COPY_KIND = 'rehearsaltool';
+export const COPY_SUFFIX = ` (${COPY_KIND})`;
 
 export function rehearsalCopyPath(alsPath: string): string {
-  return `${alsPath.replace(/\.als$/i, '')}${COPY_SUFFIX}.als`;
+  return studioCopyPath(alsPath, COPY_KIND);
 }
 
 /**
