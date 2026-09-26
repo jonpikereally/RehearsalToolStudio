@@ -5,7 +5,8 @@ import type { EncodeRequest, EncodeResponse } from './mp3.worker';
  *
  * MP3 rather than AAC or Opus: the browser ships no encoder at all, so one has
  * to be carried either way, and MP3 needs no container muxing and plays on
- * anything a band member might own. lamejs is LGPL, as SoundTouch already is.
+ * anything a band member might own. lamejs is LGPL-3.0, the one copyleft
+ * dependency here; the stretcher, Signalsmith Stretch, is MIT.
  *
  * At 192 kbps a five-minute song is about 7 MB a part, against 50 MB as WAV.
  */

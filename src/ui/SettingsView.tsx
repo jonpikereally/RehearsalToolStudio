@@ -234,7 +234,7 @@ export default function SettingsView({ onClose }: { onClose?: () => void } = {})
       </SettingsSection>
 
       <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>
-        Pitch shifting by SoundTouchJS (LGPL-2.1).
+        Pitch shifting and time stretching by Signalsmith Stretch (MIT); MP3 encoding by lamejs (LGPL-3.0).
         <br />
         {/* So "is the fix live yet?" is something the app can answer — which, and when. */}
         Build <span className="code">{buildLabel(__BUILD__, __BUILT_AT__)}</span>.
