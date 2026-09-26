@@ -14,7 +14,7 @@ import { publishLibrary, type PublishResult } from '../lib/publish';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import { SETS_FOLDER } from '../lib/prints';
 import { resolveStemPath } from '../lib/alsImport';
-import { setNameFor } from '../lib/setName';
+import { safeSetName, setNameFor } from '../lib/setName';
 import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
@@ -187,7 +187,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     setError(null);
     try {
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
-      const out = await removeSilentParts(folder, setName.replace(/[\\/:*?"<>|]/g, ''), result.silent);
+      const out = await removeSilentParts(folder, safeSetName(setName), result.silent);
       setSilentGone(
         `${out.removed} silent part${out.removed === 1 ? '' : 's'} removed. The band now sees ${out.published.songs} song${out.published.songs === 1 ? '' : 's'}.`,
       );
@@ -227,7 +227,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       const folder = (await publishFolder()) ?? (await pickPublishFolder());
       const setPath = song.setPath;
       // What is about to be written over is kept aside, as a set-wide run keeps it.
-      const setFolder = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}`;
+      // Named as the set-wide dialog and the prepare itself name it, so the
+      // three can never disagree about which folder is the set's.
+      const setFolder = `${SETS_FOLDER}/${safeSetName(setName)}`;
       await local.undoBegin(folder, setFolder);
       /*
        * The song's audio as a key, for its entry. A whole set has always
@@ -260,7 +262,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         plan: { [alsSong.title]: plan },
         audioKeys: keys.byTitle,
         readManifest: async () => {
-          const path = `${SETS_FOLDER}/${setName.replace(/[\\/:*?"<>|]/g, '')}/${MANIFEST_NAME}`;
+          const path = `${SETS_FOLDER}/${safeSetName(setName)}/${MANIFEST_NAME}`;
           try {
             const { bytes: raw } = await local.readBytes(folder, '', path);
             return JSON.parse(new TextDecoder().decode(raw)) as PreparedManifest;
