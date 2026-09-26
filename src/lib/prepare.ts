@@ -312,7 +312,7 @@ export function submixPartsFor(song: AlsSong, parts: PlannedPart[], members: Mem
   const byList = new Map<string, PlannedPart>();
   const named = parts
     .filter((part) => !part.submix)
-    .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference) }));
+    .map((part) => ({ part, info: partInfoFor(song.title, part.name, part.reference, parts) }));
   for (const member of members) {
     if (member.off || !member.member.trim()) continue;
     const folded = named.filter(({ part, info }) =>
@@ -482,7 +482,7 @@ export function songFolderName(song: AlsSong, renderedOn: string = renderStamp()
  * asks about a stem — which tracks, whether it was frozen or shifted, how
  * much of the song it covers, how loud, and how big the file came out.
  */
-function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
+function stemFacts(song: AlsSong, part: PlannedPart, among: PlannedPart[], sizeBytes: number, bitrate: number, sampleRate: number): Partial<PreparedPart> {
   const clips = part.stems.flatMap((s) => s.clips.filter((c) => !c.disabled));
   const shifted = clips.find((c) => (c.semitones ?? 0) !== 0 || Math.abs((c.speed ?? 1) - 1) > 1e-6);
   const bars = Math.ceil(songBars(song) - 1e-6);
@@ -493,8 +493,8 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
     // A submix lives in the song's submixes/ folder; every other part sits in
     // the song folder itself, and its name is all the manifest has ever said.
     file: part.submix
-      ? `${SUBMIX_FOLDER}/${partFileName(song.title, part.name, part.reference)}`
-      : partFileName(song.title, part.name, part.reference),
+      ? `${SUBMIX_FOLDER}/${partFileName(song.title, part.name, part.reference, among)}`
+      : partFileName(song.title, part.name, part.reference, among),
     /*
      * A submix is declared hidden, and says whose it is and what it stands
      * for. Hidden is what makes it safe to write before anything reads it:
@@ -515,12 +515,33 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
   };
 }
 
+/** A part as its neighbours see it: what it is called, and whether it is a reference. */
+type PartName = { name: string; reference?: boolean };
+
+/**
+ * What a part is called in its file's brackets, before the reference mark.
+ *
+ * Through the same label cleaner the importer uses, so Ableton's track
+ * numbering doesn't end up in the name: "Bass 1" is the first bass track, not
+ * a part called "bass 1". Unless another part of the same song is the same
+ * but for the number — "VOX 1" beside "VOX 2" — when each keeps its number:
+ * two parts under one label are two writes to one file, the second replacing
+ * the first while the manifest lists both. `among` is the song's parts, this
+ * one included or not.
+ */
+export function partLabel(partName: string, reference = false, among: PartName[] = []): string {
+  const label = stemLabel(partName);
+  const twin = among.some(
+    (other) => other.name !== partName && !!other.reference === reference && stemLabel(other.name).toLowerCase() === label.toLowerCase(),
+  );
+  return twin ? partName.trim() : label;
+}
+
 /**
  * `Fix You [bass].mp3` — square brackets are what make it a part.
  *
- * Through the same label cleaner the importer uses, so Ableton's track
- * numbering doesn't end up in the file name: "Bass 1" is the first bass track,
- * not a part called "bass 1".
+ * The label is the part's name as partLabel cleans it, kept apart from the
+ * song's other parts when `among` says what they are.
  *
  * A reference part says so in its label even when the track didn't — a "Lead
  * Vox 1" filed under REF is the record's lead vocal, and a prepared folder
@@ -528,8 +549,8 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
  * nobody can read. The label is the only carrier: what comes out is an
  * ordinary library, understood by the same name rules as a hand-made one.
  */
-export function partFileName(songTitle: string, partName: string, reference = false): string {
-  const label = safeName(stemLabel(partName)).toLowerCase();
+export function partFileName(songTitle: string, partName: string, reference = false, among: PartName[] = []): string {
+  const label = safeName(partLabel(partName, reference, among)).toLowerCase();
   const marked = reference && !/\bref(erence)?\b/.test(label) ? `ref ${label}` : label;
   return `${safeName(songTitle)} [${marked}].mp3`;
 }
@@ -550,8 +571,8 @@ export function partFileName(songTitle: string, partName: string, reference = fa
  * song is the `record`, and it is a `mix` rather than a stem. The band's own
  * full bounce is a mix too, but not the record.
  */
-export function partInfoFor(songTitle: string, partName: string, reference: boolean): PreparedPart {
-  const file = partFileName(songTitle, partName, reference);
+export function partInfoFor(songTitle: string, partName: string, reference: boolean, among: PartName[] = []): PreparedPart {
+  const file = partFileName(songTitle, partName, reference, among);
   const label = file.slice(file.lastIndexOf('[') + 1, file.lastIndexOf(']'));
   const name = reference ? label.replace(/\bref(erence)?\b/i, ' ').replace(/\s+/g, ' ').trim() : label;
   const role = roleForTrack(partName);
@@ -1136,12 +1157,12 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         }
         report('writing', 1);
         await writeFile(
-          `${songFolder}/${part.submix ? `${SUBMIX_FOLDER}/` : ''}${partFileName(song.title, part.name, part.reference)}`,
+          `${songFolder}/${part.submix ? `${SUBMIX_FOLDER}/` : ''}${partFileName(song.title, part.name, part.reference, parts)}`,
           blob,
         );
         const info = {
-          ...partInfoFor(song.title, part.name, part.reference),
-          ...stemFacts(song, part, blob.size, bitrate, flat.sampleRate),
+          ...partInfoFor(song.title, part.name, part.reference, parts),
+          ...stemFacts(song, part, parts, blob.size, bitrate, flat.sampleRate),
           // When this file was written. Every part of a full render carries
           // the same moment; a submix written on its own carries its own.
           renderedAt,
