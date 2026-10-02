@@ -470,7 +470,7 @@ export default function PrepareSetDialog({
             </span>
           </div>
           {liveOrder?.note && (
-            <div className="hint" style={{ marginBottom: 6 }}>
+            <div className={liveOrder.missing ? 'notice' : 'hint'} style={{ marginBottom: 6 }}>
               {liveOrder.note}
             </div>
           )}
