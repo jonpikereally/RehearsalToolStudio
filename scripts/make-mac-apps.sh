@@ -2,10 +2,10 @@
 # Install the studio's Mac apps, straight into /Applications.
 #
 # Rehearsal Tool Studio is a real app, a WebKit window of its own, built by
-# make-studio-app.sh. Lyrics Studio is a deliberately dumb stub that runs
-# scripts/app-launch.sh — all the launching logic lives there, in the repo,
-# so behaviour changes arrive by commit. Run this again when the repo moves,
-# since the studio app carries its path.
+# make-studio-app.sh. Lyrics Studio is part of it — the Lyrics tab — and has
+# no app of its own any more; a Lyrics Studio.app left by an earlier run of
+# this is taken away. Run this again when the repo moves, since the studio
+# app carries its path.
 #
 #     bash scripts/make-mac-apps.sh [destination]
 #
@@ -74,5 +74,14 @@ if command -v swiftc >/dev/null 2>&1 || [ -x /Library/Developer/CommandLineTools
 else
   make_app "Rehearsal Tool Studio" studio "com.pikemusicschool.rehearsaltool.studio.launcher"
 fi
-make_app "Lyrics Studio" lyrics "com.pikemusicschool.rehearsaltool.lyrics.launcher"
-echo "Done — they're in $OUT, ready for the Dock. Future launcher changes need no reinstall."
+
+# Lyrics Studio used to be an app of its own. Only ours is removed — known by
+# its bundle identifier, never by name alone.
+for DIR in "$OUT" /Applications "$HOME/Applications"; do
+  OLD="$DIR/Lyrics Studio.app"
+  [ -d "$OLD" ] || continue
+  case "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$OLD/Contents/Info.plist" 2>/dev/null)" in
+    com.pikemusicschool.rehearsaltool.lyrics*) rm -rf "$OLD" 2>/dev/null && echo "removed $OLD — Lyrics Studio is the studio's Lyrics tab now" ;;
+  esac
+done
+echo "Done — it's in $OUT, ready for the Dock. Future launcher changes need no reinstall."

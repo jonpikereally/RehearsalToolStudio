@@ -208,6 +208,20 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Lyrics Studio's own page fills the body, scrolling inside itself. */
+.lyrics-shell {
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+}
+
+.lyrics-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
 /* The player fills the body and scrolls inside itself. */
 .player-shell {
   display: flex;

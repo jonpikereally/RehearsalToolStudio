@@ -35,7 +35,7 @@ import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
 import NewSongsPanel from './NewSongsPanel';
 import { useStore } from '../lib/store';
-import { useRoute } from '../lib/router';
+import { navigate, useRoute } from '../lib/router';
 import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
 import { locatePrepared } from '../lib/locatePrepared';
@@ -820,7 +820,8 @@ export default function SetToolsView() {
         als_size: String(stat.size),
         als_mtime: String(stat.modified),
       });
-      if (lyricsUrl) window.open(`${lyricsUrl}/?${query}`, '_blank');
+      // Its own page, in the studio's Lyrics tab, opened on this set.
+      navigate('/lyrics', Object.fromEntries(query));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -1133,7 +1134,7 @@ export default function SetToolsView() {
                         ? `Transcribe “${lyricStem.name}” of ${lyricSongObj.title} and write lyric clips`
                         : 'Choose a song with audio tracks'}
                     </button>
-                    <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="The standalone Lyrics Studio page, for its own workflow">
+                    <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="Lyrics Studio's own page, in the Lyrics tab, for its own workflow">
                       Open Lyrics Studio instead
                     </button>
                   </div>

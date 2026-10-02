@@ -15,13 +15,19 @@
 # not. On the other Mac, unzip and drag to Applications. Nothing here is
 # signed with a Developer ID, so a copy that came through a browser is held by
 # Gatekeeper once — on macOS 15 and later, System Settings → Privacy &
-# Security → "Open Anyway". For an installer that does the dragging, and
-# carries Lyrics Studio too, see scripts/make-installer.sh.
+# Security → "Open Anyway". For an installer that does the dragging, see
+# scripts/make-installer.sh.
+#
+# Lyrics Studio — the Lyrics tab — comes inside it. Its listening is Python
+# (FastAPI, librosa, Whisper on Apple's MLX), and bundling a Python with all
+# of that is a project in itself, so the app carries the next best thing: its
+# source and a copy of uv, which the first time the tab is opened fetches a
+# Python and the dependencies into its own cache. Minutes and the network,
+# once; instant and offline after. Without uv on this Mac the app is built
+# without it, and the tab says uv is missing. Apple silicon only, as MLX is.
 #
 # Run it from a normal terminal, not a sandboxed agent: macOS refuses apps
 # stamped with a sandbox's provenance. Needs the command line tools and Node.
-#
-# Lyrics Studio is packaged separately: scripts/package-lyrics-studio.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
@@ -94,6 +100,19 @@ cp -R "$BUILD/dist" "$RES/dist"
 # The servers, laid out as they are here, so serve-studio finds ../dist unchanged.
 cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/slate-helper.mjs "$RES/scripts/"
 cp scripts/packaged-launch.sh "$RES/launch.sh" && chmod 755 "$RES/launch.sh"
+# Lyrics Studio: the program, none of what running it leaves behind, and uv to run it.
+mkdir -p "$RES/lyrics-studio"
+for f in server.py index.html template.xml audiotrack.xml midiclip-12.xml build_audiotrack.py; do
+  cp "lyrics-studio/$f" "$RES/lyrics-studio/"
+done
+UV_BIN="$(command -v uv || true)"
+if [ -n "$UV_BIN" ]; then
+  UV_BIN="$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$UV_BIN")"
+  echo "bundling uv $(uv --version | head -1) ($(lipo -archs "$UV_BIN" 2>/dev/null || echo unknown)) for Lyrics Studio"
+  cp "$UV_BIN" "$RES/uv" && chmod 755 "$RES/uv"
+else
+  echo "  note: uv not found — the Lyrics tab will ask for it (brew install uv)"
+fi
 
 # No RTSRepo: its absence is how the window knows it is the packaged kind.
 cat > "$APP/Contents/Info.plist" <<PLIST

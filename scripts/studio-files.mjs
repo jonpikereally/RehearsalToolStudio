@@ -44,7 +44,7 @@
  * reopened": a path remembered by the server is a path it can still open
  * tomorrow, where a browser handle had to be granted afresh each session.
  */
-import { copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { accessSync, constants, copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { execFile, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -494,16 +494,25 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         }
         if (pids.length) await new Promise((r) => setTimeout(r, 1500));
       }
-      const uv = ['/opt/homebrew/bin/uv', join(home, '.local', 'bin', 'uv'), '/usr/local/bin/uv'].find((p) => existsSync(p));
+      // The packaged app carries its own uv beside the scripts; a checkout uses the Mac's.
+      const resources = join(dirname(fileURLToPath(import.meta.url)), '..');
+      const uv = [join(resources, 'uv'), '/opt/homebrew/bin/uv', join(home, '.local', 'bin', 'uv'), '/usr/local/bin/uv'].find((p) => existsSync(p));
       if (!uv) throw new Refusal(500, 'uv, which runs Lyrics Studio, is not installed. In Terminal: brew install uv');
-      const cwd = join(dirname(fileURLToPath(import.meta.url)), '..', 'lyrics-studio');
+      const cwd = join(resources, 'lyrics-studio');
       const logDir = join(home, 'Library', 'Logs', 'Rehearsal Tool Studio');
       mkdirSync(logDir, { recursive: true });
       const log = join(logDir, 'lyrics-studio.log');
       const out = openSync(log, 'a');
       // An app's PATH has no Homebrew on it, and Lyrics Studio needs ffmpeg from there.
       const path = ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH ?? '/usr/bin:/bin'].join(':');
-      const child = spawn(uv, ['run', 'server.py'], { cwd, detached: true, stdio: ['ignore', out, out], env: { ...process.env, PATH: path } });
+      const env = { ...process.env, PATH: path };
+      // Inside an app bundle the code is not a place to write, so what it remembers goes to the Library.
+      try {
+        accessSync(cwd, constants.W_OK);
+      } catch {
+        env.LYRICS_STUDIO_DATA = join(home, 'Library', 'Application Support', 'Rehearsal Tool Studio', 'Lyrics Studio');
+      }
+      const child = spawn(uv, ['run', 'server.py'], { cwd, detached: true, stdio: ['ignore', out, out], env });
       child.unref();
       return { started: true, log };
     },

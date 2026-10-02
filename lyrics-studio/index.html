@@ -328,7 +328,7 @@
 </div>
 
 <script>
-fetch("/api/version").then(r => r.json())
+fetch("api/version").then(r => r.json())
   .then(v => { $("ver").textContent = "v" + v.version; })
   .catch(() => {});
 
@@ -379,7 +379,7 @@ async function addFiles(fileList) {
 }
 
 async function alignSong(song) {
-  const res = await fetch("/api/align", {
+  const res = await fetch("api/align", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ segments: song.data.segments, lyrics: song.lyricsText }),
@@ -391,6 +391,28 @@ async function alignSong(song) {
   song.aligned = true;
   if (song.id === selectedId) select(song.id);
   renderQueue();
+}
+
+// A transcription is started, then asked after: WebKit — the studio's window —
+// cuts off a request that goes unanswered for about a minute, and listening to
+// a song takes several. Answers with the result, or throws the server's words.
+async function runJob(started) {
+  const raw = await started.text();
+  let opened = {};
+  try { opened = JSON.parse(raw); } catch {
+    throw new Error(raw.trim().split("\n").pop() || started.statusText);
+  }
+  if (!started.ok || typeof opened.job !== "string") {
+    const detail = opened.detail ?? opened.error ?? started.statusText;
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1500));
+    const res = await fetch("api/job?job=" + encodeURIComponent(opened.job));
+    const state = await res.json().catch(() => ({}));
+    if (state.status === "done") return state.result;
+    if (state.status === "failed" || !res.ok) throw new Error(state.error || state.detail || res.statusText);
+  }
 }
 
 async function processQueue() {
@@ -406,9 +428,7 @@ async function processQueue() {
     form.append("language", $("language").value);
     if (song.lyricsText) form.append("lyrics", song.lyricsText);
     try {
-      const res = await fetch("/api/transcribe", { method: "POST", body: form });
-      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-      song.data = await res.json();
+      song.data = await runJob(await fetch("api/transcribe_start", { method: "POST", body: form }));
       song.bpm = song.data.bpm;
       song.aligned = song.data.aligned;
       song.status = "done";
@@ -613,7 +633,7 @@ function select(id) {
        disk, a project zip with the audio bundled downloads instead.`;
   const player = $("player");
   if (song.als && song.als.sample) {
-    player.src = "/api/audio?path=" + encodeURIComponent(song.als.sample);
+    player.src = "api/audio?path=" + encodeURIComponent(song.als.sample);
     player.style.display = "";
   } else if (song.file) {
     if (!song.audioUrl) song.audioUrl = URL.createObjectURL(song.file);
@@ -752,7 +772,7 @@ async function downloadMidi() {
   const song = selectedSong();
   if (!song) return;
   const fineness = FINENESS[+$("fineness").value];
-  const res = await fetch("/api/midi", {
+  const res = await fetch("api/midi", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -773,7 +793,7 @@ async function downloadAls(chosenPath) {
   if (song.als) {
     // write the lyric clips straight into the user's own set
     $("alsStatus").textContent = "writing into your set…";
-    const res = await fetch("/api/als_write", {
+    const res = await fetch("api/als_write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -802,7 +822,7 @@ async function downloadAls(chosenPath) {
     // preferred: write the .als next to the original audio file, referencing
     // it in place (no copy of the audio)
     $("alsStatus").textContent = "locating original file…";
-    const res = await fetch("/api/als_local", {
+    const res = await fetch("api/als_local", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -840,12 +860,12 @@ async function downloadAls(chosenPath) {
     form.append("section_gap", SECTION_GAP);
     form.append("offset", nudgeSeconds());
     form.append("name", song.name);
-    const zres = await fetch("/api/als_project", { method: "POST", body: form });
+    const zres = await fetch("api/als_project", { method: "POST", body: form });
     if (!zres.ok) { alert("Ableton export error: " + ((await zres.json()).detail || zres.statusText)); return; }
     saveBlob(await zres.blob(), `${song.name} Lyrics Project.zip`);
     return;
   }
-  const res = await fetch("/api/als", {
+  const res = await fetch("api/als", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -879,7 +899,7 @@ async function handleAlsFile(file, chosenPath) {
     : `Locating and reading ${file.name}…`);
   let res;
   try {
-    res = await fetch("/api/als_inspect", {
+    res = await fetch("api/als_inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename: file.name, size: file.size,
@@ -899,7 +919,7 @@ async function handleAlsFile(file, chosenPath) {
   if (res.status === 404) {
     // couldn't find the dropped file on disk — ask through a native dialog
     busy(`Couldn't find ${file.name} on disk — choose it in the dialog…`);
-    const pick = await fetch("/api/pick_file", {
+    const pick = await fetch("api/pick_file", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: `Locate ${file.name}`, types: ["als"] }),
@@ -1068,14 +1088,14 @@ async function alsTranscribe() {
   // poll the server so a long track shows real progress, not just a spinner
   const poll = setInterval(async () => {
     try {
-      const p = await (await fetch("/api/als_progress?als_path=" +
+      const p = await (await fetch("api/als_progress?als_path=" +
         encodeURIComponent(info.path) + "&track_id=" +
         encodeURIComponent(src.track_id))).json();
       if (p.total) busy(`Transcribing region ${Math.min(p.done + 1, p.total)} of ${p.total}…`);
     } catch (e) { /* keep the last message */ }
   }, 1000);
 
-  const res = await fetch("/api/als_transcribe", {
+  const started = await fetch("api/als_transcribe_start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1086,15 +1106,21 @@ async function alsTranscribe() {
       region_indexes: fullTrack ? [] : selectedRegions(),
     }),
   });
+  let res;
+  try {
+    res = { ok: true, result: await runJob(started) };
+  } catch (err) {
+    res = { ok: false, error: err.message };
+  }
   clearInterval(poll);
   idle();
   if (!res.ok) {
     song.status = "error";
-    song.error = JSON.stringify((await res.json()).detail || res.statusText);
+    song.error = res.error;
     renderQueue();
     return;
   }
-  song.data = await res.json();
+  song.data = res.result;
   song.bpm = song.data.bpm;
   song.als.mapping = song.data.mapping;
   song.als.regions = song.data.regions;
@@ -1153,7 +1179,7 @@ function showSavedPath(path, label = "Saved next to the audio: ") {
 }
 
 async function openSaved(path, reveal) {
-  const res = await fetch("/api/reveal", {
+  const res = await fetch("api/reveal", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, reveal }),
@@ -1165,7 +1191,7 @@ async function downloadBatch() {
   const done = songs.filter(s => s.status === "done");
   if (!done.length) return;
   const fineness = FINENESS[+$("fineness").value];
-  const res = await fetch("/api/batch", {
+  const res = await fetch("api/batch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1210,7 +1236,7 @@ function saveBlob(blob, filename) {
 // The server sees itself out when nothing has spoken to it for a while, so an
 // open window says so once a minute. Losing a beat costs nothing: the idle
 // window is twenty times longer than the gap between them.
-setInterval(() => { fetch("/api/version").catch(() => {}); }, 60000);
+setInterval(() => { fetch("api/version").catch(() => {}); }, 60000);
 
 // The preferred source-track name: remembered across visits, applied to every
 // set on open, and re-applied live as it is typed.
