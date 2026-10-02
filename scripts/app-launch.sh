@@ -1,14 +1,15 @@
 #!/bin/sh
 # The studio's launcher: `app-launch.sh <tool>`.
 #
-# The Studio app calls this before showing its window, and the Lyrics Studio
-# stub in /Applications is nothing but a call to it. All the judgement lives
-# here, in the repo, so a change to how a tool opens is a normal commit that
-# the installed apps pick up on their next click.
+# The Studio app calls this before showing its window. All the judgement
+# lives here, in the repo, so a change to how a tool opens is a normal commit
+# that the installed apps pick up on their next click.
 #
 # Tools: studio | studio-servers | lyrics
 #        studio-servers — start what the studio needs and stop, opening
 #        nothing; the native Studio app calls this before showing its window.
+#        lyrics — what a Lyrics Studio stub from before it joined the studio
+#        still asks for; it opens the studio, whose Lyrics tab it is now.
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="$HOME/Library/Application Support/Rehearsal Tool Studio"
@@ -160,64 +161,14 @@ start_studio_server() {
   done
 }
 
-# Lyrics Studio is its own local server: bring it up and wait for an answer,
-# because a browser aimed at a port that isn't up yet shows an error page.
-#
-# Its port is found, not assumed. Home is 8765, but another app on this Mac
-# took to listening there, and a launcher that only asked "is 8765 busy?"
-# opened a browser on a stranger. So the server steps to the next free port
-# when it must, and this asks each port in turn who is actually there.
-lyrics_port() {
-  for p in 8765 8766 8767 8768 8769 8770 8771 8772 8773 8774 8775; do
-    case "$(/usr/bin/curl -s -m 1 "http://127.0.0.1:$p/api/version" 2>/dev/null)" in
-      *lyrics-studio*) echo "$p"; return 0 ;;
-    esac
-  done
-  return 1
-}
-
-#
-# What the server says as it starts is kept — a start that fails used to be
-# thrown away, and a minute later the browser opened on whatever was
-# listening at 8765, a light controller, as if that were the studio. Now a
-# start that fails says so, and where to read why.
-LYRICS_LOG="$HOME/Library/Logs/Rehearsal Tool Studio/lyrics-studio.log"
-
-lyrics_failed() {
-  echo "$(date '+%Y-%m-%d %H:%M:%S') launcher: $1" >>"$LYRICS_LOG"
-  MSG="$1
-
-Its log: $LYRICS_LOG
-
-To see the error as it happens, paste into Terminal:
-cd \"$REPO/lyrics-studio\" && ${UV:-uv} run server.py"
-  # The text goes in as arguments, never into the script, so quoting can't bite.
-  /usr/bin/osascript -e 'on run argv' -e 'display alert (item 1 of argv) message (item 2 of argv) as critical' -e 'end run' \
-    "Lyrics Studio didn't start" "$MSG" >/dev/null 2>&1
-  exit 1
-}
-
-start_lyrics_studio() {
-  UV="$(find_bin uv)"
-  LYRICS_PORT="$(lyrics_port)" && return
-  /bin/mkdir -p "$(dirname "$LYRICS_LOG")"
-  [ -n "$UV" ] || lyrics_failed "uv, which runs it, was not found. Install it with: brew install uv"
-  echo "$(date '+%Y-%m-%d %H:%M:%S') launcher: starting with $UV" >>"$LYRICS_LOG"
-  ( cd "$REPO/lyrics-studio" && /usr/bin/nohup "$UV" run server.py >>"$LYRICS_LOG" 2>&1 & )
-  n=0
-  until LYRICS_PORT="$(lyrics_port)"; do
-    n=$((n + 1)); [ $n -gt 120 ] && lyrics_failed "It did not answer within a minute. The last of its log: $(tail -3 "$LYRICS_LOG" | tr '"' "'" | tr '\n' ' ')"
-    sleep 0.5
-  done
-}
-
 case "$1" in
   studio)       URL="http://localhost:5177"; start_voice_helper; start_studio_server
                 open_native_studio
                 open_shim "Rehearsal Tool Studio" ;;
   studio-servers) start_voice_helper; start_studio_server; exit 0 ;;
-  lyrics)       start_lyrics_studio; URL="http://localhost:$LYRICS_PORT"
-                open_shim "Lyrics Studio" ;;
+  lyrics)       URL="http://localhost:5177/#/lyrics"; start_voice_helper; start_studio_server
+                open_native_studio
+                open_shim "Rehearsal Tool Studio" ;;
   *) echo "usage: app-launch.sh studio|studio-servers|lyrics" >&2; exit 2 ;;
 esac
 

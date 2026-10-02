@@ -15,7 +15,7 @@
  * API — the window has no way to the disk of its own, so the page asks this
  * server to read its sets and write beside them (see studio-files.mjs).
  */
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,9 +59,74 @@ const STARTED_WITH = STARTED.build;
 
 const files = fileApi(process.env.STUDIO_STATE_FILE ? { stateFile: process.env.STUDIO_STATE_FILE } : {});
 
+/*
+ * Lyrics Studio, under the studio's own address.
+ *
+ * The listening is Python — Whisper on Apple's MLX — and runs as a server of
+ * its own, started by the studio when it is first wanted. Its page is shown
+ * inside the studio rather than in a browser, and is passed through here so
+ * it shares the studio's origin: the window keeps every navigation to its own
+ * origin, and the page's requests are relative, so they come back this way.
+ *
+ * The engine's port is found by asking, not assumed: 8765 is home, but it
+ * steps to the next free one when another app is sitting there.
+ */
+const LYRICS_PREFIX = '/lyrics-studio';
+const LYRICS_PORTS = Array.from({ length: 11 }, (_, i) => 8765 + i);
+let lyricsPort = null;
+
+async function isLyricsStudio(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(1000) });
+    return res.ok && (await res.json()).app === 'lyrics-studio';
+  } catch {
+    return false;
+  }
+}
+
+async function findLyricsPort() {
+  if (lyricsPort && (await isLyricsStudio(lyricsPort))) return lyricsPort;
+  const found = await Promise.all(LYRICS_PORTS.map(isLyricsStudio));
+  const at = found.indexOf(true);
+  lyricsPort = at < 0 ? null : LYRICS_PORTS[at];
+  return lyricsPort;
+}
+
+async function proxyLyrics(req, res, rest) {
+  const port = await findLyricsPort();
+  if (!port) {
+    res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+    return res.end('Lyrics Studio is not running. Open it from the Lyrics tab, which starts it.');
+  }
+  const headers = { ...req.headers, host: `127.0.0.1:${port}` };
+  // Same-origin here, so no CORS is wanted of the engine for it.
+  delete headers.origin;
+  const upstream = request(
+    { host: '127.0.0.1', port, method: req.method, path: rest, headers },
+    (answer) => {
+      res.writeHead(answer.statusCode ?? 502, { ...answer.headers, 'cache-control': 'no-store' });
+      answer.pipe(res);
+    },
+  );
+  upstream.on('error', (err) => {
+    lyricsPort = null;
+    if (res.headersSent) return res.destroy();
+    res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end(`Lyrics Studio stopped answering: ${err.message}`);
+  });
+  req.pipe(upstream);
+}
+
 const server = createServer(async (req, res) => {
   if (await files(req, res)) return;
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  const url = req.url ?? '/';
+  if (url === LYRICS_PREFIX || url.startsWith(`${LYRICS_PREFIX}?`)) {
+    // The page's requests are relative to it, so it has to be opened as a folder.
+    res.writeHead(308, { location: `${LYRICS_PREFIX}/${url.slice(LYRICS_PREFIX.length)}` });
+    return res.end();
+  }
+  if (url.startsWith(`${LYRICS_PREFIX}/`)) return proxyLyrics(req, res, url.slice(LYRICS_PREFIX.length));
+  const path = decodeURIComponent(url.split('?')[0]);
 
   if (path === '/__rehearsal-studio') {
     /*

@@ -70,8 +70,9 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     // The studio reads its disk through its own server; the dev server has
-    // no such API, so the calls are passed along to the real one on 5177.
-    proxy: { '/__fs': 'http://127.0.0.1:5177' },
+    // no such API, so the calls are passed along to the real one on 5177 —
+    // and Lyrics Studio, which that server passes through to its engine.
+    proxy: { '/__fs': 'http://127.0.0.1:5177', '/lyrics-studio': 'http://127.0.0.1:5177' },
   },
   build: {
     target: 'es2022',

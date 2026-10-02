@@ -51,7 +51,7 @@ printf '  node %s\n' "$(node -v)"
 if command -v uv >/dev/null 2>&1; then
   printf '  uv %s\n' "$(uv --version 2>/dev/null | head -1)"
 else
-  printf '  uv is not installed — Lyrics Studio will not run. Everything else will.\n'
+  printf '  uv is not installed — the Lyrics tab will not run. Everything else will.\n'
   printf '  Install it later with: brew install uv\n'
 fi
 
@@ -85,7 +85,7 @@ sh "$REPO/scripts/make-mac-apps.sh"
 
 say "Done."
 cat <<'NEXT'
-Rehearsal Tool Studio.app and Lyrics Studio.app are in /Applications.
+Rehearsal Tool Studio.app is in /Applications — Lyrics Studio is its Lyrics tab.
 
 Next, and only on this machine:
 

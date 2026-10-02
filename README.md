@@ -43,11 +43,15 @@ with its own repo. This one is only Rehearsal Tool Studio.
   the way a song already in the set is, and a printable setlist whose
   durations come from the arrangement.
   Everything writes to a copy, never the original.
+- **Lyrics Studio.** The Lyrics tab: transcribe a recording or a track of a
+  set on this Mac with Whisper, line the words up with lyrics you paste, and
+  save them as timed MIDI clips, a `.mid`, `.txt` or `.srt`. It is part of the
+  studio, not an app of its own; the Set tools hand a set straight to it.
 - **Prints a mix** to a file, and drives nothing: this window has no Web MIDI.
 
 ## Installing it
 
-Needs Node, `uv` (for Lyrics Studio) and the command line tools (`xcode-select
+Needs Node, `uv` (for the Lyrics tab) and the command line tools (`xcode-select
 --install`) — not Xcode.
 
 ```bash
@@ -55,8 +59,9 @@ npm install
 bash scripts/make-mac-apps.sh
 ```
 
-That builds **Rehearsal Tool Studio.app** and a **Lyrics Studio.app** stub into
-`/Applications`. Run it from a normal terminal, not a sandboxed agent: macOS
+That builds **Rehearsal Tool Studio.app** into `/Applications` — Lyrics
+Studio is inside it, as the Lyrics tab, and a separate Lyrics Studio.app from
+an earlier install is removed. Run it from a normal terminal, not a sandboxed agent: macOS
 refuses apps stamped with a sandbox's provenance. Run it again if this folder
 moves, since the studio app carries the repo's path.
 
@@ -110,13 +115,14 @@ bash scripts/make-installer.sh
 
 It writes `Mac apps/Rehearsal Tool Studio <build>.pkg`. That is the download:
 double-click it on the other Mac, and Installer puts Rehearsal Tool Studio
-and Lyrics Studio into Applications the way any installer does, asking for
-the admin password once. Installing a newer one over an older one replaces
-the apps and keeps everything set up on that Mac. The studio app has a Node
-runtime, a finished build and its servers inside it and carries no path to
-anywhere; it never rebuilds, so a new build means a new installer. Lyrics
-Studio carries its source and a copy of `uv`, which on first open fetches a
-Python and its dependencies — minutes, and the network, once.
+into Applications the way any installer does, asking for the admin password
+once. Installing a newer one over an older one replaces the app and keeps
+everything set up on that Mac. The app has a Node runtime, a finished build
+and its servers inside it and carries no path to anywhere; it never
+rebuilds, so a new build means a new installer. For the Lyrics tab it
+carries Lyrics Studio's source and a copy of `uv`, which the first time the
+tab is opened fetches a Python and its dependencies — minutes, and the
+network, once.
 
 Nothing here carries a Developer ID. A copy that arrives by Dropbox sync
 opens without comment; one downloaded through a browser is held by
@@ -124,9 +130,8 @@ Gatekeeper the first time. On macOS 15 and later, that is System Settings →
 Privacy & Security → "Open Anyway", after the first attempt has been
 refused; right-click → Open no longer does it.
 
-The installer is built from the two apps `scripts/package-app.sh` and
-`scripts/package-lyrics-studio.sh` make, each of which also writes a zip of
-its app into `Mac apps/` for moving one by hand.
+The installer is built from the app `scripts/package-app.sh` makes, which
+also writes a zip of it into `Mac apps/` for moving it by hand.
 
 Nothing of what you set up travels with the code. The remembered folders, the
 decoded audio and transposition caches, the mixer positions, the block layout
@@ -141,7 +146,11 @@ Rehearsal Tool Studio.app        a WebKit window (mac/RehearsalToolStudio/)
    └─ scripts/app-launch.sh      builds dist/ if the commit or source has moved
         ├─ scripts/serve-studio.mjs   serves dist/ on localhost:5177, loopback only
         │    └─ scripts/studio-files.mjs   /__fs/: the folder, read and written by path
+        │    └─ /lyrics-studio/       Lyrics Studio's page, passed through to its engine
         └─ scripts/slate-helper.mjs   spoken slates via `say`, on 5175
+
+lyrics-studio/server.py          Lyrics Studio's engine (Python, Whisper), started by the
+                                 studio when the Lyrics tab first needs it
 ```
 
 A WebKit window has no File System Access API, so the page never touches the
@@ -157,8 +166,15 @@ newer build on focus and offers a reload. Settings shows the build and when it
 was made. A failed build serves the previous one and says why in
 `.studio-build.log`.
 
-Lyrics Studio is its own local server (`lyrics-studio/`, Python, on 8765 or the next free port when another app holds that one),
-opened in the default browser. Links out of the studio window go there too.
+Lyrics Studio is part of the studio: its page is the Lyrics tab, inside the
+studio's window. The listening is Python — Whisper on Apple's MLX — so it
+still runs as a server of its own (`lyrics-studio/`, on 8765 or the next free
+port when another app holds that one), but the studio starts it, and the
+studio's server passes `/lyrics-studio/` through to it so the page shares the
+studio's origin. A transcription is started and then asked after, since
+WebKit cuts off a request left unanswered for a minute. Left idle for twenty
+minutes the engine stops itself, giving back Whisper's memory; the tab starts
+it again. Links out of the studio window go to the default browser.
 
 ## Working on it
 

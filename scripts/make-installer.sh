@@ -3,21 +3,20 @@
 #
 #     bash scripts/make-installer.sh [destination]      (default: Mac apps/)
 #
-# What package-app.sh and package-lyrics-studio.sh make are apps in zips, to
-# be unzipped and dragged to Applications by hand. This wraps the same two
-# apps in a macOS installer package — double-click it on any Mac, it opens
-# in Installer, asks for the admin password like every installer does, and
-# puts Rehearsal Tool Studio and Lyrics Studio into /Applications. Installing
-# a newer one over an older one replaces the apps in place, and what was set
-# up on that Mac (the remembered folders, the caches) is untouched, since
-# none of it lives in the app.
+# What package-app.sh makes is an app in a zip, to be unzipped and dragged
+# to Applications by hand. This wraps the same app in a macOS installer
+# package — double-click it on any Mac, it opens in Installer, asks for the
+# admin password like every installer does, and puts Rehearsal Tool Studio
+# into /Applications, Lyrics Studio inside it as its Lyrics tab. Installing a
+# newer one over an older one replaces the app in place, and what was set up
+# on that Mac (the remembered folders, the caches) is untouched, since none
+# of it lives in the app.
 #
 # The Mac it is built on is what gets bundled: its Node, its uv. A Homebrew
 # Node is usually universal and the window is compiled for both kinds of Mac
 # when the tools can, so the installer says which Macs it will run on and
 # refuses the others with a plain message rather than an app that won't open.
-# Lyrics Studio wants Apple silicon regardless — Whisper on MLX is that only —
-# and is left out when uv isn't installed here.
+# The Lyrics tab wants Apple silicon regardless — Whisper on MLX is that only.
 #
 # Nothing here carries a Developer ID, so a copy that arrives through a
 # browser is held by Gatekeeper once: on macOS 15 and later that is System
@@ -25,8 +24,8 @@
 # copy that arrives by Dropbox sync carries no quarantine and just opens.
 #
 # Run it from a normal terminal, not a sandboxed agent: neither pkgbuild nor
-# the apps it packages work from inside one. Needs the command line tools and
-# Node; uv too for Lyrics Studio.
+# the app it packages work from inside one. Needs the command line tools and
+# Node; uv too for the Lyrics tab.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
@@ -54,16 +53,8 @@ STUDIO="$STUDIO_ROOT/$NAME.app"
 STAMP="$(sed -n 's/.*"build":"\([^"]*\)".*/\1/p' "$STUDIO/Contents/Resources/dist/build.json")"
 [ -n "$STAMP" ] || { echo "the packaged app carries no build stamp" >&2; exit 1; }
 
-LYRICS_ROOT="$BUILD/root-lyrics"
 LYRICS=""
-if command -v uv >/dev/null 2>&1; then
-  bash scripts/package-lyrics-studio.sh "$LYRICS_ROOT"
-  rm -f "$LYRICS_ROOT"/*.zip
-  LYRICS="$LYRICS_ROOT/Lyrics Studio.app"
-  LYRICS_VERSION="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' lyrics-studio/server.py)"
-else
-  echo "uv is not installed here, so Lyrics Studio is left out of this installer (brew install uv)"
-fi
+[ -x "$STUDIO/Contents/Resources/uv" ] && LYRICS=1
 
 # Which Macs the studio runs on: the ones both the window and the Node inside
 # it were built for. Installer is told, and declines the rest up front.
@@ -104,20 +95,11 @@ pkgbuild --root "$STUDIO_ROOT" --component-plist "$BUILD/studio.plist" \
   --identifier com.pikemusicschool.rehearsaltool.studio --version "$STAMP" \
   "$PKGS/studio.pkg"
 
-if [ -n "$LYRICS" ]; then
-  echo "packaging Lyrics Studio"
-  component_plist "Lyrics Studio.app" "$BUILD/lyrics.plist"
-  pkgbuild --root "$LYRICS_ROOT" --component-plist "$BUILD/lyrics.plist" \
-    --install-location /Applications \
-    --identifier com.pikemusicschool.rehearsaltool.lyrics --version "$LYRICS_VERSION" \
-    "$PKGS/lyrics.pkg"
-fi
-
 # What Installer shows: a welcome before, and afterwards what to do first.
 cat > "$RES/welcome.html" <<HTML
 <!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,Helvetica,sans-serif;font-size:13px;line-height:1.45;margin:0 8px}</style></head><body>
 <p>This installs <b>Rehearsal Tool Studio</b> into your Applications folder — build $STAMP, with everything it needs inside it. Nothing else has to be installed first.</p>
-$( [ -n "$LYRICS" ] && printf '<p><b>Lyrics Studio</b> comes with it. It fetches its own Python and models the first time it is opened, which takes a few minutes and the network, once. It runs on Apple silicon Macs.</p>' )
+$( [ -n "$LYRICS" ] && printf '<p><b>Lyrics Studio</b> is part of it, as its Lyrics tab. It fetches its own Python and models the first time that tab is opened, which takes a few minutes and the network, once. It runs on Apple silicon Macs.</p>' )
 <p>Installing over an earlier version replaces it. Your remembered folders, caches and settings are kept — they live in your Library, not in the app.</p>
 </body></html>
 HTML
@@ -131,15 +113,6 @@ cat > "$RES/conclusion.html" <<'HTML'
 </body></html>
 HTML
 
-LYRICS_LINE=""; LYRICS_CHOICE=""
-if [ -n "$LYRICS" ]; then
-  LYRICS_LINE='<line choice="lyrics"/>'
-  LYRICS_CHOICE="<choice id=\"lyrics\" title=\"Lyrics Studio\" description=\"Timed lyric clips from a recording. Fetches its own Python on first open; Apple silicon only.\" start_selected=\"true\">
-    <pkg-ref id=\"com.pikemusicschool.rehearsaltool.lyrics\"/>
-  </choice>
-  <pkg-ref id=\"com.pikemusicschool.rehearsaltool.lyrics\" version=\"$LYRICS_VERSION\" onConclusion=\"none\">lyrics.pkg</pkg-ref>"
-fi
-
 cat > "$BUILD/distribution.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
@@ -150,13 +123,11 @@ cat > "$BUILD/distribution.xml" <<XML
   <conclusion file="conclusion.html" mime-type="text/html"/>
   <choices-outline>
     <line choice="studio"/>
-    $LYRICS_LINE
   </choices-outline>
-  <choice id="studio" title="$NAME" description="The studio itself: reads the Ableton sets, plays them, and prepares them for the band." enabled="false" selected="true">
+  <choice id="studio" title="$NAME" description="The studio itself: reads the Ableton sets, plays them, prepares them for the band, and transcribes lyrics." enabled="false" selected="true">
     <pkg-ref id="com.pikemusicschool.rehearsaltool.studio"/>
   </choice>
   <pkg-ref id="com.pikemusicschool.rehearsaltool.studio" version="$STAMP" onConclusion="none">studio.pkg</pkg-ref>
-  $LYRICS_CHOICE
 </installer-gui-script>
 XML
 

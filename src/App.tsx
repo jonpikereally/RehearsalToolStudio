@@ -19,6 +19,7 @@ import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
 import BandView from './ui/BandView';
+import LyricsStudioView from './ui/LyricsStudioView';
 import AutoUpdate from './ui/AutoUpdate';
 import SyncBar from './ui/SyncBar';
 
@@ -337,7 +338,20 @@ export default function App() {
    * who the set is prepared for, which is worth setting up before there is a
    * set open at all.
    */
-  const aside = section === 'settings' || section === 'changes' || section === 'band' || (section === 'tools' && toolsAlone());
+  const aside =
+    section === 'settings' || section === 'changes' || section === 'band' || section === 'lyrics' || (section === 'tools' && toolsAlone());
+
+  /*
+   * Lyrics Studio is held the way the player is: mounted the first time its
+   * tab is opened and only hidden after, so songs it is listening to keep
+   * going while another tab is looked at. A set handed to it from the Set
+   * tools comes in the route's query and is passed through to its page.
+   */
+  const [lyricsOpened, setLyricsOpened] = useState(false);
+  useEffect(() => {
+    if (section === 'lyrics') setLyricsOpened(true);
+  }, [section]);
+  const lyricsHandoff = section === 'lyrics' && route.query.get('als_name') ? route.query.toString() : '';
   const needsChoosing = !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
   const gate = useOpenGate(needsChoosing, takeChosen);
   let body: JSX.Element | null;
@@ -382,6 +396,8 @@ export default function App() {
     body = <BandView />;
   } else if (section === 'changes') {
     body = <ChangesView />;
+  } else if (section === 'lyrics') {
+    body = null;
   } else if (section === 'tools') {
     body = <SetToolsView />;
   } else if (section === 'settings') {
@@ -499,6 +515,7 @@ export default function App() {
         <TabButton on={section === 'library'} to="/" glyph="♪" label="Songs" />
         <TabButton on={section.startsWith('setlist')} to="/setlists" glyph="≡" label="Setlists" />
         <TabButton on={section === 'tools'} to="/tools" glyph="⚒" label="Set tools" />
+        <TabButton on={section === 'lyrics'} to="/lyrics" glyph="✎" label="Lyrics" />
         <TabButton on={section === 'band'} to="/band" glyph="⚇" label="The band" />
         <TabButton on={section === 'settings'} to="/settings" glyph="⚙" label="Settings" />
       </nav>
@@ -606,6 +623,7 @@ export default function App() {
             />
           </div>
         )}
+        {(lyricsOpened || section === 'lyrics') && <LyricsStudioView shown={section === 'lyrics'} handoff={lyricsHandoff} />}
         {body}
       </div>
     </div>

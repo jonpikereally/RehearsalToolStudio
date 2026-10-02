@@ -705,7 +705,8 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if action.shouldPerformDownload { return decisionHandler(.download) }
         guard let url = action.request.url else { return decisionHandler(.allow) }
-        // Lyrics Studio, a link out, anything with target=_blank: the browser's job.
+        // A link out, anything with target=_blank: the browser's job. (Lyrics Studio
+        // is a tab of the studio now, passed through on the studio's own port.)
         if action.targetFrame == nil || !isStudio(url) {
             if url.scheme == "http" || url.scheme == "https" { NSWorkspace.shared.open(url) }
             return decisionHandler(.cancel)
@@ -718,7 +719,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         decisionHandler(response.canShowMIMEType ? .allow : .download)
     }
 
-    /// window.open — the studio uses it for Lyrics Studio, which is its own app in the browser.
+    /// window.open — anything the page opens in a window of its own goes to the browser.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = action.request.url, url.scheme == "http" || url.scheme == "https" {

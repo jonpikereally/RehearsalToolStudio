@@ -1,5 +1,5 @@
 #!/bin/bash
-# Restart Lyrics Studio (used by the Start command and by Claude after updates).
+# Restart Lyrics Studio's engine by hand (the studio starts it itself; this is for working on it).
 #
 # Only a Lyrics Studio is stopped: a port is identified by what answers on it,
 # never assumed from its number, since 8765 has been taken by other apps.

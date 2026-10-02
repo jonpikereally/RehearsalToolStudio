@@ -55,7 +55,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
-VERSION = "1.15.0"
+VERSION = "1.16.0"
 
 app = FastAPI(title="Lyrics Studio", version=VERSION)
 
@@ -98,6 +98,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5177",
+        "http://127.0.0.1:5177",
     ],
     # The studio drives a transcription from its own page now, which is a POST.
     allow_methods=["GET", "POST"],
@@ -430,6 +431,34 @@ def transcribe(
         out = transcribe_file(audio_path, language, lyrics, isolate, tmp)
     out["bpm"] = bpm
     return out
+
+
+@app.post("/api/transcribe_start")
+def transcribe_start(
+    file: UploadFile = File(...),
+    language: str = Form(""),
+    isolate: bool = Form(False),
+    lyrics: str = Form(""),
+):
+    """/api/transcribe as a job, for a page inside the studio's window. The
+    upload is taken now, while the request is open; the listening runs after
+    it has been answered."""
+    suffix = Path(file.filename or "song.mp3").suffix or ".mp3"
+    tmp = tempfile.mkdtemp()
+    audio_path = str(Path(tmp) / f"song{suffix}")
+    with open(audio_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    def work():
+        try:
+            bpm = detect_bpm(audio_path)
+            out = transcribe_file(audio_path, language, lyrics, isolate, tmp)
+            out["bpm"] = bpm
+            return out
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    return {"job": start_job(work)}
 
 
 class MidiRequest(BaseModel):
@@ -1754,34 +1783,47 @@ def als_transcribe(req: AlsTranscribeRequest):
 
 # Transcriptions running as jobs, for a page that cannot hold a request open
 # for the minutes one takes: WebKit cuts a request off after about a minute
-# with no answer. Started, then asked after.
+# with no answer — and this page lives inside the studio's WebKit window. So
+# every transcription is started, then asked after.
 TRANSCRIBE_JOBS: dict[str, dict] = {}
 
 
-@app.post("/api/als_transcribe_start")
-def als_transcribe_start(req: AlsTranscribeRequest):
-    """Begin a transcription and answer at once with a job id; /api/als_job
-    says how it went. The work itself is als_transcribe, unchanged."""
+def start_job(work) -> str:
+    """Run `work` on a thread and answer with the id /api/job reports it by.
+    A job counts as in flight, so the idle watchdog never stops a server
+    that is still listening to a song nobody is polling for."""
     import threading
     import uuid
     job = uuid.uuid4().hex
     TRANSCRIBE_JOBS[job] = {"status": "running"}
 
     def run():
+        global IN_FLIGHT
+        IN_FLIGHT += 1
         try:
-            TRANSCRIBE_JOBS[job] = {"status": "done", "result": als_transcribe(req)}
+            TRANSCRIBE_JOBS[job] = {"status": "done", "result": work()}
         except HTTPException as e:
             detail = e.detail if isinstance(e.detail, str) else json.dumps(e.detail)
             TRANSCRIBE_JOBS[job] = {"status": "failed", "error": detail}
         except Exception as e:  # noqa: BLE001 — the page needs the words, whatever they are
             TRANSCRIBE_JOBS[job] = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+        finally:
+            IN_FLIGHT -= 1
 
     threading.Thread(target=run, daemon=True).start()
-    return {"job": job}
+    return job
 
 
+@app.post("/api/als_transcribe_start")
+def als_transcribe_start(req: AlsTranscribeRequest):
+    """Begin a transcription and answer at once with a job id; /api/job says
+    how it went. The work itself is als_transcribe, unchanged."""
+    return {"job": start_job(lambda: als_transcribe(req))}
+
+
+@app.get("/api/job")
 @app.get("/api/als_job")
-def als_job(job: str):
+def job_state(job: str):
     state = TRANSCRIBE_JOBS.get(job)
     if state is None:
         raise HTTPException(404, "No such transcription.")
