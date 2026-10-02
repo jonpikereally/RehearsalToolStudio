@@ -722,9 +722,10 @@ export default function SetToolsView() {
 
   /*
    * The lyrics tab's choices, made good: the song is the one chosen, else
-   * the first being worked on; the track is the one chosen, else the
-   * record's own vocal when the song has one, else any vocal, else the
-   * first — a name is all there is to go on, and "REF VOX" is the surest.
+   * the first being worked on; the track is the one chosen, else one called
+   * "Ref Vox", else the record's own lead vocal, else any lead vocal, else a
+   * backing vocal, else the first — a name is all there is to go on, and
+   * "REF VOX" is the surest. LV and BV are a lead and a backing vocal.
    */
   const lyricSongObj =
     project?.songs.find((s) => s.title === lyricSong) ??
@@ -733,11 +734,14 @@ export default function SetToolsView() {
     null;
   // Only tracks that are in the set: the click and cues the studio adds have no audio to listen to.
   const stemsOf = (lyricSongObj?.stems ?? []).filter((st) => st.trackId);
-  const vocalish = (name: string) => /\b(vox|vocal|vocals|voice|lead|sing|singer|melody)\b/i.test(name);
+  const backing = (name: string) => /\b(bv|bvs|backing|harmony|harmonies|bgv)\b/i.test(name);
+  const vocalish = (name: string) => /\b(vox|vocal|vocals|voice|lead|lv|sing|singer|melody)\b/i.test(name) && !backing(name);
   const lyricStem =
     stemsOf.find((st) => st.name === lyricTrack) ??
+    stemsOf.find((st) => st.name.trim().toLowerCase().replace(/\s+/g, ' ') === 'ref vox') ??
     stemsOf.find((st) => st.reference && vocalish(st.name)) ??
     stemsOf.find((st) => vocalish(st.name)) ??
+    stemsOf.find((st) => backing(st.name)) ??
     stemsOf[0] ??
     null;
 
