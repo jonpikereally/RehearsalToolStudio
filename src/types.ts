@@ -390,6 +390,13 @@ export interface Setlist {
   name: string;
   songIds: SongId[];
   notes?: string;
+  /**
+   * The running order is AbleSet's setlist, which names `included`: a set's
+   * songs not on it are left out of the studio altogether.
+   */
+  fromAbleSet?: boolean;
+  /** The titles AbleSet's setlist names, when fromAbleSet. */
+  included?: string[];
   updatedAt: number;
 }
 

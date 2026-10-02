@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Leave out of the studio any song AbleSet's setlist leaves out**
+
+A set's songs were all the studio's, whatever AbleSet's setlist said: a song not on it still came into the library, followed the setlist's songs in the running order, and was prepared and auto-updated with the rest. A song left off the setlist is not in the show, so now it is left out of the studio. When a scan finds AbleSet's setlist for a set — saved beside it, or open in AbleSet — only the songs it names come into the library, and the scan's note says which were left out. Preparing, the prepared set's standing, auto-update and the set tools all read the set as those songs alone, so nothing is rendered, refreshed or updated for the others; the Prepare window names them. A set with no AbleSet setlist is read whole as before, and so is one whose setlist matches none of its songs.
+
 **Find the vocal to transcribe by LV and BV too, and prefer Ref Vox**
 
 Set tools → Lyrics guesses which of a song's tracks to listen to from its name, and knew a vocal only as vox, vocal, voice, lead or sing. A set that calls its lead vocal REF LV matched none of them, so the guess fell to the song's first track — usually the whole record. Now LV is a lead vocal and BV (with backing and harmony) a backing one; a track called Ref Vox is taken first, then a lead vocal, and a backing vocal only when there is no lead. The Lyrics tab's preferred source track starts as Ref Vox, so a set with one per song opens on all of them read together.

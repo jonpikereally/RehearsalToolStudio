@@ -22,7 +22,7 @@ import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import { versionName } from '../lib/versions';
 import { keyRank, type SortSpec } from '../lib/songSort';
 import { addThis } from '../lib/alsEdit';
-import { runningOrderTitles } from '../lib/ableset';
+import { runningOrderTitles, scopeToSetlist } from '../lib/ableset';
 import SortBar, { useSort } from './SortBar';
 import { NOTATION_LABEL, parseKey, type ChordNotation } from '../lib/nashville';
 import { setlistText } from '../lib/setReview';
@@ -234,7 +234,8 @@ export default function SetToolsView() {
     setProject(null);
     try {
       const { bytes } = await local.readBytes(from.handle, '', path);
-      setProject(await parseAls(bytes));
+      // Only the songs AbleSet's setlist names, as everywhere else in the studio.
+      setProject(scopeToSetlist(await parseAls(bytes), library, path).project);
       readAt.current = await modifiedAt(from, path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -265,7 +266,7 @@ export default function SetToolsView() {
     if (at === null || at === readAt.current) return;
     try {
       const { bytes } = await local.readBytes(folder.handle, '', setPath);
-      const read = await parseAls(bytes);
+      const read = scopeToSetlist(await parseAls(bytes), library, setPath).project;
       readAt.current = at;
       setProject(read);
       // Keys typed in for songs the set didn't name are the set's now, if it

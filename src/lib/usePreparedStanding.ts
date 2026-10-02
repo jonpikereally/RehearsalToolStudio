@@ -1,3 +1,4 @@
+import { scopeToSetlist } from './ableset.ts';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { parseAls } from './alsParser';
 import { preparedNameFor } from './locatePrepared.ts';
@@ -50,7 +51,7 @@ export type PreparedLookup =
 
 /** `version` changes whenever the answer might have: a save, a prepare finished. */
 export function usePreparedStanding(setPath: string | null, version: string): PreparedLookup {
-  const { publishFolderName, publishFolder, outputSet } = useStore();
+  const { publishFolderName, publishFolder, outputSet, library } = useStore();
   const [lookup, setLookup] = useState<PreparedLookup>({ state: 'idle' });
   // A run finishing anywhere in the page — a prepare, an update on a save or
   // on opening, an undo — has changed the answer, so it is asked again.
@@ -69,7 +70,7 @@ export function usePreparedStanding(setPath: string | null, version: string): Pr
           if (live) setLookup({ state: 'none' });
           return;
         }
-        const project = await parseAls((await readBytes(setPath)).bytes);
+        const { project } = scopeToSetlist(await parseAls((await readBytes(setPath)).bytes), library, setPath);
         const keys = await audioKeysFor(project, setPath);
         const folder = outputSet?.name ?? (await preparedNameFor(band, setPath, keys.byName));
         const standing = await standingFor(project, setPath, band, folder, keys);

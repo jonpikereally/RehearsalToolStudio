@@ -7,7 +7,7 @@ import { audioKeysFor, runPrepare, standingFor, titlesOf, undoPrepare, type RunO
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
-import { runningOrderTitles } from '../lib/ableset';
+import { runningOrderTitles, scopeToSetlist } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
@@ -98,7 +98,8 @@ export default function AutoUpdate() {
         }
         if (current()) setPhase({ kind: 'running', at, why, stage: 'Reading the set…', progress: null });
         const { bytes } = await readBytes(currentSet);
-        const project = await parseAls(bytes);
+        // Only the songs AbleSet's setlist names: one left off it is never updated.
+        const { project } = scopeToSetlist(await parseAls(bytes), libraryRef.current, currentSet);
         if (current()) setPhase({ kind: 'running', at, why, stage: 'Looking at what changed…', progress: null });
         // The folder this set already has in the band's folder, whatever
         // either is called now: known by the songs in it.
