@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Move Check for Updates into the Rehearsal Tool Studio menu**
+
+It sat at the bottom of the File menu, among the things the studio opens, where nobody looks for it. A Mac app keeps it in the menu named after the app, so that is where it goes now, at the top, above Hide and Quit — still ⌘U, and still retitled "Update Available — Install…" when GitHub is ahead.
+
 **Say when no AbleSet order was found for a set being prepared**
 
 A set whose running order AbleSet could not supply — not open in AbleSet, open from another folder, no setlist saved beside it — was prepared in the arrangement's order with nothing said, and the first anyone knew was the band's app showing the songs out of order. Now the Prepare window says so, once AbleSet has been asked: that no order of AbleSet's was found, that the arrangement's is being used, and what would let AbleSet's be used instead. An order that did come from AbleSet is named as before.

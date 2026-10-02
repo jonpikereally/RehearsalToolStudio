@@ -82,7 +82,7 @@ function useNewerBuild(): { behind: Behind | null; checked: Checked | null; chec
   }, [look]);
 
   /*
-   * A check asked for by hand — File ▸ Check for Updates, or the button in
+   * A check asked for by hand — Rehearsal Tool Studio ▸ Check for Updates, or the button in
    * Settings. The studio is built from the checkout beside it, so the app is
    * asked to build; only it can, and only when nothing is being written,
    * since the build ends by replacing the server a prepare would be talking

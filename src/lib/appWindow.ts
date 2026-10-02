@@ -100,7 +100,7 @@ export const canRestart = (): boolean => restarts;
 export const restartApp = (): boolean => restarts && askApp({ restart: true });
 
 /**
- * Whether the app can look for a newer build — File ▸ Check for Updates, and
+ * Whether the app can look for a newer build — Rehearsal Tool Studio ▸ Check for Updates, and
  * the button that does the same thing. An older app cannot, and the page
  * makes do with comparing itself against the server.
  */
