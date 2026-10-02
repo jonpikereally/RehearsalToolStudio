@@ -38,14 +38,14 @@ type Choice = 'print' | 'combine' | 'skip';
 
 /**
  * The three jobs the buttons offer, the same three a whole set gets: render
- * the song (its parts and its submixes), write only the submixes from the
+ * the song's parts (no submixes), write only the submixes from the
  * audio already there, or write only the words and sections beside it. A
  * song is behind in one way at a time as much as a set is.
  */
 type Job = 'stems' | 'submixes' | 'info';
 
 const JOBS: readonly [Job, string, string][] = [
-  ['stems', 'Prepare stems', 'Render the song — its parts and its submixes. The slow one; writes the folder over.'],
+  ['stems', 'Prepare stems', 'Render the song’s parts. The slow one; writes the folder over. No submixes.'],
   ['submixes', 'Prepare submixes', "Each member's submix, from the audio already in the folder. The stems are not touched."],
   ['info', 'Prepare info', 'The words and sections beside the audio: sections, chords, lyrics, patch changes. Nothing is rendered.'],
 ];
@@ -241,13 +241,11 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       const done = await prepareSet({
         songOrder: liveOrder?.titles,
         /*
-         * The band, so this song comes out with its submixes like any other.
-         * A whole set has always written them; a song on its own wrote none,
-         * so the same song had different parts depending on which button was
-         * pressed — and the folder then said it was behind on submixes it had
-         * just been asked to make.
+         * The band, but only for Prepare submixes. Rendering the stems writes
+         * the stems and nothing else, here as for a whole set; the submixes
+         * are their own job, asked for by their own button.
          */
-        members: (await bandMembers(folder)).filter((m) => !m.off),
+        members: kind === 'submixes' ? (await bandMembers(folder)).filter((m) => !m.off) : [],
         // Only the submixes, into the folder the song already has, its stems untouched.
         submixesOnly: kind === 'submixes',
         beforeSong: async (name, previous) => {
@@ -437,7 +435,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
                   {submixNames.length > 0 && (
                     <>
                       {' '}
-                      And {submixNames.length === 1 ? 'one submix' : `${submixNames.length} submixes`} for the band, into{' '}
+                      Submixes are not part of this: Prepare submixes writes{' '}
+                      {submixNames.length === 1 ? 'the one' : `the ${submixNames.length}`} the band asks for into{' '}
                       <span className="code">submixes/</span> — {submixNames.map((n) => `[${n}]`).join(', ')}.
                     </>
                   )}{' '}
@@ -552,8 +551,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             <div style={{ marginTop: 4 }}>
               {confirming === 'stems' && (
                 <>
-                  Render {partCount} part{partCount === 1 ? '' : 's'}
-                  {submixNames.length ? ` and ${submixNames.length} submix${submixNames.length === 1 ? '' : 'es'}` : ''} of “
+                  Render {partCount} part{partCount === 1 ? '' : 's'} of “
                   {song.title}” into “{setName}” in the band’s folder. Every stem the set points at is read, and the
                   song’s folder is written over — what it held is kept aside, so it can be undone; and it can be
                   stopped while it runs.

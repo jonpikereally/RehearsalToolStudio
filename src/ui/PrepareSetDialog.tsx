@@ -221,8 +221,6 @@ export default function PrepareSetDialog({
   const someSongs = songCount === titles.length && titles.length > 1
     ? `all ${songCount} songs`
     : `${songCount} song${songCount === 1 ? '' : 's'}`;
-  /** How many of the chosen songs lack a submix the band asks for. */
-  const behindOnSubmixes = titles.filter((t) => selected.has(t) && submixStanding?.get(t)).length;
   const infoWanted = (Object.keys(INFO_LABEL) as (keyof InfoKinds)[])
     .filter((k) => infoKinds[k])
     .map((k) => INFO_LABEL[k].toLowerCase())
@@ -251,7 +249,6 @@ export default function PrepareSetDialog({
       const touched: Aside[] = [];
       aside.current = { folder: folderName, songs: touched };
       const ticked = [...selected];
-      const behind = titles.filter((t) => submixStanding?.get(t));
       const out = await runPrepare({
         project: full,
         setPath,
@@ -261,10 +258,11 @@ export default function PrepareSetDialog({
          * Each job says which of the three passes it wants. The stems' songs
          * go in one list, the submixes' in another, and what the words do is
          * `refresh` — so "prepare the submixes" writes nothing but submixes,
-         * and "prepare the info" reads no audio at all.
+         * and "prepare the info" reads no audio at all. Submixes are only
+         * ever that job's: neither "all" nor "stems" writes one unasked.
          */
         selected: kind === 'all' || kind === 'stems' ? ticked : [],
-        submixes: kind === 'all' ? behind : kind === 'submixes' ? ticked : undefined,
+        submixes: kind === 'submixes' ? ticked : undefined,
         refresh: kind === 'stems' || kind === 'submixes' ? 'none' : kind === 'info' ? ticked : 'auto',
         infoKinds: kind === 'info' ? infoKinds : undefined,
         standing,
@@ -697,12 +695,9 @@ export default function PrepareSetDialog({
           <div style={{ marginTop: 4 }}>
             {confirming === 'all' && (
               <>
-                Render {someSongs}
-                {behindOnSubmixes
-                  ? `, write the submixes of the ${behindOnSubmixes} song${behindOnSubmixes === 1 ? '' : 's'} that lack one,`
-                  : ''}{' '}
-                and refresh the words and sections of the rest, into “{setName}” in the band’s folder. Every stem the
-                set points at is read, which is gigabytes and can be an hour.
+                Render {someSongs} and refresh the words and sections of the rest, into “{setName}” in the band’s
+                folder. Every stem the set points at is read, which is gigabytes and can be an hour. No submixes are
+                written — that is Prepare submixes.
               </>
             )}
             {confirming === 'stems' && (
@@ -769,8 +764,8 @@ export default function PrepareSetDialog({
             {/* Which facts an info run writes; all of them unless told otherwise. */}
             {(
               [
-                ['all', 'Prepare all', 'The stems of the songs ticked, the submixes anybody is missing, and the words of the rest'],
-                ['stems', 'Prepare stems', 'Render the ticked songs — their parts and their submixes. The slow one.'],
+                ['all', 'Prepare all', 'The stems of the songs ticked and the words of the rest. No submixes.'],
+                ['stems', 'Prepare stems', 'Render the ticked songs’ parts. The slow one. No submixes.'],
                 ['submixes', 'Prepare submixes', "Each member's submix of the ticked songs, from the audio already in the folder"],
                 ['info', 'Prepare info', 'The facts beside the audio: sections, chords, words, patch changes. Nothing is rendered.'],
               ] as const

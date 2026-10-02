@@ -162,6 +162,8 @@ export default function AutoUpdate() {
           folderName,
           selected,
           submixes: behind,
+          // A changed song's submixes come with its stems only when submixes are switched on too.
+          withSubmixes: auto.submixes,
           refresh,
           standing: found.standing,
           words: found.words,

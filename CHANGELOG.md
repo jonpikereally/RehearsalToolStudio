@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Write submixes only when Prepare submixes is asked for**
+
+Preparing a set's stems wrote every member's submix beside them as well, and Prepare all added the submixes of any song that lacked one — so a fresh set, prepared without anyone pressing Prepare submixes, came out with a submixes/ folder in every song: one more render per member per song that nobody chose. The same went for a single song's Prepare stems. Now Prepare all and Prepare stems write the stems and the words and no submixes, and the buttons and the confirmation say so. Submixes are written by Prepare submixes, and by auto-update only when its submixes switch is on, as it already was for songs whose stems were unchanged.
+
 **Build the installer on GitHub and put it on the Releases page**
 
 The installer could only be made on a Mac with the repo, Node, uv and the command line tools, and it landed in a folder kept out of git — so there was nothing to download from GitHub. Now a workflow runs the same make-installer.sh on GitHub's Macs whenever a change to main touches the app, or by hand from the Actions tab, and publishes the .pkg as a release named by its build and when it was built. The newest is always at releases/latest/download/Rehearsal-Tool-Studio.pkg. A pull request that touches the packaging builds it too, as a check, and publishes nothing.
