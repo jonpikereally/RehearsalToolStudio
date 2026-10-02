@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
+import { scopeToSetlist } from '../lib/ableset';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
@@ -68,7 +69,9 @@ export default function PrepareSetDialog({
    */
   only?: 'stems' | 'submixes' | 'info';
 }) {
-  const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings } = useStore();
+  const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings, library } = useStore();
+  /** Songs in the set that AbleSet's setlist leaves out, and so are never prepared. */
+  const [leftOut, setLeftOut] = useState<string[]>([]);
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -141,8 +144,10 @@ export default function PrepareSetDialog({
     void (async () => {
       try {
         const { bytes } = await readBytes(setPath);
-        const parsed = await parseAls(bytes);
+        const scoped = scopeToSetlist(await parseAls(bytes), library, setPath);
+        const parsed = scoped.project;
         if (!live) return;
+        setLeftOut(scoped.left);
         setProject(parsed);
         if (preselect) {
           const wanted = new Set(preselect);
@@ -244,7 +249,7 @@ export default function PrepareSetDialog({
     setRefreshed(null);
     setUndone(null);
     try {
-      const full = project ?? (await parseAls((await readBytes(setPath)).bytes));
+      const full = project ?? scopeToSetlist(await parseAls((await readBytes(setPath)).bytes), library, setPath).project;
       const folderName = safeSetName(setName) || defaultSetName(setPath);
       const touched: Aside[] = [];
       aside.current = { folder: folderName, songs: touched };
@@ -469,6 +474,11 @@ export default function PrepareSetDialog({
                 : `${selected.size} of ${titles.length}`}
             </span>
           </div>
+          {leftOut.length > 0 && (
+            <div className="hint" style={{ marginBottom: 6 }}>
+              Not on AbleSet’s setlist, so left out: {leftOut.join(', ')}.
+            </div>
+          )}
           {liveOrder?.note && (
             <div className={liveOrder.missing ? 'notice' : 'hint'} style={{ marginBottom: 6 }}>
               {liveOrder.note}

@@ -4916,8 +4916,8 @@ group('what the band\'s library is built from');
 
 group('running order from AbleSet');
 {
-  const { parseAbleSetSetlist, orderFromAbleSet, abletSetlistFiles } = await import('../src/lib/ableset.ts');
-  const { setlistFromProject, songIdFor } = await import('../src/lib/alsImport.ts');
+  const { parseAbleSetSetlist, orderFromAbleSet, abletSetlistFiles, matchAbleSet, scopeToSetlist } = await import('../src/lib/ableset.ts');
+  const { setlistFromProject, songIdFor, setlistIdFor } = await import('../src/lib/alsImport.ts');
   const { folderOrder } = await import('../src/lib/prepare.ts');
 
   const song = (title, startBar) => ({
@@ -4943,6 +4943,21 @@ group('running order from AbleSet');
   check('a moved locator is matched by name, brackets and all', order[2] === 'Clocks');
   check('a song the setlist never names follows, as the set has it', order[3] === 'Sound Check' && order.length === 4, order.join(' | '));
   check('a count-in locator repeating a title does not double it', order.filter((t) => t === 'Yellow').length === 1);
+
+  {
+    const { included } = matchAbleSet(project, entries);
+    check('the setlist says which songs are in the show', included.join(' | ') === 'Fix You | Yellow | Clocks', included.join(' | '));
+    const at = '/Band/Show/Show.als';
+    const lib = (extra) => ({ setlists: [{ id: setlistIdFor(at), name: 'Show', songIds: [], updatedAt: 1, ...extra }] });
+    const scoped = scopeToSetlist(project, lib({ fromAbleSet: true, included }), at);
+    check('a song left off AbleSet\'s setlist is left out of the studio',
+      scoped.left.join() === 'Sound Check' && !scoped.project.songs.some((x) => x.title === 'Sound Check') && scoped.project.songs.length === 4,
+      JSON.stringify([scoped.left, scoped.project.songs.map((x) => x.title)]));
+    check('without AbleSet deciding, the whole set stays',
+      scopeToSetlist(project, lib({}), at).project.songs.length === 5 && scopeToSetlist(project, { setlists: [] }, at).left.length === 0);
+    check('a setlist naming none of the songs is no reason to drop them all',
+      scopeToSetlist(project, lib({ fromAbleSet: true, included: [] }), at).project.songs.length === 5);
+  }
 
   const als = '/Band/Show/Show.als';
   const setlist = setlistFromProject(als, project, () => true, order, 'from AbleSet');
