@@ -55,7 +55,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
-VERSION = "1.16.0"
+VERSION = "1.16.1"
 
 app = FastAPI(title="Lyrics Studio", version=VERSION)
 

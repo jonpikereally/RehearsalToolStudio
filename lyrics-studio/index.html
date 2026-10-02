@@ -1240,7 +1240,8 @@ setInterval(() => { fetch("api/version").catch(() => {}); }, 60000);
 
 // The preferred source-track name: remembered across visits, applied to every
 // set on open, and re-applied live as it is typed.
-try { $("srcPref").value = localStorage.getItem("ls.sourceTrack") || ""; } catch {}
+// "Ref Vox" until another is typed: it is what the band's sets call the vocal to read.
+try { $("srcPref").value = localStorage.getItem("ls.sourceTrack") ?? "Ref Vox"; } catch { $("srcPref").value = "Ref Vox"; }
 $("srcPref").addEventListener("input", () => {
   try { localStorage.setItem("ls.sourceTrack", $("srcPref").value.trim()); } catch {}
   if (pendingAls) { applySourcePreference(); onSourceChange(); }
