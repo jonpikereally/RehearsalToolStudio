@@ -334,6 +334,15 @@ export interface RunOptions {
   /** The band's submixes; read from the folder when not given. */
   members?: MemberMix[];
   /**
+   * Whether the stems' pass writes each member's submix beside the stems.
+   *
+   * Off unless asked for. Submixes are a job of their own — Prepare
+   * submixes, or auto-update with submixes switched on — and rendering a
+   * set's stems used to write them as well, unasked, which on a fresh set
+   * is an extra render per member per song nobody chose.
+   */
+  withSubmixes?: boolean;
+  /**
    * Whose words and sections to write, and which of them.
    *
    * `auto` is what a prepare has always done: the songs left alone get their
@@ -427,8 +436,8 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           // structure comes with it.
           root: '',
           setName: folderName,
-          // One submix per member per song, of everything they don't keep.
-          members,
+          // One submix per member per song, of everything they don't keep — only when asked for.
+          members: o.withSubmixes ? members : [],
           resolvePath: (relative) => resolveStemPath(setPath, relative),
           readFile: async (path) => (await readBytes(path)).bytes,
           readSlice: async (path, start, end) => {
