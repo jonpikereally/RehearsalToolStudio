@@ -1,0 +1,103 @@
+# The installer, built on GitHub's Macs and put on the Releases page.
+#
+# scripts/make-installer.sh is the same script as on a desk: it builds the
+# studio, compiles the window, puts Lyrics Studio and uv inside, and wraps
+# the app in a .pkg. Here it runs on every change to main that touches the
+# app, and by hand from the Actions tab. A pull request builds it too, as a
+# check that it still builds, but publishes nothing.
+#
+# Each build is a release of its own, named by its commit and when it was
+# built, and the newest is always at the same address:
+#   https://github.com/jonpikereally/RehearsalToolStudio/releases/latest/download/Rehearsal-Tool-Studio.pkg
+#
+# GitHub's Node is Apple silicon only, so the installer is too — as Lyrics
+# Studio already was. Nothing carries a Developer ID: the first open of a
+# downloaded copy is System Settings → Privacy & Security → "Open Anyway".
+name: Installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'lyrics-studio/**'
+      - 'mac/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/installer.yml'
+  pull_request:
+    paths:
+      - 'scripts/make-installer.sh'
+      - 'scripts/package-app.sh'
+      - 'scripts/packaged-launch.sh'
+      - 'mac/**'
+      - '.github/workflows/installer.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check it
+        run: npm run typecheck && npm test
+
+      - name: Build the installer
+        run: bash scripts/make-installer.sh "$RUNNER_TEMP/out"
+
+      - name: Name it
+        id: pkg
+        run: |
+          PKG="$(ls "$RUNNER_TEMP/out"/*.pkg | head -1)"
+          STAMP="$(basename "$PKG" .pkg | sed 's/^Rehearsal Tool Studio //')"
+          # One name for every build, so the newest is always at the same link.
+          cp "$PKG" "$RUNNER_TEMP/Rehearsal-Tool-Studio.pkg"
+          echo "stamp=$STAMP" >>"$GITHUB_OUTPUT"
+          echo "built=$(date -u '+%Y-%m-%d %H:%M UTC')" >>"$GITHUB_OUTPUT"
+          echo "tag=build-$(date -u '+%Y%m%d-%H%M')-$STAMP" >>"$GITHUB_OUTPUT"
+
+      - name: Keep it with the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rehearsal-Tool-Studio-${{ steps.pkg.outputs.stamp }}
+          path: ${{ runner.temp }}/Rehearsal-Tool-Studio.pkg
+
+      - name: Publish it
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.pkg.outputs.tag }}" "$RUNNER_TEMP/Rehearsal-Tool-Studio.pkg" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Rehearsal Tool Studio — build ${{ steps.pkg.outputs.stamp }} (${{ steps.pkg.outputs.built }})" \
+            --notes "Build **${{ steps.pkg.outputs.stamp }}**, built ${{ steps.pkg.outputs.built }} from $(git log -1 --format='%s' "$GITHUB_SHA").
+
+          Download **Rehearsal-Tool-Studio.pkg** below and double-click it. Installer puts Rehearsal Tool Studio into Applications, with Lyrics Studio inside it as the Lyrics tab. Apple silicon Macs.
+
+          Nothing here carries a Developer ID, so the first time macOS refuses it: System Settings → Privacy & Security → **Open Anyway**.
+
+          What changed is in [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$GITHUB_SHA/CHANGELOG.md)."

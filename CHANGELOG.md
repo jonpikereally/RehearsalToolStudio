@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Build the installer on GitHub and put it on the Releases page**
+
+The installer could only be made on a Mac with the repo, Node, uv and the command line tools, and it landed in a folder kept out of git — so there was nothing to download from GitHub. Now a workflow runs the same make-installer.sh on GitHub's Macs whenever a change to main touches the app, or by hand from the Actions tab, and publishes the .pkg as a release named by its build and when it was built. The newest is always at releases/latest/download/Rehearsal-Tool-Studio.pkg. A pull request that touches the packaging builds it too, as a check, and publishes nothing.
+
 **Make Lyrics Studio a tab of the studio, not an app of its own**
 
 Lyrics Studio was a second app beside the studio: its own Dock icon, its own launcher, a page opened in the browser, and a second package in the installer. Now it is the studio's Lyrics tab. Its page opens inside the studio's window, held once opened so a queue of songs keeps transcribing while another tab is looked at, and the Set tools' "Open Lyrics Studio instead" hands the set straight to that tab rather than to a browser.

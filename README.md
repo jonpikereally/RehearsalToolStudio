@@ -107,7 +107,13 @@ after moving this folder.
 ### As a normal app
 
 For a Mac that only uses the studio, and needn't have Node or this folder,
-build an installer:
+download the installer GitHub builds: every change to `main` that touches
+the app makes a new one on the
+[Releases page](https://github.com/jonpikereally/RehearsalToolStudio/releases),
+named by its build and when it was built, and the newest is always at
+<https://github.com/jonpikereally/RehearsalToolStudio/releases/latest/download/Rehearsal-Tool-Studio.pkg>.
+It is built on Apple silicon, for Apple silicon (`.github/workflows/installer.yml`;
+Actions → Installer → Run workflow builds one by hand). Or build one here:
 
 ```bash
 bash scripts/make-installer.sh
