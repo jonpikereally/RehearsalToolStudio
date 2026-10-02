@@ -104,6 +104,8 @@ export function runningOrderTitles(library: Library, alsPath: string): string[] 
 export interface RunningOrder {
   titles: string[];
   note: string;
+  /** No order of AbleSet's was found for the set: these are the arrangement's. */
+  missing?: boolean;
 }
 
 /**

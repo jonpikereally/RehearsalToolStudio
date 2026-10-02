@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Say when no AbleSet order was found for a set being prepared**
+
+A set whose running order AbleSet could not supply — not open in AbleSet, open from another folder, no setlist saved beside it — was prepared in the arrangement's order with nothing said, and the first anyone knew was the band's app showing the songs out of order. Now the Prepare window says so, once AbleSet has been asked: that no order of AbleSet's was found, that the arrangement's is being used, and what would let AbleSet's be used instead. An order that did come from AbleSet is named as before.
+
 **Write submixes only when Prepare submixes is asked for**
 
 Preparing a set's stems wrote every member's submix beside them as well, and Prepare all added the submixes of any song that lacked one — so a fresh set, prepared without anyone pressing Prepare submixes, came out with a submixes/ folder in every song: one more render per member per song that nobody chose. The same went for a single song's Prepare stems. Now Prepare all and Prepare stems write the stems and the words and no submixes, and the buttons and the confirmation say so. Submixes are written by Prepare submixes, and by auto-update only when its submixes switch is on, as it already was for songs whose stems were unchanged.
