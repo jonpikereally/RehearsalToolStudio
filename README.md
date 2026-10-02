@@ -75,8 +75,8 @@ Then where it goes: the set folder in the band's Dropbox that it writes to —
 one already there, one picked in the Finder, or a new one named on the spot.
 Each side offers what it had last, and can be told to always take it.
 
-When this folder is a clone with a GitHub remote, every launch and File ▸
-Check for Updates (⌘U) first fetch from it and fast-forward onto what it
+When this folder is a clone with a GitHub remote, every launch and Rehearsal
+Tool Studio ▸ Check for Updates (⌘U) first fetch from it and fast-forward onto what it
 has, then rebuild if anything moved. The app also looks on its own — on
 launch, on coming back to it, every half hour — and when GitHub is ahead
 the menu item reads "Update Available — Install…" instead. Uncommitted changes, or commits here

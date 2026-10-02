@@ -113,7 +113,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     /// When each build seen was built, by its stamp, for saying so beside it.
     var builtAt: [String: String] = [:]
     let builtAtLock = NSLock()
-    /// File ▸ Check for Updates, retitled when GitHub has commits this checkout hasn't.
+    /// Rehearsal Tool Studio ▸ Check for Updates, retitled when GitHub has commits this checkout hasn't.
     var updatesItem: NSMenuItem?
     /// How many commits GitHub is ahead by, as of the last look; 0 when level or unknown.
     var behind = 0
@@ -512,7 +512,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     }
 
     /*
-     * File ▸ Check for Updates.
+     * Rehearsal Tool Studio ▸ Check for Updates.
      *
      * The studio is built from the checkout beside it, so an update is a
      * build: the launcher rebuilds when the source has moved and replaces a
@@ -534,7 +534,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
      * Whether GitHub has commits this checkout hasn't — looked at in the
      * background on launch, on coming back to the app (no more than once
      * every ten minutes), every half hour, and after an update — so the
-     * File menu can say "Update Available" rather than wait to be asked.
+     * app menu can say "Update Available" rather than wait to be asked.
      * A fetch is all it does; pulling is the launcher's, when asked. The
      * packaged app has no checkout and never looks.
      */
@@ -645,7 +645,12 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             return item
         }
 
+        // Check for Updates sits in the app's own menu, where a Mac app keeps it.
         let app = NSMenu()
+        let updates = app.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "u")
+        updates.target = self
+        updatesItem = updates
+        app.addItem(NSMenuItem.separator())
         app.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         bar.addItem(holding(app))
@@ -660,10 +665,6 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         file.addItem(NSMenuItem.separator())
         let changes = file.addItem(withTitle: "Changes…", action: #selector(showChanges), keyEquivalent: "y")
         changes.target = self
-        file.addItem(NSMenuItem.separator())
-        let updates = file.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "u")
-        updates.target = self
-        updatesItem = updates
         bar.addItem(holding(file))
 
         let edit = NSMenu(title: "Edit")
