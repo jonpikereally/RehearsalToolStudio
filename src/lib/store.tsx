@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { emptyLibrary, type Library, type Setlist, type Song } from '../types';
 import { mergeScan, isProjectScaffolding, newestSetPerFolder, parseFileName, syncSetlists, type ScanResult } from './scan';
 import { parseAls, type AlsProject } from './alsParser';
-import { abletSetlistFiles, liveRunningOrder, orderFromAbleSet, parseAbleSetSetlist } from './ableset';
+import { abletSetlistFiles, liveRunningOrder, matchAbleSet, parseAbleSetSetlist } from './ableset';
 import { findPrints, isPrint, isPreparedSet, type FoundPrint } from './prints';
 import { applyManifest, isManifestName } from './preparedSet';
 import { versionsOf } from './versions';
@@ -730,7 +730,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * copy carried. Anything saved since, patch changes included, was thrown
        * away by a scan that had never seen it.
        */
-      const parsedSets: { path: string; project: AlsProject; order: string[] | null; orderNote?: string }[] = [];
+      const parsedSets: { path: string; project: AlsProject; order: string[] | null; orderNote?: string; included?: string[] }[] = [];
       for (const [index, file] of setFiles.entries()) {
         setScanProgress(`Reading Ableton set ${index + 1} of ${setFiles.length}…`);
         try {
@@ -743,6 +743,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
            */
           let order: string[] | null = null;
           let orderNote: string | undefined;
+          let included: string[] | undefined;
           let savedAt: number | null = null;
           const setlists = abletSetlistFiles(files, file.path);
           for (const candidate of setlists) {
@@ -750,7 +751,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const doc = await source.readJson<unknown>(candidate.path);
               const entries = doc ? parseAbleSetSetlist(doc.data) : null;
               if (!entries?.length) continue;
-              order = orderFromAbleSet(project, entries);
+              ({ order, included } = matchAbleSet(project, entries));
               savedAt = candidate.modified;
               const label = candidate.name.replace(/\.json$/i, '');
               orderNote =
@@ -767,8 +768,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (live) {
             order = live.titles;
             orderNote = live.note;
+            included = live.included;
           }
-          parsedSets.push({ path: file.path, project, order, orderNote });
+          /*
+           * A song AbleSet's setlist leaves out is not in the show, so it is
+           * left out of the studio: no library entry, nothing prepared or
+           * auto-updated. A setlist that names none of the set's songs —
+           * every locator renamed since — is taken as unreadable rather
+           * than as a show of nothing.
+           */
+          if (included && !included.length) included = undefined;
+          const keep = included ? new Set(included) : null;
+          const leftOut = keep ? [...new Set(project.songs.filter((s) => !keep.has(s.title)).map((s) => s.title))] : [];
+          if (leftOut.length) {
+            orderNote = `${orderNote ? `${orderNote.replace(/\.$/, '')}; ` : ''}${leftOut.length} song${leftOut.length === 1 ? '' : 's'} not on it left out (${leftOut.join(', ')}).`;
+          }
+          const scoped = keep ? { ...project, songs: project.songs.filter((s) => keep.has(s.title)) } : project;
+          parsedSets.push({ path: file.path, project: scoped, order, orderNote, included });
         } catch (err) {
           console.error('[rehearsal-tool-studio] could not read', file.path, err);
           readErrors.push(`${file.name} could not be read`);
@@ -841,9 +857,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          */
         const live = new Set(songs.map((s) => s.id));
         const alsSetlists = parsedSets
-          .map(({ path, project, order, orderNote }) =>
-            setlistFromProject(path, project, (id) => live.has(id), order, orderNote),
-          )
+          .map(({ path, project, order, orderNote, included }) => {
+            const sl = setlistFromProject(path, project, (id) => live.has(id), order, orderNote);
+            return included ? { ...sl, fromAbleSet: true, included } : sl;
+          })
           .filter((sl) => sl.songIds.length > 0);
         for (const { path, orderNote } of parsedSets) {
           if (orderNote) alsNotes.push(`${path.split('/').pop()}: ${orderNote.replace(/\.$/, '')}`);

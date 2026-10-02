@@ -688,7 +688,10 @@ export function syncSetlists(
         sl.name === fresh.name &&
         sl.songIds.length === fresh.songIds.length &&
         sl.songIds.every((id, i) => id === fresh.songIds[i]);
-      out.push(same ? sl : { ...sl, name: fresh.name, songIds: fresh.songIds, updatedAt: fresh.updatedAt });
+      // Whether AbleSet decides which songs are in the show follows every scan,
+      // without counting as a change of order.
+      const scope = { fromAbleSet: fresh.fromAbleSet, included: fresh.included };
+      out.push(same ? { ...sl, ...scope } : { ...sl, ...scope, name: fresh.name, songIds: fresh.songIds, updatedAt: fresh.updatedAt });
       continue;
     }
 

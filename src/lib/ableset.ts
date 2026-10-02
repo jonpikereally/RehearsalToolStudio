@@ -61,6 +61,18 @@ export function parseAbleSetSetlist(raw: unknown): AbleSetEntry[] | null {
  * after, as the set has them.
  */
 export function orderFromAbleSet(project: AlsProject, entries: AbleSetEntry[]): string[] {
+  return matchAbleSet(project, entries).order;
+}
+
+/**
+ * The setlist's order, and which of the set's songs it actually names.
+ *
+ * A song the setlist leaves out is not part of the show: it is kept out of
+ * the studio's library and never prepared or auto-updated (see
+ * scopeToSetlist). `order` still runs through every song, the unnamed last,
+ * for a caller that wants the whole set in order.
+ */
+export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { order: string[]; included: string[] } {
   const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
   const songs = project.songs.map((song, index) => ({
     song,
@@ -84,8 +96,28 @@ export function orderFromAbleSet(project: AlsProject, entries: AbleSetEntry[]): 
     const byName = key ? songs.find((s) => !placed.has(s.index) && s.key === key) : undefined;
     if (byName) take(byName.index);
   }
+  const included = [...order];
   for (const s of songs) if (!placed.has(s.index)) take(s.index);
-  return order;
+  return { order, included };
+}
+
+/**
+ * The set as the studio works on it: only the songs AbleSet's setlist names,
+ * when the last scan found that setlist. A song left off it is not in the
+ * show — it has no place in the library, and nothing prepares, refreshes or
+ * auto-updates it. Without such a setlist, the whole set, as before.
+ */
+export function scopeToSetlist(
+  project: AlsProject,
+  library: Library,
+  alsPath: string,
+): { project: AlsProject; left: string[] } {
+  const setlist = library.setlists.find((sl) => sl.id === setlistIdFor(alsPath));
+  if (!setlist?.fromAbleSet || !setlist.included?.length) return { project, left: [] };
+  const keep = new Set(setlist.included.map((t) => t.toLowerCase()));
+  const left = [...new Set(project.songs.filter((s) => !keep.has(s.title.toLowerCase())).map((s) => s.title))];
+  if (!left.length) return { project, left };
+  return { project: { ...project, songs: project.songs.filter((s) => keep.has(s.title.toLowerCase())) }, left };
 }
 
 /**
@@ -106,6 +138,8 @@ export interface RunningOrder {
   note: string;
   /** No order of AbleSet's was found for the set: these are the arrangement's. */
   missing?: boolean;
+  /** The songs AbleSet's setlist names, when it is AbleSet's order. */
+  included?: string[];
 }
 
 /**
@@ -139,8 +173,10 @@ export async function liveRunningOrder(
   const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName }));
   const when = asked || Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const setlist = live.setlistName ? ` (setlist “${live.setlistName}”)` : '';
+  const matched = matchAbleSet(project, entries);
   return {
-    titles: orderFromAbleSet(project, entries),
+    titles: matched.order,
+    included: matched.included,
     note: asked
       ? `Running order as AbleSet has it open right now${setlist}, saved or not.`
       : `Running order as AbleSet last wrote it down${when}, not yet saved${setlist}.`,
