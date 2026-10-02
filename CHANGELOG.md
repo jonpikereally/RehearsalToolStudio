@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-02
 
+**Find the vocal to transcribe by LV and BV too, and prefer Ref Vox**
+
+Set tools → Lyrics guesses which of a song's tracks to listen to from its name, and knew a vocal only as vox, vocal, voice, lead or sing. A set that calls its lead vocal REF LV matched none of them, so the guess fell to the song's first track — usually the whole record. Now LV is a lead vocal and BV (with backing and harmony) a backing one; a track called Ref Vox is taken first, then a lead vocal, and a backing vocal only when there is no lead. The Lyrics tab's preferred source track starts as Ref Vox, so a set with one per song opens on all of them read together.
+
 **Move Check for Updates into the Rehearsal Tool Studio menu**
 
 It sat at the bottom of the File menu, among the things the studio opens, where nobody looks for it. A Mac app keeps it in the menu named after the app, so that is where it goes now, at the top, above Hide and Quit — still ⌘U, and still retitled "Update Available — Install…" when GitHub is ahead.
