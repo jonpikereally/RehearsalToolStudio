@@ -5,7 +5,7 @@ import { holdAwake } from './keepAwake';
 import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
-import { folderOrder, mergeSongs, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult, type SilentPart } from './prepare';
+import { folderOrder, isSamplerStem, mergeSongs, prepareSet, samplerPartFor, songFolderBase, type PrepareProgress, type PrepareResult, type SilentPart } from './prepare';
 import { markPrepareRunning, prepareFinished } from './prepareState';
 import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedPart } from './preparedSet';
 import { SETS_FOLDER } from './prints';
@@ -56,6 +56,70 @@ export async function syncRunningOrder(
   const next = { ...manifest, songs };
   await local.writeFile(band, '', path, new Blob([JSON.stringify(next, null, 2)], { type: 'application/json' }));
   return true;
+}
+
+/** A click or cue whose samples cannot all be read, and what that costs. */
+export interface UnreadableSamples {
+  /** "Click" or "Cues", as the set has the part. */
+  part: string;
+  /** Sample file names that cannot be read. */
+  files: string[];
+  /** Songs that strike them. */
+  songs: string[];
+  /** True when none of the part's samples can be read: it is left out of those songs entirely. */
+  wholePart: boolean;
+}
+
+/**
+ * The set's click and cue samples that a prepare would fail to read — asked
+ * before it starts, the way it would ask: the sample beside the set, then by
+ * its absolute path. A sample outside the folders the studio may read is
+ * the usual reason: one the set's click strikes from a shared Resources
+ * folder nobody has allowed in Settings. Then a prepare leaves the click out
+ * of every song altogether, or plays cues with holes, and says so only in
+ * its list of what it skipped. Each file is tried once, however many songs
+ * strike it.
+ */
+export async function unreadableSamples(project: AlsProject, setPath: string): Promise<UnreadableSamples[]> {
+  const verdict = new Map<string, Promise<boolean>>();
+  const readable = (path: string, absPath: string | null): Promise<boolean> => {
+    const key = `${path}|${absPath ?? ''}`;
+    let found = verdict.get(key);
+    if (!found) {
+      const candidates = [resolveStemPath(setPath, path), absPath ? `abs:${absPath}` : null].filter((c): c is string => !!c);
+      found = (async () => {
+        for (const candidate of candidates) {
+          try {
+            await readBytes(candidate, undefined, undefined, { start: 0, end: 16 });
+            return true;
+          } catch {
+            /* the next place, if there is one */
+          }
+        }
+        return false;
+      })();
+      verdict.set(key, found);
+    }
+    return found;
+  };
+  const byPart = new Map<string, { files: Set<string>; songs: Set<string>; whole: boolean }>();
+  for (const song of project.songs) {
+    for (const stem of song.stems) {
+      if (!isSamplerStem(stem)) continue;
+      const built = samplerPartFor(stem);
+      if (!built) continue;
+      const sources = [...built.sources.values()];
+      const bad: string[] = [];
+      for (const source of sources) if (!(await readable(source.path, source.absPath))) bad.push(source.path.split('/').pop() ?? source.path);
+      if (!bad.length) continue;
+      const entry = byPart.get(stem.name) ?? { files: new Set<string>(), songs: new Set<string>(), whole: false };
+      for (const file of bad) entry.files.add(file);
+      entry.songs.add(song.title);
+      if (bad.length === sources.length) entry.whole = true;
+      byPart.set(stem.name, entry);
+    }
+  }
+  return [...byPart.entries()].map(([part, e]) => ({ part, files: [...e.files], songs: [...e.songs], wholePart: e.whole }));
 }
 
 /** Every song's audio key as it stands now, by title and by folder name. */
