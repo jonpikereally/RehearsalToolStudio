@@ -292,6 +292,12 @@ export interface Song {
    * app can write back to it — the id carries the same path, but lowercased.
    */
   setPath?: string;
+  /**
+   * Left off AbleSet's setlist for its set. Still listed, marked so, and
+   * playable here, but outside the show: not in the set's running order, and
+   * nothing prepares, refreshes or auto-updates it.
+   */
+  offSetlist?: true;
   /** Grouping name derived from the folder structure; editable. */
   project: string;
   artist?: string;
