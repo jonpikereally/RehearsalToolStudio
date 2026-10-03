@@ -83,10 +83,16 @@ launch, on coming back to it, every half hour — and when GitHub is ahead
 the menu item reads "Update Available — Install…" instead. Uncommitted changes, or commits here
 that are not on GitHub yet, are never pulled over; the launcher's log
 (`.studio-build.log`) says what happened either way. The packaged app from
-the installer has no checkout: its update is the newest installer, which it
-looks for on GitHub's Releases page the same way. When there is one, the menu
-item reads "Update Available — Install…"; it downloads the installer into
-Downloads, opens it in Installer and quits.
+the installer has no checkout: it looks for the newest release on GitHub's
+Releases page the same way, and when there is one the menu item reads
+"Update Available — Install…". That downloads the new app itself, which every
+release carries zipped beside the installer, and offers Restart Now: the
+studio quits, the new app is swapped in where it was, and it opens again —
+no Installer. The installer leaves the app belonging to whoever installed it,
+so the swap needs no password; a copy installed before it did belongs to the
+system, and that one swap asks for the password once. A release without the
+zip falls back to downloading the installer. What happened is in
+`~/Library/Logs/Rehearsal Tool Studio/update.log`.
 
 ## On another Mac
 
@@ -128,8 +134,8 @@ into Applications the way any installer does, asking for the admin password
 once. Installing a newer one over an older one replaces the app and keeps
 everything set up on that Mac. The app has a Node runtime, a finished build
 and its servers inside it and carries no path to anywhere; it never
-rebuilds, so a new build means a new installer — which the app finds on
-GitHub and installs itself, through Installer, from Check for Updates. For Lyrics Studio it
+rebuilds, so a new build means a new release — which the app finds on
+GitHub and swaps itself onto from Check for Updates, without Installer. For Lyrics Studio it
 carries Lyrics Studio's source and a copy of `uv`, which the first time it
 is opened fetches a Python and its dependencies — minutes, and the
 network, once.
