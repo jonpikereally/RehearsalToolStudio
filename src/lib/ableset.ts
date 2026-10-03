@@ -27,6 +27,21 @@ export interface AbleSetEntry {
   /** The locator's position, in beats from the start of the set. */
   time: number;
   name: string;
+  /** Listed, but switched off in AbleSet — disabled or skipped — so not in the show. */
+  off?: true;
+}
+
+/** AbleSet's flag for a song it lists but will not play, whatever it is called. */
+function isOff(item: Record<string, unknown>): boolean {
+  const flags = (o: unknown) => {
+    if (!o || typeof o !== 'object') return false;
+    const f = o as Record<string, unknown>;
+    return (
+      f.disabled === true || f.isDisabled === true || f.skip === true || f.skipped === true || f.hidden === true ||
+      f.excluded === true || f.muted === true || f.enabled === false || f.active === false
+    );
+  };
+  return flags(item) || flags(item.meta) || flags(item.cue);
 }
 
 /** The setlist files beside a set, newest saved first. */
@@ -46,7 +61,11 @@ export function parseAbleSetSetlist(raw: unknown): AbleSetEntry[] | null {
     if (!item || typeof item !== 'object') return null;
     const { time, lastKnownName } = item as { time?: unknown; lastKnownName?: unknown };
     if (typeof time !== 'number') return null;
-    out.push({ time, name: typeof lastKnownName === 'string' ? lastKnownName : '' });
+    out.push({
+      time,
+      name: typeof lastKnownName === 'string' ? lastKnownName : '',
+      ...(isOff(item as Record<string, unknown>) ? { off: true as const } : {}),
+    });
   }
   return out;
 }
@@ -82,21 +101,24 @@ export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { or
   }));
   const placed = new Set<number>();
   const order: string[] = [];
-  const take = (index: number) => {
+  // Listed but switched off in AbleSet: placed, so not matched again, but not in the show.
+  const off = new Set<string>();
+  const take = (index: number, entry?: AbleSetEntry) => {
     placed.add(index);
+    if (entry?.off) off.add(songs[index].song.title);
     if (!order.includes(songs[index].song.title)) order.push(songs[index].song.title);
   };
   for (const entry of entries) {
     const byBeat = songs.find((s) => !placed.has(s.index) && Math.abs(s.beat - entry.time) < 1e-3);
     if (byBeat) {
-      take(byBeat.index);
+      take(byBeat.index, entry);
       continue;
     }
     const key = songKey(entry.name);
     const byName = key ? songs.find((s) => !placed.has(s.index) && s.key === key) : undefined;
-    if (byName) take(byName.index);
+    if (byName) take(byName.index, entry);
   }
-  const included = [...order];
+  const included = order.filter((t) => !off.has(t));
   for (const s of songs) if (!placed.has(s.index)) take(s.index);
   return { order, included };
 }
@@ -170,7 +192,7 @@ export async function liveRunningOrder(
    */
   const asked = live.from === 'ableset';
   if (!asked && savedAt !== null && !Number.isNaN(at) && at <= savedAt) return null;
-  const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName }));
+  const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName, ...(e.off ? { off: true as const } : {}) }));
   const when = asked || Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const setlist = live.setlistName ? ` (setlist “${live.setlistName}”)` : '';
   const matched = matchAbleSet(project, entries);

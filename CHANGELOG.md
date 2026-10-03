@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Treat songs switched off in AbleSet as off the setlist**
+
+A song left off AbleSet's setlist was only noticed when the setlist left it out altogether. AbleSet can also keep a song in the list and switch it off — disabled, skipped — and that song was counted as in the show. A cue flagged so, on itself, its cue or its meta, in a saved setlist, in AbleSet's own answer or in its log, now keeps its place in the order but is marked off the setlist like a song it never named.
+
 **Move Lyrics Studio into Set tools and give it its own ffmpeg**
 
 The Lyrics tab is gone. Set tools ▸ Lyrics now does all of it: straight to lyric clips on the set, as before, or Lyrics Studio's own page — review, edit, align to pasted words, export — shown in the tool and opened on the set that is open. The Set tools are held once opened, the way the player is, so a queue Lyrics Studio is working through survives a look at another tab. Old links to /lyrics land on the tool.

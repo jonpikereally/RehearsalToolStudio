@@ -4964,6 +4964,12 @@ group('running order from AbleSet');
   {
     const { included } = matchAbleSet(project, entries);
     check('the setlist says which songs are in the show', included.join(' | ') === 'Fix You | Yellow | Clocks', included.join(' | '));
+    // A song AbleSet lists but has switched off is listed and not played.
+    const switched = parseAbleSetSetlist([...raw.slice(0, 2), { ...raw[2], disabled: true }]);
+    const offMatch = matchAbleSet(project, switched);
+    check('a song disabled in AbleSet is not in the show, though it keeps its place',
+      switched[2].off === true && offMatch.included.join(' | ') === 'Fix You | Yellow' && offMatch.order[2] === 'Clocks',
+      JSON.stringify(offMatch));
     const at = '/Band/Show/Show.als';
     const lib = (extra) => ({ setlists: [{ id: setlistIdFor(at), name: 'Show', songIds: [], updatedAt: 1, ...extra }] });
     const scoped = scopeToSetlist(project, lib({ fromAbleSet: true, included }), at);
@@ -5022,6 +5028,10 @@ group('running order from AbleSet');
     names(cues) === 'Two,One' && names({ setlist: { name: 'X', songs: cues } }) === 'Two,One'
       && names({ data: { cues } }) === 'Two,One' && cuesIn({ setlist: { name: 'X', songs: cues } })?.setlistName === 'X',
     [names(cues), names({ setlist: { name: 'X', songs: cues } }), names({ data: { cues } })].join(' | '));
+  {
+    const flagged = cuesIn([{ time: 4, name: 'On' }, { time: 8, name: 'Skipped', meta: { skip: true } }, { time: 12, name: 'Off', disabled: true }]);
+    check('a cue AbleSet has switched off says so', flagged.entries.map((e) => !!e.off).join() === 'false,true,true', JSON.stringify(flagged));
+  }
   check('and something that is not a setlist is not read as one',
     cuesIn({ settings: { volume: 1 } }) === null && cuesIn([{ name: 'no time here' }]) === null);
   // AbleSet's own answer: the locator's name is under the cue, a tidied one
