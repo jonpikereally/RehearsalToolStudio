@@ -7,7 +7,8 @@
 # check that it still builds, but publishes nothing.
 #
 # Each build is a release of its own, named by its commit and when it was
-# built, and the newest is always at the same address:
+# built, carrying the installer and the app zipped (what an installed app
+# updates itself from), and the newest is always at the same address:
 #   https://github.com/jonpikereally/RehearsalToolStudio/releases/latest/download/Rehearsal-Tool-Studio.pkg
 #
 # GitHub's Node is Apple silicon only, so the installer is too — as Lyrics
@@ -76,6 +77,8 @@ jobs:
           STAMP="$(basename "$PKG" .pkg | sed 's/^Rehearsal Tool Studio //')"
           # One name for every build, so the newest is always at the same link.
           cp "$PKG" "$RUNNER_TEMP/Rehearsal-Tool-Studio.pkg"
+          # The app itself, zipped: what an installed app updates itself from.
+          cp "$RUNNER_TEMP/out/$(basename "$PKG" .pkg).zip" "$RUNNER_TEMP/Rehearsal-Tool-Studio.zip"
           echo "stamp=$STAMP" >>"$GITHUB_OUTPUT"
           echo "built=$(date -u '+%Y-%m-%d %H:%M UTC')" >>"$GITHUB_OUTPUT"
           echo "tag=build-$(date -u '+%Y%m%d-%H%M')-$STAMP" >>"$GITHUB_OUTPUT"
@@ -84,14 +87,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Rehearsal-Tool-Studio-${{ steps.pkg.outputs.stamp }}
-          path: ${{ runner.temp }}/Rehearsal-Tool-Studio.pkg
+          path: |
+            ${{ runner.temp }}/Rehearsal-Tool-Studio.pkg
+            ${{ runner.temp }}/Rehearsal-Tool-Studio.zip
 
       - name: Publish it
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.pkg.outputs.tag }}" "$RUNNER_TEMP/Rehearsal-Tool-Studio.pkg" \
+          gh release create "${{ steps.pkg.outputs.tag }}" "$RUNNER_TEMP/Rehearsal-Tool-Studio.pkg" "$RUNNER_TEMP/Rehearsal-Tool-Studio.zip" \
             --target "$GITHUB_SHA" --latest \
             --title "Rehearsal Tool Studio — build ${{ steps.pkg.outputs.stamp }} (${{ steps.pkg.outputs.built }})" \
             --notes "Build **${{ steps.pkg.outputs.stamp }}**, built ${{ steps.pkg.outputs.built }} from $(git log -1 --format='%s' "$GITHUB_SHA").
@@ -99,5 +104,7 @@ jobs:
           Download **Rehearsal-Tool-Studio.pkg** below and double-click it. Installer puts Rehearsal Tool Studio into Applications, with Lyrics Studio inside it, in Set tools ▸ Lyrics. Apple silicon Macs.
 
           Nothing here carries a Developer ID, so the first time macOS refuses it: System Settings → Privacy & Security → **Open Anyway**.
+
+          Already installed? The app updates itself from **Rehearsal-Tool-Studio.zip**: Rehearsal Tool Studio ▸ Update Available — Install… restarts it on the new build. No need to download anything here.
 
           What changed is in [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$GITHUB_SHA/CHANGELOG.md)."
