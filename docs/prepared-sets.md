@@ -326,7 +326,8 @@ way a hand-made folder would.
 | `fromSet` | no | the `.als` it came from, relative to the Studio's sets folder; absent when written by hand |
 | `session` | no | the Ableton session that feeds this folder, as its absolute path on the Mac the Studio runs on — what the Studio opens when the folder is chosen at launch. The Studio's own; ignore it |
 | `paddingSec` | no | the encoder lead-in for this run, in seconds |
-| `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order |
+| `songs` | yes, a list | one entry per song folder, in the running order: AbleSet's setlist when the project keeps one, the arrangement's otherwise. Play them in this order, leaving out any marked `offSetlist` |
+| `songs[].offSetlist` | no | `true` when the song is not on the set's running order — taken off AbleSet's setlist, or gone from the set. Its folder and files are kept, and its entry sits after every song that is on it. **Leave it out of the set**: not in the running order, not counted, not offered. Absent for every song in the show; a song put back loses it |
 | `songs[].folder` | yes | the song folder's name, relative to the set folder, as it is now; how the entry is matched to the scanned song, case-insensitively |
 | `songs[].title` | no | the song's title, in case the folder name had to be cleaned. Prefer it to the folder name |
 | `songs[].renderedAt` | no | when the song's **stems** were last rendered, ISO; the folder name carries the day. A submix pass does not move it |
@@ -365,8 +366,11 @@ Rules the reader follows, and a writer can rely on:
   library file does not churn on every scan.
 - **Partial runs merge.** Preparing one song reads the manifest already in
   the folder, replaces that song's entry, keeps every other, and writes the
-  whole back in set order. Songs no longer in the set keep their entry at the
-  end rather than being dropped, because their files are still there.
+  whole back in set order. Songs no longer in the set — left off AbleSet's
+  setlist, or gone from the set — keep their entry at the end, marked
+  `offSetlist: true`, rather than being dropped, because their files are
+  still there. A change to the setlist alone (a song taken off, put back, or
+  moved) rewrites `set.json` with no audio written.
 
 ## `song.json`
 
@@ -437,7 +441,8 @@ manifest's `songs[]` order — AbleSet's where the project keeps one — is
 what the band plays in, and a library of songs alone would lose it; so each
 set under `Sets/` is a setlist too, `{id, name, songIds, notes, updatedAt}`:
 `id` is `set:` and the set folder's path lowercased, `name` the set folder's
-name, `songIds` the library ids of its songs in the order to play them,
+name, `songIds` the library ids of its songs in the order to play them —
+never a song marked `offSetlist`, which is in the library but not the set —
 `updatedAt` the prepare's time. Rebuilt on every publish; a setlist whose id
 does not start with `set:` is somebody's own and is left as it was.
 
@@ -520,7 +525,9 @@ saying who wrote last.
 10. Read `song.json` inside a song folder for that song alone, when the set's
    manifest is not to hand or the stems' facts are wanted.
 11. **Show a set's songs in its running order, never alphabetically**: the
-   library's `set:` setlist for it, or `set.json`'s `songs[]`, which agree.
+   library's `set:` setlist for it, or `set.json`'s `songs[]` without the
+   entries marked `offSetlist`, which agree. A song marked `offSetlist` is
+   not in the set: don't show it there.
    The alphabet is for a search box.
 12. Say how fresh a song's audio is from `renderedAt` (its stems) and
    `submixesAt` (its submixes), and a part's own from its `renderedAt`. They

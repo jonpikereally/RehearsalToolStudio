@@ -3175,6 +3175,17 @@ group('preparing part of a set');
   const orphan = mergeSongs([song('Gone {90}')], [song('Yellow {80}')], order);
   check('a song no longer in the set is kept, at the end',
     orphan.map((s) => s.folder).join() === 'Yellow {80},Gone {90}', orphan.map((s) => s.folder).join());
+  check('and marked off the setlist, the rest not',
+    orphan[1].offSetlist === true && !('offSetlist' in orphan[0]), JSON.stringify(orphan));
+  // Taken off AbleSet's setlist, then put back: the mark comes and goes, the entry stays.
+  const off = mergeSongs(after, [], ['Yellow {80}', 'Fix You {136}']);
+  check('a song taken off the setlist keeps its entry, marked, at the end',
+    off.length === 3 && off[2].folder === 'Clocks {131}' && off[2].offSetlist === true && off[2].tempoMap?.[0].bpm === 131,
+    JSON.stringify(off.map((s) => [s.folder, s.offSetlist])));
+  const back = mergeSongs(off, [], order);
+  check('put back, it loses the mark and takes its place again',
+    back.map((s) => s.folder).join(' | ') === order.join(' | ') && back.every((s) => !('offSetlist' in s)),
+    JSON.stringify(back.map((s) => [s.folder, s.offSetlist])));
 
   check('a first run with nothing before it is just what it wrote',
     mergeSongs([], [song('Yellow {80}')], order).length === 1);
@@ -4371,6 +4382,12 @@ group('the running order the band is given');
   check('named for its folder and dated from the prepare',
     out[1].name === 'Fri' && out[1].id === 'set:sets/fri' && out[1].updatedAt === Date.parse('2026-09-06T14:02:23.072Z'));
   check('a song the manifest names but the folder lacks is left out', !out[1].songIds.some((id) => /gone/.test(id)));
+  {
+    const marked = { ...manifest, songs: manifest.songs.map((e) => (e.folder.startsWith('august') ? { ...e, offSetlist: true } : e)) };
+    const got = setlistsFromManifests(songs, [{ path: 'Sets/Fri/set.json', manifest: marked }], []);
+    check('a song marked off the setlist has no place in the set’s order',
+      got[0].songIds.join('|') === [songs[1].id, songs[0].id].join('|'), JSON.stringify(got[0].songIds));
+  }
   check('a setlist made by hand stays; the set’s earlier one is replaced', out[0] === hand);
   check('a manifest not the studio’s makes no setlist',
     setlistsFromManifests(songs, [{ path: 'Sets/X/set.json', manifest: { preparedBy: 'someone', songs: [] } }], []).length === 0);

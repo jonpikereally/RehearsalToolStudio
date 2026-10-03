@@ -3,7 +3,9 @@ import { autoUpdates, useStore } from '../lib/store';
 import { parseAls } from '../lib/alsParser';
 import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
-import { audioKeysFor, runPrepare, standingFor, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
+import { audioKeysFor, runPrepare, standingFor, syncRunningOrder, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
+import { publishLibrary } from '../lib/publish';
+import { SETS_FOLDER } from '../lib/prints';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
@@ -128,6 +130,16 @@ export default function AutoUpdate() {
          */
         const held = auto.stems ? [] : changed;
         if (!selected.length && !behind.length && refresh === 'none') {
+          /*
+           * No song to write, but the setlist itself may have moved: a song
+           * taken off it, put back or moved. That is the band's set.json and
+           * nothing else, and it is kept up whichever jobs are switched on.
+           */
+          const songOrder = runningOrderTitles(libraryRef.current, currentSet) ?? undefined;
+          if (await syncRunningOrder(band, `${SETS_FOLDER}/${folderName}`, project, songOrder).catch(() => false)) {
+            await publishLibrary(band).catch(() => undefined);
+            note({ kind: 'updated', session: setName, set: folderName, text: `The running order in “${folderName}” now follows AbleSet's setlist.` });
+          }
           if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at, held });
           return;
         }
