@@ -152,6 +152,21 @@ export function cuesIn(doc, name = '', depth = 0) {
   return null;
 }
 
+/**
+ * AbleSet's own answer gives the order on its screen, but may say nothing of
+ * which songs are skipped; its log says, since every skip is written there.
+ * When the answer marks none, the skips come from the log's newest order of
+ * the same setlist, matched by position and then by name.
+ */
+export function withSkipsFrom(live, logged) {
+  if (!logged?.entries?.length || live.entries.some((e) => e.off)) return live;
+  if (live.setlistName && logged.setlistName && live.setlistName !== logged.setlistName) return live;
+  const off = logged.entries.filter((e) => e.off);
+  if (!off.length) return live;
+  const isOff = (e) => off.some((o) => Math.abs(o.time - e.time) < 1e-3) || off.some((o) => o.lastKnownName && o.lastKnownName === e.lastKnownName);
+  return { ...live, entries: live.entries.map((e) => (isOff(e) ? { off: true, ...e } : e)) };
+}
+
 export function liveSetlistFromLog(text) {
   let found = null;
   for (const line of text.split('\n')) {
@@ -710,14 +725,7 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           .then(() => writeFile(join(dir, 'ableset-setlist.json'), JSON.stringify(raw, null, 2).slice(0, 2_000_000)))
           .catch(() => {});
       };
-      const live = await liveSetlistFromApi();
-      if (live) {
-        const { raw, ...rest } = live;
-        keep(raw);
-        return { found: true, ...rest, from: 'ableset', projectFile, applies };
-      }
-
-      // Otherwise the newest order it happened to write down, across launches.
+      // The newest order AbleSet happened to write down, across launches.
       let best = null;
       for (const name of ['ableset', 'AbleSet']) {
         const logs = join(support, name, 'logs');
@@ -737,9 +745,15 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           if (!best || Date.parse(found.at ?? 0) > Date.parse(best.at ?? 0)) best = found;
         }
       }
+      const live = await liveSetlistFromApi();
+      if (live) {
+        const { raw, ...rest } = live;
+        keep({ ableset: raw, log: best?.raw ?? null });
+        return { found: true, ...withSkipsFrom(rest, best), from: 'ableset', projectFile, applies };
+      }
       if (best) {
         const { raw, ...rest } = best;
-        keep(raw);
+        keep({ ableset: null, log: raw });
         return { found: true, ...rest, from: 'log', projectFile, applies };
       }
       return { found: false, projectFile };
