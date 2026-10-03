@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Update the installed app from GitHub's newest installer**
+
+The app from the installer has no checkout, so it never looked for an update: a new build meant noticing one on GitHub and downloading it by hand. Now it looks itself, on launch, on coming back to it and every half hour, at which installer GitHub's Releases page has as latest — by the build in its tag, held against the build inside this app — and Check for Updates reads "Update Available — Install…" when there is a newer one. Installing downloads the .pkg into Downloads, says what will happen, and on agreement opens it in Installer and quits, so Installer can put the new app in its place. The development app still updates from its checkout.
+
 **Warn before preparing when the click or cue samples can't be read**
 
 A click is written as its samples and where they fall, and its samples usually live in a shared Resources folder outside the set's. When the studio had not been allowed that folder, a prepare could read none of them, left the click out of every song, and said so only in its list of what it skipped — the first anyone knew was a band site with no click. Now the Prepare window tries each click and cue sample as soon as the set is read, the way a prepare would, and says up front which part will be left out or which cues will be silent, in which songs, and which files it cannot read — with a button to allow their folder there and then. It asks again whenever a folder is allowed.

@@ -118,6 +118,8 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
     /// How many commits GitHub is ahead by, as of the last look; 0 when level or unknown.
     var behind = 0
     var lastLook = Date.distantPast
+    /// The packaged app's newer release on GitHub, as of the last look: its build and when it was built.
+    var newerRelease: (stamp: String, builtAt: Date)?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -536,12 +538,16 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
      * every ten minutes), every half hour, and after an update — so the
      * app menu can say "Update Available" rather than wait to be asked.
      * A fetch is all it does; pulling is the launcher's, when asked. The
-     * packaged app has no checkout and never looks.
+     * packaged app has no checkout: it asks GitHub's releases instead (see
+     * lookForRelease), and its update is the newest installer.
      */
     func lookForUpdates(throttled: Bool = false) {
-        guard !packaged else { return }
         if throttled && Date().timeIntervalSince(lastLook) < 10 * 60 { return }
         lastLook = Date()
+        if packaged {
+            lookForRelease()
+            return
+        }
         DispatchQueue.global(qos: .utility).async {
             let count = self.commitsBehindGitHub()
             DispatchQueue.main.async {
@@ -593,6 +599,10 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
 
     func runUpdateCheck() {
         guard !checking else { return }
+        if packaged {
+            installRelease()
+            return
+        }
         checking = true
         retitleUpdates()
         let before = loadedBuild
@@ -622,6 +632,121 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                 }
                 alert.runModal()
             }
+        }
+    }
+
+    // MARK: - The packaged app: updated from the installer GitHub builds.
+
+    /*
+     * The packaged app has no checkout to pull, so its update is the
+     * installer: every change to main publishes one as a GitHub release,
+     * tagged build-<yyyymmdd>-<hhmm>-<commit>, and the newest is always at
+     * releases/latest. A look asks GitHub which tag that is — a redirect, no
+     * API and no rate limit — and holds it against the build inside this
+     * app. Installing downloads the .pkg, opens it in Installer and quits, so
+     * Installer can put the new app where this one is.
+     */
+    let releasesLatest = URL(string: "https://github.com/jonpikereally/RehearsalToolStudio/releases/latest")!
+    let latestInstaller = URL(string: "https://github.com/jonpikereally/RehearsalToolStudio/releases/latest/download/Rehearsal-Tool-Studio.pkg")!
+
+    /// The build inside this app, and when it was built, from its build.json.
+    func ownBuild() -> (stamp: String, builtAt: Date?)? {
+        guard let data = FileManager.default.contents(atPath: "\(resources)/dist/build.json"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let stamp = json["build"] as? String else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let when = (json["builtAt"] as? String).flatMap { iso.date(from: $0) ?? ISO8601DateFormatter().date(from: $0) }
+        return (stamp, when)
+    }
+
+    /// A release tag's build and time: build-20261002-2225-2f46e23.
+    func parseReleaseTag(_ tag: String) -> (stamp: String, builtAt: Date)? {
+        let parts = tag.split(separator: "-").map(String.init)
+        guard parts.count == 4, parts[0] == "build" else { return nil }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = TimeZone(identifier: "UTC")
+        format.dateFormat = "yyyyMMddHHmm"
+        guard let when = format.date(from: parts[1] + parts[2]) else { return nil }
+        return (parts[3], when)
+    }
+
+    func lookForRelease(then done: (() -> Void)? = nil) {
+        var request = URLRequest(url: releasesLatest, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.httpMethod = "HEAD"
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            // Followed to the release's own page, whose last path part is its tag.
+            let tag = response?.url?.lastPathComponent ?? ""
+            let found = self.parseReleaseTag(tag)
+            DispatchQueue.main.async {
+                if let found, let own = self.ownBuild(), found.stamp != own.stamp,
+                   own.builtAt.map({ found.builtAt > $0.addingTimeInterval(-60) }) ?? true {
+                    if self.newerRelease?.stamp != found.stamp { self.note("GitHub has a newer installer: build \(found.stamp)") }
+                    self.newerRelease = found
+                    self.behind = 1
+                } else if response != nil {
+                    // Asked and answered: level, or older. Unanswered leaves what was known.
+                    self.newerRelease = nil
+                    self.behind = 0
+                }
+                self.retitleUpdates()
+                done?()
+            }
+        }.resume()
+    }
+
+    func installRelease() {
+        checking = true
+        retitleUpdates()
+        lookForRelease { [self] in
+            guard let release = newerRelease else {
+                checking = false
+                retitleUpdates()
+                // Up to date: the page says so when it asked, else a dialog does.
+                if pageReady {
+                    tell("studio:checked", ["build": loadedBuild ?? ""])
+                } else {
+                    let alert = NSAlert()
+                    alert.messageText = "The studio is up to date."
+                    alert.informativeText = "Build \(ownBuild().map { label($0.stamp) } ?? "unknown"). New versions arrive as installers on GitHub."
+                    alert.runModal()
+                }
+                return
+            }
+            updatesItem?.title = "Downloading the update…"
+            URLSession.shared.downloadTask(with: latestInstaller) { [self] file, response, error in
+                let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+                var saved: URL?
+                if let file, ok {
+                    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                        ?? FileManager.default.temporaryDirectory
+                    let target = downloads.appendingPathComponent("Rehearsal Tool Studio \(release.stamp).pkg")
+                    try? FileManager.default.removeItem(at: target)
+                    if (try? FileManager.default.moveItem(at: file, to: target)) != nil { saved = target }
+                }
+                DispatchQueue.main.async { [self] in
+                    checking = false
+                    retitleUpdates()
+                    guard let saved else {
+                        let alert = NSAlert()
+                        alert.messageText = "The update didn't download."
+                        alert.informativeText = error?.localizedDescription
+                            ?? "GitHub didn't send the installer. It is also at \(latestInstaller.absoluteString)."
+                        alert.runModal()
+                        return
+                    }
+                    note("downloaded build \(release.stamp) to \(saved.path); opening Installer and quitting")
+                    let alert = NSAlert()
+                    alert.messageText = "Build \(release.stamp) is ready to install."
+                    alert.informativeText = "The studio quits and Installer opens. Click through it and give your password; then open the studio again. Your folders and settings are kept."
+                    alert.addButton(withTitle: "Install and Quit")
+                    alert.addButton(withTitle: "Later")
+                    guard alert.runModal() == .alertFirstButtonReturn else { return }
+                    NSWorkspace.shared.open(saved)
+                    NSApp.terminate(nil)
+                }
+            }.resume()
         }
     }
 
