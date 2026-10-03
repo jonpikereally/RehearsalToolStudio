@@ -87,6 +87,20 @@ export const OWN_SET_COPY = /( \((slates|chords|info|rig|lyrics|rehearsaltool)\)
  * whatever the answer is wrapped in, so a change to AbleSet's shape leaves
  * the log to fall back on rather than breaking this.
  */
+/**
+ * A song AbleSet lists but has switched off — disabled, skipped, hidden —
+ * is listed and not played: not in the show. Read liberally, across the
+ * names such a flag could have, on the cue and on what it carries.
+ */
+export function isOffInAbleSet(m) {
+  const flags = (o) =>
+    !!o &&
+    typeof o === 'object' &&
+    (o.disabled === true || o.isDisabled === true || o.skip === true || o.skipped === true ||
+      o.hidden === true || o.excluded === true || o.muted === true || o.enabled === false || o.active === false);
+  return flags(m) || flags(m?.meta) || flags(m?.cue);
+}
+
 export async function liveSetlistFromApi(ports = [80, 3000, 3001]) {
   for (const port of ports) {
     let doc;
@@ -101,7 +115,7 @@ export async function liveSetlistFromApi(ports = [80, 3000, 3001]) {
       continue; // not there, or not answering: the log will do
     }
     const found = cuesIn(doc);
-    if (found?.entries.length) return { at: new Date().toISOString(), ...found };
+    if (found?.entries.length) return { at: new Date().toISOString(), ...found, raw: doc };
   }
   return null;
 }
@@ -115,6 +129,7 @@ export function cuesIn(doc, name = '', depth = 0) {
       .filter((m) => m && typeof m === 'object' && typeof m.time === 'number')
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((m) => ({
+        ...(isOffInAbleSet(m) ? { off: true } : {}),
         time: m.time,
         // AbleSet's own answer carries the locator's name under the cue, and
         // a tidied one beside it; its log carries `lastKnownName`. The raw
@@ -148,8 +163,12 @@ export function liveSetlistFromLog(text) {
       const entries = map
         .filter((m) => m && typeof m.time === 'number')
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((m) => ({ time: m.time, lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : '' }));
-      if (entries.length) found = { at: entry.timestamp ?? null, setlistName: entry.body.setlistName ?? '', entries };
+        .map((m) => ({
+          ...(isOffInAbleSet(m) ? { off: true } : {}),
+          time: m.time,
+          lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : '',
+        }));
+      if (entries.length) found = { at: entry.timestamp ?? null, setlistName: entry.body.setlistName ?? '', entries, raw: map };
     } catch {
       /* a line that is not JSON is not the one */
     }
@@ -680,8 +699,23 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       }
       const applies = !!projectFile && dirname(resolve(projectFile)) === dirname(full);
       // AbleSet itself first, while it is running: what it says is now.
+      /*
+       * What AbleSet said, as it said it, kept beside the logs: its shape is
+       * not documented, and this is how a misreading gets put right.
+       */
+      const keep = (raw) => {
+        if (raw === undefined) return;
+        const dir = join(homedir(), 'Library', 'Logs', 'Rehearsal Tool Studio');
+        mkdir(dir, { recursive: true })
+          .then(() => writeFile(join(dir, 'ableset-setlist.json'), JSON.stringify(raw, null, 2).slice(0, 2_000_000)))
+          .catch(() => {});
+      };
       const live = await liveSetlistFromApi();
-      if (live) return { found: true, ...live, from: 'ableset', projectFile, applies };
+      if (live) {
+        const { raw, ...rest } = live;
+        keep(raw);
+        return { found: true, ...rest, from: 'ableset', projectFile, applies };
+      }
 
       // Otherwise the newest order it happened to write down, across launches.
       let best = null;
@@ -703,7 +737,11 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           if (!best || Date.parse(found.at ?? 0) > Date.parse(best.at ?? 0)) best = found;
         }
       }
-      if (best) return { found: true, ...best, from: 'log', projectFile, applies };
+      if (best) {
+        const { raw, ...rest } = best;
+        keep(raw);
+        return { found: true, ...rest, from: 'log', projectFile, applies };
+      }
       return { found: false, projectFile };
     },
 
