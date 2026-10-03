@@ -96,7 +96,7 @@ async function proxyLyrics(req, res, rest) {
   const port = await findLyricsPort();
   if (!port) {
     res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-    return res.end('Lyrics Studio is not running. Open it from the Lyrics tab, which starts it.');
+    return res.end('Lyrics Studio is not running. Open it from Set tools ▸ Lyrics, which starts it.');
   }
   const headers = { ...req.headers, host: `127.0.0.1:${port}` };
   // Same-origin here, so no CORS is wanted of the engine for it.

@@ -43,15 +43,16 @@ with its own repo. This one is only Rehearsal Tool Studio.
   the way a song already in the set is, and a printable setlist whose
   durations come from the arrangement.
   Everything writes to a copy, never the original.
-- **Lyrics Studio.** The Lyrics tab: transcribe a recording or a track of a
-  set on this Mac with Whisper, line the words up with lyrics you paste, and
-  save them as timed MIDI clips, a `.mid`, `.txt` or `.srt`. It is part of the
-  studio, not an app of its own; the Set tools hand a set straight to it.
+- **Lyrics Studio.** Set tools ▸ Lyrics: transcribe a recording or a track
+  of a set on this Mac with Whisper, line the words up with lyrics you paste,
+  check and edit them, and save them as timed MIDI clips, a `.mid`, `.txt` or
+  `.srt` — or go straight to lyric clips on the set. It is part of the
+  studio, not an app or a tab of its own.
 - **Prints a mix** to a file, and drives nothing: this window has no Web MIDI.
 
 ## Installing it
 
-Needs Node, `uv` (for the Lyrics tab) and the command line tools (`xcode-select
+Needs Node, `uv` (for Lyrics Studio) and the command line tools (`xcode-select
 --install`) — not Xcode.
 
 ```bash
@@ -60,7 +61,7 @@ bash scripts/make-mac-apps.sh
 ```
 
 That builds **Rehearsal Tool Studio.app** into `/Applications` — Lyrics
-Studio is inside it, as the Lyrics tab, and a separate Lyrics Studio.app from
+Studio is inside it, in Set tools ▸ Lyrics, and a separate Lyrics Studio.app from
 an earlier install is removed. Run it from a normal terminal, not a sandboxed agent: macOS
 refuses apps stamped with a sandbox's provenance. Run it again if this folder
 moves, since the studio app carries the repo's path.
@@ -128,9 +129,9 @@ once. Installing a newer one over an older one replaces the app and keeps
 everything set up on that Mac. The app has a Node runtime, a finished build
 and its servers inside it and carries no path to anywhere; it never
 rebuilds, so a new build means a new installer — which the app finds on
-GitHub and installs itself, through Installer, from Check for Updates. For the Lyrics tab it
-carries Lyrics Studio's source and a copy of `uv`, which the first time the
-tab is opened fetches a Python and its dependencies — minutes, and the
+GitHub and installs itself, through Installer, from Check for Updates. For Lyrics Studio it
+carries Lyrics Studio's source and a copy of `uv`, which the first time it
+is opened fetches a Python and its dependencies — minutes, and the
 network, once.
 
 Nothing here carries a Developer ID. A copy that arrives by Dropbox sync
@@ -159,7 +160,7 @@ Rehearsal Tool Studio.app        a WebKit window (mac/RehearsalToolStudio/)
         └─ scripts/slate-helper.mjs   spoken slates via `say`, on 5175
 
 lyrics-studio/server.py          Lyrics Studio's engine (Python, Whisper), started by the
-                                 studio when the Lyrics tab first needs it
+                                 studio when Set tools ▸ Lyrics first needs it
 ```
 
 A WebKit window has no File System Access API, so the page never touches the
@@ -175,14 +176,14 @@ newer build on focus and offers a reload. Settings shows the build and when it
 was made. A failed build serves the previous one and says why in
 `.studio-build.log`.
 
-Lyrics Studio is part of the studio: its page is the Lyrics tab, inside the
-studio's window. The listening is Python — Whisper on Apple's MLX — so it
+Lyrics Studio is part of the studio: its page is in Set tools ▸ Lyrics, inside
+the studio's window. The listening is Python — Whisper on Apple's MLX — so it
 still runs as a server of its own (`lyrics-studio/`, on 8765 or the next free
 port when another app holds that one), but the studio starts it, and the
 studio's server passes `/lyrics-studio/` through to it so the page shares the
 studio's origin. A transcription is started and then asked after, since
 WebKit cuts off a request left unanswered for a minute. Left idle for twenty
-minutes the engine stops itself, giving back Whisper's memory; the tab starts
+minutes the engine stops itself, giving back Whisper's memory; opening it starts
 it again. Links out of the studio window go to the default browser.
 
 ## Working on it

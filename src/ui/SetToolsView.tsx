@@ -35,7 +35,8 @@ import UpdatePreparedPanel from './UpdatePreparedPanel';
 import CheckSetPanel from './CheckSetPanel';
 import NewSongsPanel from './NewSongsPanel';
 import { useStore } from '../lib/store';
-import { navigate, useRoute } from '../lib/router';
+import { useRoute } from '../lib/router';
+import LyricsStudioView from './LyricsStudioView';
 import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
 import { locatePrepared } from '../lib/locatePrepared';
@@ -61,7 +62,7 @@ const LS_LOCATORS_FORMAT = 'ls.settools.locators.format';
 const LS_LOCATORS_TRACK = 'ls.settools.locators.track';
 const LS_RETURN = 'ls.settools.return';
 
-export default function SetToolsView() {
+export default function SetToolsView({ shown = true }: { shown?: boolean }) {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
   const [setPath, setSetPath] = useState<string | null>(null);
   const [project, setProject] = useState<AlsProject | null>(null);
@@ -75,7 +76,33 @@ export default function SetToolsView() {
   type Tool = 'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'stems' | 'patches' | 'setlist' | 'update';
   /* Asked for by name — the launch sends a new session from stems straight here — else the first that applies. */
   const askedTool = useRoute().query.get('tool');
-  const [tool, setTool] = useState<Tool>(askedTool === 'stems' && currentSet ? 'stems' : currentSet ? 'check' : 'slates');
+  const [tool, setTool] = useState<Tool>(
+    askedTool === 'stems' && currentSet ? 'stems' : askedTool === 'lyrics' ? 'lyrics' : currentSet ? 'check' : 'slates',
+  );
+  /*
+   * The Lyrics tool, two ways: straight to clips on the set, or Lyrics
+   * Studio's own page — review, edit, align to pasted words, export — shown
+   * here in the tool rather than as a tab of its own. Held once opened, so a
+   * queue it is listening to survives a look at another tool.
+   */
+  const [lyricsMode, setLyricsMode] = useState<'quick' | 'studio'>(() => {
+    try {
+      return localStorage.getItem('ls.settools.lyricsMode') === 'studio' ? 'studio' : 'quick';
+    } catch {
+      return 'quick';
+    }
+  });
+  const [studioOpened, setStudioOpened] = useState(false);
+  const [studioHandoff, setStudioHandoff] = useState('');
+  const handedOff = useRef<string | null>(null);
+  const studioShown = tool === 'lyrics' && (lyricsMode === 'studio' || !project);
+  // Held between visits, so a tool asked for by name is switched to, not only read at the start.
+  useEffect(() => {
+    if (askedTool === 'lyrics' || (askedTool === 'stems' && currentSet)) setTool(askedTool);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedTool]);
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
   /*
    * Song info clips: which facts, remembered on this device, and whether the
    * clip runs the song or only its first bar.
@@ -162,7 +189,7 @@ export default function SetToolsView() {
     remember('ls.settools.chordTargets', kept.join(','));
   };
   const [progress, setProgress] = useState<string | null>(null);
-  /* The lyrics tab: which song, which of its tracks, and how finely to cut the words. */
+  /* The Lyrics tool: which song, which of its tracks, and how finely to cut the words. */
   const [lyricSong, setLyricSong] = useState('');
   const [lyricTrack, setLyricTrack] = useState('');
   const [lyricFineness, setLyricFineness] = useState<LyricFineness>(
@@ -295,7 +322,10 @@ export default function SetToolsView() {
   }, [setSaved?.at, folder, setPath, progress]);
 
   useEffect(() => {
-    const back = () => void freshen();
+    // Held while another tab is up; only the tools on screen read the set again.
+    const back = () => {
+      if (shownRef.current) void freshen();
+    };
     window.addEventListener('focus', back);
     return () => window.removeEventListener('focus', back);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -722,7 +752,7 @@ export default function SetToolsView() {
   };
 
   /*
-   * The lyrics tab's choices, made good: the song is the one chosen, else
+   * The Lyrics tool's choices, made good: the song is the one chosen, else
    * the first being worked on; the track is the one chosen, else one called
    * "Ref Vox", else the record's own lead vocal, else any lead vocal, else a
    * backing vocal, else the first — a name is all there is to go on, and
@@ -825,12 +855,30 @@ export default function SetToolsView() {
         als_size: String(stat.size),
         als_mtime: String(stat.modified),
       });
-      // Its own page, in the studio's Lyrics tab, opened on this set.
-      navigate('/lyrics', Object.fromEntries(query));
+      // Its own page, here in the tool, opened on this set.
+      handedOff.current = setPath;
+      setStudioHandoff(query.toString());
+      chooseLyricsMode('studio');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const chooseLyricsMode = (mode: 'quick' | 'studio') => {
+    setLyricsMode(mode);
+    remember('ls.settools.lyricsMode', mode);
+  };
+
+  useEffect(() => {
+    if (studioShown) setStudioOpened(true);
+  }, [studioShown]);
+
+  // The set open here is the one Lyrics Studio is opened on, once per set.
+  useEffect(() => {
+    if (!studioShown || !setPath || !folder || handedOff.current === setPath) return;
+    void sendToLyricsStudio();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studioShown, setPath, folder]);
 
   const ready = voices !== null && voices.length > 0 && !!voice;
 
@@ -1003,6 +1051,27 @@ export default function SetToolsView() {
         </nav>
 
         <div id="settool-panel" className="tool-panel" role="tabpanel" aria-labelledby={`settool-${tool}`}>
+          {tool === 'lyrics' && (
+            <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className={!studioShown ? 'chip on' : 'chip'}
+                aria-pressed={!studioShown}
+                disabled={!project || !!progress}
+                onClick={() => chooseLyricsMode('quick')}
+                title={project ? undefined : 'Needs a set'}
+              >
+                Straight to lyric clips
+              </button>
+              <button
+                className={studioShown ? 'chip on' : 'chip'}
+                aria-pressed={studioShown}
+                disabled={!!progress}
+                onClick={() => chooseLyricsMode('studio')}
+              >
+                Review and edit (Lyrics Studio)
+              </button>
+            </div>
+          )}
           {project && (
             <>
               {tool === 'update' && (
@@ -1057,7 +1126,7 @@ export default function SetToolsView() {
                 </>
               )}
 
-              {tool === 'lyrics' && (
+              {tool === 'lyrics' && !studioShown && (
                 <>
                   <div className="controls flush" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span className="control-label">Song</span>
@@ -1139,8 +1208,8 @@ export default function SetToolsView() {
                         ? `Transcribe “${lyricStem.name}” of ${lyricSongObj.title} and write lyric clips`
                         : 'Choose a song with audio tracks'}
                     </button>
-                    <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="Lyrics Studio's own page, in the Lyrics tab, for its own workflow">
-                      Open Lyrics Studio instead
+                    <button className="btn" disabled={!!progress} onClick={() => void sendToLyricsStudio()} title="Lyrics Studio's own page, here, to check and edit the words before they are written">
+                      Review and edit in Lyrics Studio instead
                     </button>
                   </div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
@@ -1567,6 +1636,8 @@ export default function SetToolsView() {
           {error && <div className="notice error">{error}</div>}
 
           {tool === 'slates' && <SlatesPanel />}
+
+          {studioOpened && <LyricsStudioView shown={studioShown} handoff={studioHandoff} />}
         </div>
       </div>
     </>

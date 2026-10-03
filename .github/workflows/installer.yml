@@ -96,7 +96,7 @@ jobs:
             --title "Rehearsal Tool Studio — build ${{ steps.pkg.outputs.stamp }} (${{ steps.pkg.outputs.built }})" \
             --notes "Build **${{ steps.pkg.outputs.stamp }}**, built ${{ steps.pkg.outputs.built }} from $(git log -1 --format='%s' "$GITHUB_SHA").
 
-          Download **Rehearsal-Tool-Studio.pkg** below and double-click it. Installer puts Rehearsal Tool Studio into Applications, with Lyrics Studio inside it as the Lyrics tab. Apple silicon Macs.
+          Download **Rehearsal-Tool-Studio.pkg** below and double-click it. Installer puts Rehearsal Tool Studio into Applications, with Lyrics Studio inside it, in Set tools ▸ Lyrics. Apple silicon Macs.
 
           Nothing here carries a Developer ID, so the first time macOS refuses it: System Settings → Privacy & Security → **Open Anyway**.
 

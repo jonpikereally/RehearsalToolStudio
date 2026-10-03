@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Move Lyrics Studio into Set tools and give it its own ffmpeg**
+
+The Lyrics tab is gone. Set tools ▸ Lyrics now does all of it: straight to lyric clips on the set, as before, or Lyrics Studio's own page — review, edit, align to pasted words, export — shown in the tool and opened on the set that is open. The Set tools are held once opened, the way the player is, so a queue Lyrics Studio is working through survives a look at another tab. Old links to /lyrics land on the tool.
+
 **Mark songs left off AbleSet's setlist in the song list**
 
 A song AbleSet's setlist leaves out used to vanish from the studio altogether. It is now listed with the rest of its set, greyed and struck through with a "not in setlist" badge, and can still be opened and played. It stays out of the show: the set's running order skips it, and nothing prepares, refreshes or auto-updates it. Preparing it on its own says why rather than claiming the song is gone from the set.

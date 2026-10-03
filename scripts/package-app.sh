@@ -18,7 +18,7 @@
 # Security → "Open Anyway". For an installer that does the dragging, see
 # scripts/make-installer.sh.
 #
-# Lyrics Studio — the Lyrics tab — comes inside it. Its listening is Python
+# Lyrics Studio — Set tools ▸ Lyrics — comes inside it. Its listening is Python
 # (FastAPI, librosa, Whisper on Apple's MLX), and bundling a Python with all
 # of that is a project in itself, so the app carries the next best thing: its
 # source and a copy of uv, which the first time the tab is opened fetches a
@@ -111,7 +111,7 @@ if [ -n "$UV_BIN" ]; then
   echo "bundling uv $(uv --version | head -1) ($(lipo -archs "$UV_BIN" 2>/dev/null || echo unknown)) for Lyrics Studio"
   cp "$UV_BIN" "$RES/uv" && chmod 755 "$RES/uv"
 else
-  echo "  note: uv not found — the Lyrics tab will ask for it (brew install uv)"
+  echo "  note: uv not found — Lyrics Studio will ask for it (brew install uv)"
 fi
 
 # No RTSRepo: its absence is how the window knows it is the packaged kind.

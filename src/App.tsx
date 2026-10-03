@@ -19,7 +19,6 @@ import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
 import BandView from './ui/BandView';
-import LyricsStudioView from './ui/LyricsStudioView';
 import AutoUpdate from './ui/AutoUpdate';
 import SyncBar from './ui/SyncBar';
 
@@ -339,22 +338,20 @@ export default function App() {
    * set open at all.
    */
   const aside =
-    section === 'settings' || section === 'changes' || section === 'band' || section === 'lyrics' || (section === 'tools' && toolsAlone());
+    section === 'settings' || section === 'changes' || section === 'band' || (section === 'tools' && toolsAlone());
 
   /*
-   * Lyrics Studio is held the way the player is: mounted the first time its
-   * tab is opened and only hidden after, so songs it is listening to keep
-   * going while another tab is looked at. A set handed to it from the Set
-   * tools comes in the route's query and is passed through to its page.
+   * Lyrics Studio lives in the Set tools' Lyrics tool now; the tab it once
+   * had goes there.
    */
-  const [lyricsOpened, setLyricsOpened] = useState(false);
   useEffect(() => {
-    if (section === 'lyrics') setLyricsOpened(true);
+    if (section === 'lyrics') navigate('/tools', { tool: 'lyrics' });
   }, [section]);
-  const lyricsHandoff = section === 'lyrics' && route.query.get('als_name') ? route.query.toString() : '';
+  const [toolsOpened, setToolsOpened] = useState(false);
   const needsChoosing = !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
   const gate = useOpenGate(needsChoosing, takeChosen);
   let body: JSX.Element | null;
+  let toolsShown = false;
   if (section === 'song' && songId) {
     body = null;
   } else if (!aside && !publishFolderName) {
@@ -396,15 +393,18 @@ export default function App() {
     body = <BandView />;
   } else if (section === 'changes') {
     body = <ChangesView />;
-  } else if (section === 'lyrics') {
-    body = null;
   } else if (section === 'tools') {
-    body = <SetToolsView />;
+    // Held, below, the way the player is.
+    body = null;
+    toolsShown = true;
   } else if (section === 'settings') {
     body = <SettingsView />;
   } else {
     body = <LibraryView />;
   }
+  useEffect(() => {
+    if (toolsShown) setToolsOpened(true);
+  }, [toolsShown]);
 
   /*
    * The bar sits above everything, on every page, the player included.
@@ -515,7 +515,6 @@ export default function App() {
         <TabButton on={section === 'library'} to="/" glyph="♪" label="Songs" />
         <TabButton on={section.startsWith('setlist')} to="/setlists" glyph="≡" label="Setlists" />
         <TabButton on={section === 'tools'} to="/tools" glyph="⚒" label="Set tools" />
-        <TabButton on={section === 'lyrics'} to="/lyrics" glyph="✎" label="Lyrics" />
         <TabButton on={section === 'band'} to="/band" glyph="⚇" label="The band" />
         <TabButton on={section === 'settings'} to="/settings" glyph="⚙" label="Settings" />
       </nav>
@@ -623,7 +622,17 @@ export default function App() {
             />
           </div>
         )}
-        {(lyricsOpened || section === 'lyrics') && <LyricsStudioView shown={section === 'lyrics'} handoff={lyricsHandoff} />}
+        {/*
+          The Set tools are held the way the player is: mounted the first
+          time they are opened and only hidden after, so Lyrics Studio's
+          queue in the Lyrics tool keeps going while another tab is looked at.
+        */}
+        {(toolsOpened || toolsShown) && (
+          <div style={{ display: toolsShown ? 'contents' : 'none' }}>
+            {/* A set of its own each: what is ticked and read belongs to one set. */}
+            <SetToolsView key={currentSet ?? ''} shown={toolsShown} />
+          </div>
+        )}
         {body}
       </div>
     </div>

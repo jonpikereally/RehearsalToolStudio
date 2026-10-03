@@ -208,11 +208,13 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Lyrics Studio's own page fills the body, scrolling inside itself. */
+/* Lyrics Studio's page, a pane of the Set tools' Lyrics tool. */
 .lyrics-shell {
-  position: absolute;
-  inset: 0;
+  height: max(560px, calc(100vh - 300px));
   flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .lyrics-frame {

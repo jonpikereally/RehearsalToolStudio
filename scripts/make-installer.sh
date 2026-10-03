@@ -7,7 +7,7 @@
 # to Applications by hand. This wraps the same app in a macOS installer
 # package — double-click it on any Mac, it opens in Installer, asks for the
 # admin password like every installer does, and puts Rehearsal Tool Studio
-# into /Applications, Lyrics Studio inside it as its Lyrics tab. Installing a
+# into /Applications, Lyrics Studio inside it, in its Set tools. Installing a
 # newer one over an older one replaces the app in place, and what was set up
 # on that Mac (the remembered folders, the caches) is untouched, since none
 # of it lives in the app.
@@ -16,7 +16,7 @@
 # Node is usually universal and the window is compiled for both kinds of Mac
 # when the tools can, so the installer says which Macs it will run on and
 # refuses the others with a plain message rather than an app that won't open.
-# The Lyrics tab wants Apple silicon regardless — Whisper on MLX is that only.
+# Lyrics Studio wants Apple silicon regardless — Whisper on MLX is that only.
 #
 # Nothing here carries a Developer ID, so a copy that arrives through a
 # browser is held by Gatekeeper once: on macOS 15 and later that is System
@@ -25,7 +25,7 @@
 #
 # Run it from a normal terminal, not a sandboxed agent: neither pkgbuild nor
 # the app it packages work from inside one. Needs the command line tools and
-# Node; uv too for the Lyrics tab.
+# Node; uv too for Lyrics Studio.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
@@ -99,7 +99,7 @@ pkgbuild --root "$STUDIO_ROOT" --component-plist "$BUILD/studio.plist" \
 cat > "$RES/welcome.html" <<HTML
 <!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,Helvetica,sans-serif;font-size:13px;line-height:1.45;margin:0 8px}</style></head><body>
 <p>This installs <b>Rehearsal Tool Studio</b> into your Applications folder — build $STAMP, with everything it needs inside it. Nothing else has to be installed first.</p>
-$( [ -n "$LYRICS" ] && printf '<p><b>Lyrics Studio</b> is part of it, as its Lyrics tab. It fetches its own Python and models the first time that tab is opened, which takes a few minutes and the network, once. It runs on Apple silicon Macs.</p>' )
+$( [ -n "$LYRICS" ] && printf '<p><b>Lyrics Studio</b> is part of it, in Set tools ▸ Lyrics. It fetches its own Python and models the first time it is opened, which takes a few minutes and the network, once. It runs on Apple silicon Macs.</p>' )
 <p>Installing over an earlier version replaces it. Your remembered folders, caches and settings are kept — they live in your Library, not in the app.</p>
 </body></html>
 HTML

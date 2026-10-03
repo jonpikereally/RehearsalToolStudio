@@ -505,7 +505,8 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       const out = openSync(log, 'a');
       // An app's PATH has no Homebrew on it, and Lyrics Studio needs ffmpeg from there.
       const path = ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH ?? '/usr/bin:/bin'].join(':');
-      const env = { ...process.env, PATH: path };
+      // LYRICS_STUDIO_UV: its own uv, for running tools (vocal isolation) on a Mac without uvx.
+      const env = { ...process.env, PATH: path, LYRICS_STUDIO_UV: uv };
       // Inside an app bundle the code is not a place to write, so what it remembers goes to the Library.
       try {
         accessSync(cwd, constants.W_OK);
