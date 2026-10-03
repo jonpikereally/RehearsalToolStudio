@@ -5032,6 +5032,25 @@ group('running order from AbleSet');
     const flagged = cuesIn([{ time: 4, name: 'On' }, { time: 8, name: 'Skipped', meta: { skip: true } }, { time: 12, name: 'Off', disabled: true }]);
     check('a cue AbleSet has switched off says so', flagged.entries.map((e) => !!e.off).join() === 'false,true,true', JSON.stringify(flagged));
   }
+  {
+    // AbleSet's answer gives the order but not the skips; its log has them, as `skipped`.
+    const { withSkipsFrom, liveSetlistFromLog: fromLog } = await import('./studio-files.mjs');
+    const logged = fromLog(JSON.stringify({ path: '/api/setlist/setCueMeta', timestamp: '2026-10-02T23:40:42Z', body: { setlistName: 'Friday', metaMap: [
+      { id: 'a', time: 15940, lastKnownName: 'You Belong With Me', order: 0 },
+      { id: 'b', time: 3392, lastKnownName: 'Cruel Summer {G}', order: 1, skipped: true },
+      { id: 'c', time: 256, lastKnownName: '22 {F}', order: 2, skipped: true },
+    ] } }));
+    check('a song AbleSet\'s log says is skipped is read as off', logged.entries.map((e) => !!e.off).join() === 'false,true,true', JSON.stringify(logged));
+    const asked = { setlistName: 'Friday', entries: [
+      { time: 15940, lastKnownName: 'You Belong With Me' }, { time: 3392, lastKnownName: 'Cruel Summer {G}' }, { time: 300, lastKnownName: '22 {F}' },
+    ] };
+    const merged = withSkipsFrom(asked, logged);
+    check('AbleSet\'s own answer takes its skips from the log, by position or name',
+      merged.entries.map((e) => !!e.off).join() === 'false,true,true', JSON.stringify(merged));
+    check('but not from another setlist\'s log, nor over skips the answer gives itself',
+      withSkipsFrom({ ...asked, setlistName: 'Saturday' }, logged).entries.every((e) => !e.off)
+        && withSkipsFrom({ ...asked, entries: [{ ...asked.entries[0], off: true }, asked.entries[1]] }, logged).entries[1].off === undefined);
+  }
   check('and something that is not a setlist is not read as one',
     cuesIn({ settings: { volume: 1 } }) === null && cuesIn([{ name: 'no time here' }]) === null);
   // AbleSet's own answer: the locator's name is under the cue, a tidied one

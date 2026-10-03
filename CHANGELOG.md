@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Take AbleSet's skipped songs from its log when its answer leaves them out**
+
+With AbleSet running, the studio asks it for the setlist on screen, and took the order from that answer. The order came through, but the songs skipped in it did not: the answer does not mark them, while AbleSet's log does, as `skipped`, every time the setlist changes. When the answer marks none, the skips now come from the log's newest order of the same setlist, matched by position and then by name.
+
 **Update the installed app in place, without Installer**
 
 Every update went through the whole installer: download, Installer, click through, password, open the app again. A release now carries the app itself, zipped beside the .pkg, and the installed app updates from that: it downloads and unpacks the new app, checks it is the build GitHub named, and offers Restart Now. A small script waits for the app to quit, swaps the new one in where it was — putting the old one back if anything fails — and opens it again.
