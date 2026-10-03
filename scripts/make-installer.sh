@@ -45,13 +45,15 @@ mkdir -p "$PKGS" "$RES"
 
 # Each app is packaged the way it always is, into a root of its own that
 # holds nothing else — pkgbuild takes the whole root, so the zip that comes
-# with it is taken back out.
+# with it is taken out, and kept beside the installer: it is what the app
+# updates itself from, swapping the new app in rather than running this.
 STUDIO_ROOT="$BUILD/root-studio"
 bash scripts/package-app.sh "$STUDIO_ROOT"
-rm -f "$STUDIO_ROOT"/*.zip
 STUDIO="$STUDIO_ROOT/$NAME.app"
 STAMP="$(sed -n 's/.*"build":"\([^"]*\)".*/\1/p' "$STUDIO/Contents/Resources/dist/build.json")"
 [ -n "$STAMP" ] || { echo "the packaged app carries no build stamp" >&2; exit 1; }
+rm -f "$OUT/$NAME $STAMP.zip"
+mv "$STUDIO_ROOT"/*.zip "$OUT/$NAME $STAMP.zip"
 
 LYRICS=""
 [ -x "$STUDIO/Contents/Resources/uv" ] && LYRICS=1
@@ -90,7 +92,22 @@ PLIST
 
 echo "packaging the studio"
 component_plist "$NAME.app" "$BUILD/studio.plist"
+# Installed, the app is handed to whoever is at the Mac rather than left the
+# system's, so it can replace itself with an update without a password.
+SCRIPTS="$BUILD/scripts"
+mkdir -p "$SCRIPTS"
+cat > "$SCRIPTS/postinstall" <<POST
+#!/bin/sh
+# \$2 is where it was installed.
+user="\$(stat -f %Su /dev/console)"
+if [ -n "\$user" ] && [ "\$user" != root ]; then
+  chown -R "\$user" "\$2/$NAME.app"
+fi
+exit 0
+POST
+chmod +x "$SCRIPTS/postinstall"
 pkgbuild --root "$STUDIO_ROOT" --component-plist "$BUILD/studio.plist" \
+  --scripts "$SCRIPTS" \
   --install-location /Applications \
   --identifier com.pikemusicschool.rehearsaltool.studio --version "$STAMP" \
   "$PKGS/studio.pkg"

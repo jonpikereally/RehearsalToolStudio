@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Update the installed app in place, without Installer**
+
+Every update went through the whole installer: download, Installer, click through, password, open the app again. A release now carries the app itself, zipped beside the .pkg, and the installed app updates from that: it downloads and unpacks the new app, checks it is the build GitHub named, and offers Restart Now. A small script waits for the app to quit, swaps the new one in where it was — putting the old one back if anything fails — and opens it again.
+
 **Treat songs switched off in AbleSet as off the setlist**
 
 A song left off AbleSet's setlist was only noticed when the setlist left it out altogether. AbleSet can also keep a song in the list and switch it off — disabled, skipped — and that song was counted as in the show. A cue flagged so, on itself, its cue or its meta, in a saved setlist, in AbleSet's own answer or in its log, now keeps its place in the order but is marked off the setlist like a song it never named.

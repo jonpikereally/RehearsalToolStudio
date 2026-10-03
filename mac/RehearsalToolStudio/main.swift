@@ -715,39 +715,191 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                 return
             }
             updatesItem?.title = "Downloading the update…"
-            URLSession.shared.downloadTask(with: latestInstaller) { [self] file, response, error in
-                let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
-                var saved: URL?
-                if let file, ok {
-                    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                        ?? FileManager.default.temporaryDirectory
-                    let target = downloads.appendingPathComponent("Rehearsal Tool Studio \(release.stamp).pkg")
-                    try? FileManager.default.removeItem(at: target)
-                    if (try? FileManager.default.moveItem(at: file, to: target)) != nil { saved = target }
-                }
-                DispatchQueue.main.async { [self] in
+            downloadApp(release) { [self] staged in
+                if let staged {
                     checking = false
                     retitleUpdates()
-                    guard let saved else {
-                        let alert = NSAlert()
-                        alert.messageText = "The update didn't download."
-                        alert.informativeText = error?.localizedDescription
-                            ?? "GitHub didn't send the installer. It is also at \(latestInstaller.absoluteString)."
-                        alert.runModal()
-                        return
-                    }
-                    note("downloaded build \(release.stamp) to \(saved.path); opening Installer and quitting")
-                    let alert = NSAlert()
-                    alert.messageText = "Build \(release.stamp) is ready to install."
-                    alert.informativeText = "The studio quits and Installer opens. Click through it and give your password; then open the studio again. Your folders and settings are kept."
-                    alert.addButton(withTitle: "Install and Quit")
-                    alert.addButton(withTitle: "Later")
-                    guard alert.runModal() == .alertFirstButtonReturn else { return }
-                    NSWorkspace.shared.open(saved)
-                    NSApp.terminate(nil)
+                    offerRestart(release, staged)
+                } else {
+                    // No app to swap in — an older release, or a download that failed: the installer, as before.
+                    downloadInstaller(release)
                 }
-            }.resume()
+            }
         }
+    }
+
+    /*
+     * An update is the new app itself, swapped in where this one is, rather
+     * than the installer run again: every release carries the app as a zip
+     * beside the .pkg. It is unpacked into this user's caches, checked to be
+     * the build GitHub named, and put in place by a small script once this
+     * app has quit, which then opens it again. An app the installer put
+     * there belongs to the system, so that one swap asks for the password
+     * once, through macOS's own prompt; the app it puts there is this
+     * user's, and every update after needs nothing. Anything that goes wrong
+     * leaves the old app where it was.
+     */
+    let latestApp = URL(string: "https://github.com/jonpikereally/RehearsalToolStudio/releases/latest/download/Rehearsal-Tool-Studio.zip")!
+
+    /// Where the packaged app keeps its logs, the launcher's among them.
+    var logDir: URL {
+        URL(fileURLWithPath: (("~/Library/Logs/Rehearsal Tool Studio") as NSString).expandingTildeInPath)
+    }
+
+    /// Where an update is unpacked and its scripts written: no spaces, so the scripts stay simple.
+    var updateDir: URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        return caches.appendingPathComponent("RehearsalToolStudio-update")
+    }
+
+    func downloadApp(_ release: (stamp: String, builtAt: Date), then done: @escaping (URL?) -> Void) {
+        URLSession.shared.downloadTask(with: latestApp) { [self] file, response, error in
+            let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            guard let file, ok else {
+                DispatchQueue.main.async { [self] in
+                    note("no app to update from (\(error?.localizedDescription ?? "status \((response as? HTTPURLResponse)?.statusCode ?? 0)")); falling back to the installer")
+                    done(nil)
+                }
+                return
+            }
+            let fm = FileManager.default
+            let dir = updateDir
+            try? fm.removeItem(at: dir)
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let zip = dir.appendingPathComponent("update.zip")
+            let unpacked = dir.appendingPathComponent("new")
+            var staged: URL?
+            if (try? fm.moveItem(at: file, to: zip)) != nil {
+                let ditto = Process()
+                ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                ditto.arguments = ["-x", "-k", zip.path, unpacked.path]
+                if (try? ditto.run()) != nil {
+                    ditto.waitUntilExit()
+                    let app = unpacked.appendingPathComponent(Bundle.main.bundleURL.lastPathComponent)
+                    // The build it says it is, or it is not the update: GitHub may have moved on mid-download.
+                    if ditto.terminationStatus == 0,
+                       let data = fm.contents(atPath: app.appendingPathComponent("Contents/Resources/dist/build.json").path),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let stamp = json["build"] as? String, stamp == release.stamp {
+                        staged = app
+                    }
+                }
+                try? fm.removeItem(at: zip)
+            }
+            DispatchQueue.main.async { [self] in
+                if staged == nil { note("the downloaded app was not build \(release.stamp); falling back to the installer") }
+                done(staged)
+            }
+        }.resume()
+    }
+
+    /// Single quotes for a shell, whatever the path holds.
+    func shellQuoted(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    func offerRestart(_ release: (stamp: String, builtAt: Date), _ staged: URL) {
+        let installed = Bundle.main.bundleURL
+        let fm = FileManager.default
+        let mine = (try? fm.attributesOfItem(atPath: installed.path)[.ownerAccountID] as? NSNumber)?.uint32Value == getuid()
+        let alert = NSAlert()
+        alert.messageText = "Build \(release.stamp) is ready."
+        alert.informativeText = mine
+            ? "The studio restarts on the new build. Your folders and settings are kept."
+            : "The studio restarts on the new build. This once, macOS asks for your password to replace the copy the installer put in Applications; updates after this one won't. Your folders and settings are kept."
+        alert.addButton(withTitle: "Restart Now")
+        alert.addButton(withTitle: "Later")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let dir = updateDir
+        let swap = dir.appendingPathComponent("swap.sh")
+        let runner = dir.appendingPathComponent("run.sh")
+        let log = logDir.appendingPathComponent("update.log")
+        let old = shellQuoted(installed.path)
+        let new = shellQuoted(staged.path)
+        let user = shellQuoted(NSUserName())
+        // The swap: the old app aside, the new in its place, the old put back if that fails.
+        let swapScript = """
+        #!/bin/sh
+        old=\(old); new=\(new); aside="$old.previous"
+        rm -rf "$aside" 2>/dev/null
+        mv "$old" "$aside" || exit 1
+        if mv "$new" "$old"; then
+          rm -rf "$aside"
+          [ "$(id -u)" = 0 ] && chown -R \(user) "$old"
+          exit 0
+        fi
+        mv "$aside" "$old"
+        exit 1
+        """
+        // Once this app has gone: the swap as this user when the app is theirs, else as an admin, then open it.
+        let runScript = """
+        #!/bin/sh
+        exec >>\(shellQuoted(log.path)) 2>&1
+        echo "$(date '+%F %T') updating to build \(release.stamp)"
+        while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
+        if [ -O \(old) ] && /bin/sh \(shellQuoted(swap.path)); then
+          echo "swapped"
+        elif /usr/bin/osascript -e 'do shell script "/bin/sh " & quoted form of "\(swap.path)" with administrator privileges'; then
+          echo "swapped, as an admin"
+        else
+          echo "not swapped; the old app stays"
+        fi
+        /usr/bin/open \(old)
+        """
+        do {
+            try swapScript.write(to: swap, atomically: true, encoding: .utf8)
+            try runScript.write(to: runner, atomically: true, encoding: .utf8)
+            try? fm.createDirectory(at: logDir, withIntermediateDirectories: true)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = [runner.path]
+            try process.run()
+        } catch {
+            let failed = NSAlert()
+            failed.messageText = "The update couldn't start."
+            failed.informativeText = error.localizedDescription
+            failed.runModal()
+            return
+        }
+        note("restarting onto build \(release.stamp)")
+        NSApp.terminate(nil)
+    }
+
+    /// The installer, for when there is no app to swap in: downloaded, opened in Installer, and this app quits.
+    func downloadInstaller(_ release: (stamp: String, builtAt: Date)) {
+        URLSession.shared.downloadTask(with: latestInstaller) { [self] file, response, error in
+            let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            var saved: URL?
+            if let file, ok {
+                let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                    ?? FileManager.default.temporaryDirectory
+                let target = downloads.appendingPathComponent("Rehearsal Tool Studio \(release.stamp).pkg")
+                try? FileManager.default.removeItem(at: target)
+                if (try? FileManager.default.moveItem(at: file, to: target)) != nil { saved = target }
+            }
+            DispatchQueue.main.async { [self] in
+                checking = false
+                retitleUpdates()
+                guard let saved else {
+                    let alert = NSAlert()
+                    alert.messageText = "The update didn't download."
+                    alert.informativeText = error?.localizedDescription
+                        ?? "GitHub didn't send the installer. It is also at \(latestInstaller.absoluteString)."
+                    alert.runModal()
+                    return
+                }
+                note("downloaded build \(release.stamp) to \(saved.path); opening Installer and quitting")
+                let alert = NSAlert()
+                alert.messageText = "Build \(release.stamp) is ready to install."
+                alert.informativeText = "The studio quits and Installer opens. Click through it and give your password; then open the studio again. Your folders and settings are kept."
+                alert.addButton(withTitle: "Install and Quit")
+                alert.addButton(withTitle: "Later")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                NSWorkspace.shared.open(saved)
+                NSApp.terminate(nil)
+            }
+        }.resume()
     }
 
     /// File ▸ Changes: what the studio has done, save by save.
