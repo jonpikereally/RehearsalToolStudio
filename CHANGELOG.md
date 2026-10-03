@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Warn before preparing when the click or cue samples can't be read**
+
+A click is written as its samples and where they fall, and its samples usually live in a shared Resources folder outside the set's. When the studio had not been allowed that folder, a prepare could read none of them, left the click out of every song, and said so only in its list of what it skipped — the first anyone knew was a band site with no click. Now the Prepare window tries each click and cue sample as soon as the set is read, the way a prepare would, and says up front which part will be left out or which cues will be silent, in which songs, and which files it cannot read — with a button to allow their folder there and then. It asks again whenever a folder is allowed.
+
 **Tell the band's site which songs are on the setlist, without deleting any**
 
 A song left off AbleSet's setlist kept its entry in the band's set.json just as before, so the band's site went on listing it as part of the set. Its folder should stay — the files are still good, and it may come back — but the set's order is AbleSet's. Now each set.json entry not on the running order is marked offSetlist and kept after the rest; a song put back loses the mark and takes its place again. The library's set: setlist leaves marked songs out, and a change to the setlist alone — a song taken off, put back or moved — rewrites set.json on the next prepare or save, whichever auto-update jobs are on, with no audio written. The contract and a prompt for the website say what the mark means.
