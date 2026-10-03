@@ -2,7 +2,7 @@
 # Install the studio's Mac apps, straight into /Applications.
 #
 # Rehearsal Tool Studio is a real app, a WebKit window of its own, built by
-# make-studio-app.sh. Lyrics Studio is part of it — the Lyrics tab — and has
+# make-studio-app.sh. Lyrics Studio is part of it — Set tools ▸ Lyrics — and has
 # no app of its own any more; a Lyrics Studio.app left by an earlier run of
 # this is taken away. Run this again when the repo moves, since the studio
 # app carries its path.
@@ -81,7 +81,7 @@ for DIR in "$OUT" /Applications "$HOME/Applications"; do
   OLD="$DIR/Lyrics Studio.app"
   [ -d "$OLD" ] || continue
   case "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$OLD/Contents/Info.plist" 2>/dev/null)" in
-    com.pikemusicschool.rehearsaltool.lyrics*) rm -rf "$OLD" 2>/dev/null && echo "removed $OLD — Lyrics Studio is the studio's Lyrics tab now" ;;
+    com.pikemusicschool.rehearsaltool.lyrics*) rm -rf "$OLD" 2>/dev/null && echo "removed $OLD — Lyrics Studio is in the studio's Set tools now" ;;
   esac
 done
 echo "Done — it's in $OUT, ready for the Dock. Future launcher changes need no reinstall."

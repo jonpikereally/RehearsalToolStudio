@@ -8,6 +8,7 @@
 #   "mido",
 #   "librosa",
 #   "numpy",
+#   "imageio-ffmpeg",
 # ]
 # ///
 """Lyrics Studio — local webapp: transcribe song lyrics and export timed MIDI clips.
@@ -52,10 +53,34 @@ for _bin in ("/opt/homebrew/bin", "/usr/local/bin"):
     if os.path.isdir(_bin) and _bin not in os.environ.get("PATH", "").split(os.pathsep):
         os.environ["PATH"] = _bin + os.pathsep + os.environ.get("PATH", "")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _bring_ffmpeg() -> None:
+    """A Mac without Homebrew's ffmpeg — the installed app on a fresh Mac —
+    gets the one imageio-ffmpeg carries, linked as plain `ffmpeg` on the PATH,
+    since Whisper calls it by that name."""
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as e:  # noqa: BLE001 — said where ffmpeg is needed
+        print(f"no ffmpeg on this Mac, and none bundled: {e}", flush=True)
+        return
+    bin_dir = DATA_DIR / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    link = bin_dir / "ffmpeg"
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(exe)
+    os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+
+
+_bring_ffmpeg()
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
-VERSION = "1.16.1"
+VERSION = "1.17.0"
 
 app = FastAPI(title="Lyrics Studio", version=VERSION)
 
@@ -201,8 +226,10 @@ def detect_bpm(audio_path: str) -> float:
 
 
 def isolate_vocals(audio_path: str, workdir: str) -> str:
+    # uvx when the Mac has it; else the uv this was started with (the installed app's own).
+    runner = [shutil.which("uvx")] if shutil.which("uvx") else [os.environ.get("LYRICS_STUDIO_UV") or "uv", "tool", "run"]
     subprocess.run(
-        ["uvx", "--from", "demucs", "demucs", "--two-stems=vocals", "-o", workdir, audio_path],
+        [*runner, "--from", "demucs", "demucs", "--two-stems=vocals", "-o", workdir, audio_path],
         check=True, capture_output=True, text=True, timeout=3600,
     )
     vocals = next(Path(workdir).rglob("vocals.wav"), None)
@@ -966,6 +993,10 @@ def make_als_local(req: AlsLocalRequest):
 def probe_audio(path: str) -> tuple[float, int]:
     import json as jsonlib
 
+    if not shutil.which("ffprobe"):
+        # The ffmpeg brought along has no ffprobe; librosa reads the header itself.
+        import librosa
+        return float(librosa.get_duration(path=path)), int(librosa.get_samplerate(path))
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a:0",
          "-show_entries", "stream=sample_rate:format=duration", "-of", "json", path],
