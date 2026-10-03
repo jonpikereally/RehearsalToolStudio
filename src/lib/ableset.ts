@@ -104,7 +104,7 @@ export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { or
 /**
  * The set as the studio works on it: only the songs AbleSet's setlist names,
  * when the last scan found that setlist. A song left off it is not in the
- * show — it has no place in the library, and nothing prepares, refreshes or
+ * show — the library lists it, marked so, but nothing prepares, refreshes or
  * auto-updates it. Without such a setlist, the whole set, as before.
  */
 export function scopeToSetlist(

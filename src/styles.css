@@ -779,6 +779,16 @@ button {
   mix-blend-mode: difference;
 }
 
+/* Left off AbleSet's setlist: still here to play, but not in the show. */
+.row.off-setlist .row-main {
+  opacity: 0.5;
+}
+
+.row.off-setlist .row-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-dim);
+}
+
 /* Not a warning: a song in this state is not worth opening at all. */
 .badge.bad {
   background: var(--bad-bg);

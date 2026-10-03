@@ -100,6 +100,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
     void (async () => {
       try {
         if (!song.setPath) throw new Error('This song did not come from an Ableton set.');
+        if (song.offSetlist) {
+          throw new Error(`“${song.title}” is not on AbleSet’s setlist, so it is not in the show and is not prepared. Add it to the setlist in AbleSet, then rescan.`);
+        }
         const { bytes } = await readBytes(song.setPath);
         // The set as the studio works on it: AbleSet's setlist's songs alone, so
         // the set.json this writes keeps the others marked off the setlist.

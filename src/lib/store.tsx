@@ -771,20 +771,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             included = live.included;
           }
           /*
-           * A song AbleSet's setlist leaves out is not in the show, so it is
-           * left out of the studio: no library entry, nothing prepared or
-           * auto-updated. A setlist that names none of the set's songs —
-           * every locator renamed since — is taken as unreadable rather
-           * than as a show of nothing.
+           * A song AbleSet's setlist leaves out is not in the show: it is
+           * listed, marked as off the setlist, but has no place in the
+           * running order, and nothing prepares or auto-updates it. A
+           * setlist that names none of the set's songs — every locator
+           * renamed since — is taken as unreadable rather than as a show of
+           * nothing.
            */
           if (included && !included.length) included = undefined;
           const keep = included ? new Set(included) : null;
           const leftOut = keep ? [...new Set(project.songs.filter((s) => !keep.has(s.title)).map((s) => s.title))] : [];
           if (leftOut.length) {
-            orderNote = `${orderNote ? `${orderNote.replace(/\.$/, '')}; ` : ''}${leftOut.length} song${leftOut.length === 1 ? '' : 's'} not on it left out (${leftOut.join(', ')}).`;
+            orderNote = `${orderNote ? `${orderNote.replace(/\.$/, '')}; ` : ''}${leftOut.length} song${leftOut.length === 1 ? '' : 's'} not on it, marked so and left out of the show (${leftOut.join(', ')}).`;
           }
-          const scoped = keep ? { ...project, songs: project.songs.filter((s) => keep.has(s.title)) } : project;
-          parsedSets.push({ path: file.path, project: scoped, order, orderNote, included });
+          parsedSets.push({ path: file.path, project, order, orderNote, included });
         } catch (err) {
           console.error('[rehearsal-tool-studio] could not read', file.path, err);
           readErrors.push(`${file.name} could not be read`);
@@ -812,9 +812,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const claimed = new Set<string>();
         const alsNotes = [...readErrors];
         const alsSongs: Song[] = [];
-        for (const { path, project } of parsedSets) {
+        for (const { path, project, included } of parsedSets) {
           const imported = songsFromProject(project, path, usable, known);
-          alsSongs.push(...imported.songs);
+          const keep = included ? new Set(included) : null;
+          for (const song of imported.songs) {
+            const { offSetlist: _was, ...rest } = song;
+            alsSongs.push(keep && !keep.has(song.title) ? { ...rest, offSetlist: true } : rest);
+          }
           for (const p of imported.claimedPaths) claimed.add(p);
           if (imported.missing.length) {
             alsNotes.push(
@@ -856,9 +860,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          * knows nothing about helps nobody.
          */
         const live = new Set(songs.map((s) => s.id));
+        const inShow = new Set(songs.filter((s) => !s.offSetlist).map((s) => s.id));
         const alsSetlists = parsedSets
           .map(({ path, project, order, orderNote, included }) => {
-            const sl = setlistFromProject(path, project, (id) => live.has(id), order, orderNote);
+            const sl = setlistFromProject(path, project, (id) => inShow.has(id), order, orderNote);
             return included ? { ...sl, fromAbleSet: true, included } : sl;
           })
           .filter((sl) => sl.songIds.length > 0);

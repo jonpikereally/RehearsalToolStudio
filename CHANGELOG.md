@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-03
 
+**Mark songs left off AbleSet's setlist in the song list**
+
+A song AbleSet's setlist leaves out used to vanish from the studio altogether. It is now listed with the rest of its set, greyed and struck through with a "not in setlist" badge, and can still be opened and played. It stays out of the show: the set's running order skips it, and nothing prepares, refreshes or auto-updates it. Preparing it on its own says why rather than claiming the song is gone from the set.
+
 **Update the installed app from GitHub's newest installer**
 
 The app from the installer has no checkout, so it never looked for an update: a new build meant noticing one on GitHub and downloading it by hand. Now it looks itself, on launch, on coming back to it and every half hour, at which installer GitHub's Releases page has as latest — by the build in its tag, held against the build inside this app — and Check for Updates reads "Update Available — Install…" when there is a newer one. Installing downloads the .pkg into Downloads, says what will happen, and on agreement opens it in Installer and quits, so Installer can put the new app in its place. The development app still updates from its checkout.

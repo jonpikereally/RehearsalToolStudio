@@ -235,7 +235,7 @@ function SongRow({
   const silent = song.variants.length === 0 || !!audio?.silent;
   return (
     <button
-      className="row"
+      className={song.offSetlist ? 'row off-setlist' : 'row'}
       aria-pressed={picking ? picked : undefined}
       onClick={() => (picking ? onPick?.() : navigate(songUrl(song.id, setlistId)))}
     >
@@ -254,6 +254,14 @@ function SongRow({
         </div>
       </div>
       <div className="row-right">
+        {song.offSetlist && (
+          <span
+            className="badge"
+            title="Not on AbleSet's setlist, so not in the show: the band doesn't see it, and nothing prepares or auto-updates it. Add it to the setlist in AbleSet to bring it back."
+          >
+            not in setlist
+          </span>
+        )}
         {open && !picking && <span className="badge ok">open</span>}
         {song.transpose !== 0 && <span className="badge warn">{formatSemitones(song.transpose)}</span>}
         {song.tempoUnset && <span className="badge warn">tempo</span>}
