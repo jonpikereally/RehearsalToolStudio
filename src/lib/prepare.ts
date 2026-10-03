@@ -718,9 +718,18 @@ export function mergeSongs(
   const mine = new Set(written.map((w) => nameOf(w.folder)));
   const kept = existing.filter((song) => !mine.has(nameOf(song.folder)));
   const order = new Map(setOrder.map((name, i) => [nameOf(name), i]));
-  return [...kept, ...written].sort(
-    (a, b) => (order.get(nameOf(a.folder)) ?? Infinity) - (order.get(nameOf(b.folder)) ?? Infinity),
-  );
+  /*
+   * In the running order or not, said on every entry: a song left off
+   * AbleSet's setlist keeps its folder and its entry, marked off it, so the
+   * band's player leaves it out of the set; one put back loses the mark.
+   */
+  const marked = (song: PreparedSongInfo): PreparedSongInfo => {
+    const { offSetlist: _, ...rest } = song;
+    return order.has(nameOf(song.folder)) ? rest : { ...rest, offSetlist: true };
+  };
+  return [...kept, ...written]
+    .map(marked)
+    .sort((a, b) => (order.get(nameOf(a.folder)) ?? Infinity) - (order.get(nameOf(b.folder)) ?? Infinity));
 }
 
 export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {

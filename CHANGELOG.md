@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-03
+
+**Tell the band's site which songs are on the setlist, without deleting any**
+
+A song left off AbleSet's setlist kept its entry in the band's set.json just as before, so the band's site went on listing it as part of the set. Its folder should stay — the files are still good, and it may come back — but the set's order is AbleSet's. Now each set.json entry not on the running order is marked offSetlist and kept after the rest; a song put back loses the mark and takes its place again. The library's set: setlist leaves marked songs out, and a change to the setlist alone — a song taken off, put back or moved — rewrites set.json on the next prepare or save, whichever auto-update jobs are on, with no audio written. The contract and a prompt for the website say what the mark means.
+
 ## 2026-10-02
 
 **Leave out of the studio any song AbleSet's setlist leaves out**

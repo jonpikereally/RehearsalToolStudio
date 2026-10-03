@@ -5,7 +5,7 @@ import { holdAwake } from './keepAwake';
 import * as local from './localSource';
 import { DEFAULT_BITRATE } from './mp3';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from './pitchService';
-import { folderOrder, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult, type SilentPart } from './prepare';
+import { folderOrder, mergeSongs, prepareSet, songFolderBase, type PrepareProgress, type PrepareResult, type SilentPart } from './prepare';
 import { markPrepareRunning, prepareFinished } from './prepareState';
 import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedPart } from './preparedSet';
 import { SETS_FOLDER } from './prints';
@@ -25,6 +25,38 @@ import { readMembers, spareSubmixes, submixState, type MemberMix } from './membe
  * song stands against the last prepare, write the ones that changed, refresh
  * the words of the ones that didn't, and publish the library.
  */
+
+/**
+ * Bring a prepared set's running order up to the setlist, and nothing else.
+ *
+ * The band's player takes the set's songs and their order from set.json. A
+ * song taken off AbleSet's setlist, put back, or moved changes that and no
+ * file: so this reorders the manifest's entries and marks the ones off the
+ * setlist (see mergeSongs), writes it only when that changed anything, and
+ * says whether it did. `project` is the set as the studio works on it — the
+ * setlist's songs alone.
+ */
+export async function syncRunningOrder(
+  band: local.FolderHandle,
+  setFolder: string,
+  project: AlsProject,
+  songOrder?: string[],
+): Promise<boolean> {
+  if (!project.songs.length) return false;
+  const path = `${setFolder}/${MANIFEST_NAME}`;
+  let manifest: PreparedManifest;
+  try {
+    manifest = JSON.parse(new TextDecoder().decode((await local.readBytes(band, '', path)).bytes)) as PreparedManifest;
+  } catch {
+    return false; // nothing prepared here yet
+  }
+  if (!Array.isArray(manifest.songs)) return false;
+  const songs = mergeSongs(manifest.songs, [], folderOrder(project, songOrder));
+  if (JSON.stringify(songs) === JSON.stringify(manifest.songs)) return false;
+  const next = { ...manifest, songs };
+  await local.writeFile(band, '', path, new Blob([JSON.stringify(next, null, 2)], { type: 'application/json' }));
+  return true;
+}
 
 /** Every song's audio key as it stands now, by title and by folder name. */
 export interface AudioKeys {
@@ -607,6 +639,8 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
         }
       }
     }
+    // Whatever ran, the set's order and who is in it as the setlist has them now.
+    await syncRunningOrder(band, setFolder, project, songOrder).catch(() => false);
     try {
       return { result, submixes: submixResult, refreshed, published: await publishLibrary(band) };
     } catch (err) {

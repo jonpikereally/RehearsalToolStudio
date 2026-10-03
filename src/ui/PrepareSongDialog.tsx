@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
 import { holdAwake } from '../lib/keepAwake';
 import { useLiveOrder } from '../lib/useLiveOrder';
+import { scopeToSetlist } from '../lib/ableset';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { describeParts, overallProgress, partFileName, partsFor, prepareSet, songFolderName, soundsInSong, submixPartsFor, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
 import type { MemberMix } from '../lib/members';
@@ -68,7 +69,7 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
 };
 
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
-  const { publishFolderName, pickPublishFolder, publishFolder, settings, outputSet } = useStore();
+  const { publishFolderName, pickPublishFolder, publishFolder, settings, outputSet, library } = useStore();
   const [project, setProject] = useState<AlsProject | null>(null);
   const liveOrder = useLiveOrder(project, song.setPath ?? null);
   const [alsSong, setAlsSong] = useState<AlsSong | null>(null);
@@ -100,7 +101,9 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       try {
         if (!song.setPath) throw new Error('This song did not come from an Ableton set.');
         const { bytes } = await readBytes(song.setPath);
-        const parsed = await parseAls(bytes);
+        // The set as the studio works on it: AbleSet's setlist's songs alone, so
+        // the set.json this writes keeps the others marked off the setlist.
+        const parsed = scopeToSetlist(await parseAls(bytes), library, song.setPath).project;
         const mine = parsed.songs.find((s) => songKey(s.title) === songKey(song.title));
         if (!mine) throw new Error(`“${song.title}” is not in the set any more.`);
         if (!live) return;

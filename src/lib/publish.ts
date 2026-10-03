@@ -83,7 +83,9 @@ export function setlistsFromManifests(
   for (const { path, manifest } of manifests) {
     if (manifest?.preparedBy !== 'rehearsaltool' || !Array.isArray(manifest.songs)) continue;
     const setFolder = setFolderOf(path);
+    // A song marked off the setlist keeps its folder, but has no place in the set's order.
     const songIds = manifest.songs
+      .filter((info) => !info.offSetlist)
       .map((info) => idByPath.get(`${setFolder}/${info.folder}`.toLowerCase()))
       .filter((id): id is string => !!id);
     if (!songIds.length) continue;
