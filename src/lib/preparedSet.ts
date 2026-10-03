@@ -52,6 +52,12 @@ export interface PreparedSongInfo {
   folder: string;
   title: string;
   /**
+   * Not on the set's running order — left off AbleSet's setlist, or gone
+   * from the set. The folder and its files stay; a player leaves the song
+   * out of the set's order. Absent for every song that is in the show.
+   */
+  offSetlist?: true;
+  /**
    * When the song's stems were last rendered, in full; its folder carries the
    * day. A submix pass leaves this alone: the stems are what they were.
    */
