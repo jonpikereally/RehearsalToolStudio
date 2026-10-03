@@ -5,7 +5,7 @@ import { useLiveOrder } from '../lib/useLiveOrder';
 import { scopeToSetlist } from '../lib/ableset';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
-import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare } from '../lib/prepareRun';
+import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare, unreadableSamples, type UnreadableSamples } from '../lib/prepareRun';
 import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
 import { note } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
@@ -69,7 +69,9 @@ export default function PrepareSetDialog({
    */
   only?: 'stems' | 'submixes' | 'info';
 }) {
-  const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings, library } = useStore();
+  const { currentSet, outputSet, publishFolderName, pickPublishFolder, publishFolder, settings, library, resourceFolders, pickResourcesFolder } = useStore();
+  /** Click and cue samples a prepare could not read, found before it starts. */
+  const [badSamples, setBadSamples] = useState<UnreadableSamples[]>([]);
   /** Songs in the set that AbleSet's setlist leaves out, and so are never prepared. */
   const [leftOut, setLeftOut] = useState<string[]>([]);
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
@@ -127,6 +129,24 @@ export default function PrepareSetDialog({
   // else the set's running order — AbleSet's, as it has it right now.
   const liveOrder = useLiveOrder(project, order ? null : setPath);
   const songOrder = order ?? liveOrder?.titles ?? undefined;
+
+  /*
+   * Whether the click and cue samples can be read, asked as soon as the set
+   * is, and again when a folder is allowed: a click whose samples are out of
+   * reach is left out of every song, and that is worth knowing before an
+   * hour's render rather than from its list of what it skipped.
+   */
+  useEffect(() => {
+    setBadSamples([]);
+    if (!project || !setPath) return;
+    let on = true;
+    void unreadableSamples(project, setPath)
+      .then((found) => on && setBadSamples(found))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [project, setPath, resourceFolders]);
   /** What the band will see the set called: their folder's name. */
   // The folder chosen at launch; a set without one — the tools alone — falls back to its own name.
   const setName = outputSet?.name ?? setNameFor(setPath);
@@ -474,6 +494,29 @@ export default function PrepareSetDialog({
                 : `${selected.size} of ${titles.length}`}
             </span>
           </div>
+          {badSamples.length > 0 && (
+            <div className="notice error" role="alert" style={{ marginBottom: 6 }}>
+              {badSamples.map((b) => (
+                <div key={b.part}>
+                  <strong>
+                    {b.wholePart
+                      ? `The ${b.part.toLowerCase()} will be left out`
+                      : `Some ${b.part.toLowerCase()} will be silent`}
+                  </strong>{' '}
+                  in {b.songs.length === 1 ? b.songs[0] : `${b.songs.length} songs`}: its sample
+                  {b.files.length === 1 ? '' : 's'} {b.files.slice(0, 4).join(', ')}
+                  {b.files.length > 4 ? ` and ${b.files.length - 4} more` : ''} can’t be read.
+                </div>
+              ))}
+              <div style={{ marginTop: 6 }}>
+                They’re outside the folders the studio may read. Allow the folder they’re in — Settings → Samples
+                elsewhere does the same — then prepare.{' '}
+                <button className="btn" onClick={() => void pickResourcesFolder().catch(() => undefined)} disabled={busy}>
+                  Allow a folder…
+                </button>
+              </div>
+            </div>
+          )}
           {leftOut.length > 0 && (
             <div className="hint" style={{ marginBottom: 6 }}>
               Not on AbleSet’s setlist, so left out: {leftOut.join(', ')}.
