@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ensureLyricsStudio } from '../lib/lyricsStudio';
 
 /**
- * Lyrics Studio, as a page of the studio.
+ * Lyrics Studio, as part of the Set tools' Lyrics tool.
  *
  * The listening is Whisper, in Python, so it still runs as a server of its
  * own — but it is the studio that starts it, and its page is shown here, in
@@ -10,7 +10,7 @@ import { ensureLyricsStudio } from '../lib/lyricsStudio';
  * The studio's server passes `/lyrics-studio/` through to it, so the page
  * shares the studio's origin and every request it makes comes back that way.
  *
- * Held once opened, hidden while another tab is up, so a queue of songs
+ * Held once opened, hidden while another tool is up, so a queue of songs
  * being transcribed survives a look at the setlist. A set handed over from
  * the Set tools (`als_name` and friends) opens the page afresh on that set.
  */

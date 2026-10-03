@@ -49,6 +49,7 @@
   .qrow.selected { background: var(--panel2); border-color: var(--accent); }
   .qrow .qname { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .qrow .qmeta { color: var(--dim); font-size: 0.8rem; white-space: nowrap; }
+  .qrow .qerr { color: var(--err); white-space: normal; display: inline-block; max-width: 36rem; text-align: right; }
   .chip { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 99px;
           white-space: nowrap; }
   .chip.queued  { background: var(--panel2); color: var(--dim); border: 1px solid var(--border); }
@@ -471,7 +472,7 @@ function renderQueue() {
   $("queueList").innerHTML = songs.map(s => `
     <div class="qrow ${s.id === selectedId ? "selected" : ""}" onclick="select(${s.id})">
       <span class="qname">${s.name}</span>
-      <span class="qmeta">${s.data ? fmtDur(s.data.duration) + " · " + s.bpm + " BPM" : ""}</span>
+      <span class="qmeta">${s.data ? fmtDur(s.data.duration) + " · " + s.bpm + " BPM" : s.status === "error" && s.error ? `<span class="qerr">${esc(s.error)}</span>` : ""}</span>
       ${statusChip(s)}
     </div>`).join("");
   const done = songs.filter(s => s.status === "done");

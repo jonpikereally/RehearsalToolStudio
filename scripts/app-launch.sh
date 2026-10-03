@@ -9,7 +9,7 @@
 #        studio-servers — start what the studio needs and stop, opening
 #        nothing; the native Studio app calls this before showing its window.
 #        lyrics — what a Lyrics Studio stub from before it joined the studio
-#        still asks for; it opens the studio, whose Lyrics tab it is now.
+#        still asks for; it opens the studio at Set tools ▸ Lyrics, where it is now.
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="$HOME/Library/Application Support/Rehearsal Tool Studio"
@@ -166,7 +166,7 @@ case "$1" in
                 open_native_studio
                 open_shim "Rehearsal Tool Studio" ;;
   studio-servers) start_voice_helper; start_studio_server; exit 0 ;;
-  lyrics)       URL="http://localhost:5177/#/lyrics"; start_voice_helper; start_studio_server
+  lyrics)       URL="http://localhost:5177/#/tools?tool=lyrics"; start_voice_helper; start_studio_server
                 open_native_studio
                 open_shim "Rehearsal Tool Studio" ;;
   *) echo "usage: app-launch.sh studio|studio-servers|lyrics" >&2; exit 2 ;;
