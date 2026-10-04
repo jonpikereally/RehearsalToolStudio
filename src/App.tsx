@@ -3,7 +3,6 @@ import { useRoute, navigate, songUrl } from './lib/router';
 import { closeRun, useRun } from './lib/run';
 import { releaseReady } from './lib/songLoader';
 import { useStore } from './lib/store';
-import { buildLabel } from './lib/buildLabel';
 import LibraryView from './ui/LibraryView';
 import PlayerView from './ui/PlayerView';
 import SetlistsView from './ui/SetlistsView';
@@ -13,7 +12,7 @@ import Onboarding from './ui/Onboarding';
 import Launch from './ui/Launch';
 import { toolsAlone, setToolsAlone } from './lib/toolsAlone';
 import { alwaysOpen, askForFiles, recentOutput, recentSession, takeAsk } from './lib/recent';
-import { askAppToBuild, canCheckUpdates, canRestart, panelWindow, restartApp, showChanges, showChooser, whenAppKnown, type Chosen, type Intent } from './lib/appWindow';
+import { askApp, askAppToBuild, panelWindow, showChanges, showChooser, whenAppKnown, type Chosen, type Intent } from './lib/appWindow';
 import { prepareRunning } from './lib/prepareState';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
@@ -23,100 +22,22 @@ import AutoUpdate from './ui/AutoUpdate';
 import SyncBar from './ui/SyncBar';
 
 /**
- * Whether the studio has moved on from what this window is running.
- *
- * Two ways it can, and they want different answers. A newer bundle on disk is
- * one reload away, so the banner offers the reload — never taking it, since
- * reloading under somebody mid-edit is its own kind of unreliability. A
- * server still running the code it started with is not: the page is already
- * current and reloading it changes nothing, which is what a Reload button
- * that appeared to do nothing used to mean. That one is fixed by quitting and
- * opening the app again, and the banner says so instead of offering a button
- * that cannot help.
+ * The page's part in Rehearsal Tool Studio ▸ Check for Updates, and nothing
+ * more: everything about updates is said by the app, in its own menu and
+ * dialogs, never in this window. An update ends by replacing the server, so
+ * the app asks first, and the page answers whether that is safe — not while
+ * a set is being written, since a prepare talking to the server would stop
+ * where it stood.
  */
-type Behind = { build: string; builtAt?: string | null; kind: 'page' | 'server' };
-
-/**
- * What a check asked for by hand found, when it found nothing to offer.
- *
- * Looking for updates and being told nothing is the usual answer, and a menu
- * item that appears to do nothing is the complaint that follows. So a check
- * somebody asked for always says something back — that it is looking, that
- * this is the newest build, or that now is not the moment because the studio
- * is in the middle of writing a set.
- */
-type Checked = { kind: 'looking' } | { kind: 'current' } | { kind: 'busy' } | { kind: 'silent' };
-
-/** This window's build, with when it was built. */
-const thisBuild = buildLabel(__BUILD__, __BUILT_AT__);
-
-function useNewerBuild(): { behind: Behind | null; checked: Checked | null; check: () => void; clear: () => void } {
-  const [behind, setBehind] = useState<Behind | null>(null);
-  const [checked, setChecked] = useState<Checked | null>(null);
-  /** Ask the server what it has, and answer whether this window is behind it. */
-  const look = useCallback(async (): Promise<Behind | null> => {
-    try {
-      const res = await fetch('/__rehearsal-studio', { signal: AbortSignal.timeout(2000) });
-      const info = await res.json();
-      // `build` is what sits on disk; `server` is what this server is.
-      const found: Behind | null =
-        info.build && info.build !== __BUILD__
-          ? { build: info.build, builtAt: info.builtAt, kind: 'page' }
-          : info.server && info.server !== __BUILD__
-            ? { build: info.server, builtAt: info.serverBuiltAt, kind: 'server' }
-            : null;
-      setBehind(found);
-      return found;
-    } catch {
-      // The dev server has no such route; there is nothing to say.
-      return null;
-    }
-  }, []);
-
+function useUpdateCheckAnswer(): void {
   useEffect(() => {
-    const onFocus = () => void look();
-    void look();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [look]);
-
-  /*
-   * A check asked for by hand — Rehearsal Tool Studio ▸ Check for Updates, or the button in
-   * Settings. The studio is built from the checkout beside it, so the app is
-   * asked to build; only it can, and only when nothing is being written,
-   * since the build ends by replacing the server a prepare would be talking
-   * to. Without an app to ask — a browser, an older build — the most that can
-   * be done is to look at what the server already has.
-   */
-  const check = useCallback(() => {
-    if (prepareRunning()) {
-      setChecked({ kind: 'busy' });
-      return;
-    }
-    setChecked({ kind: 'looking' });
-    if (canCheckUpdates() && askAppToBuild()) return; // the app answers with studio:checked
-    void look().then((found) => setChecked(found ? null : { kind: canCheckUpdates() ? 'current' : 'silent' }));
-  }, [look]);
-
-  useEffect(() => {
-    const asked = () => check();
-    const answered = () => void look().then((found) => setChecked(found ? null : { kind: 'current' }));
-    window.addEventListener('studio:check', asked);
-    window.addEventListener('studio:checked', answered);
-    return () => {
-      window.removeEventListener('studio:check', asked);
-      window.removeEventListener('studio:checked', answered);
+    const asked = () => {
+      if (prepareRunning()) askApp({ checkBusy: true });
+      else askAppToBuild();
     };
-  }, [check, look]);
-
-  // News that is only news for a moment: said, then out of the way.
-  useEffect(() => {
-    if (!checked || checked.kind === 'looking') return;
-    const go = window.setTimeout(() => setChecked(null), 10000);
-    return () => window.clearTimeout(go);
-  }, [checked]);
-
-  return { behind, checked, check, clear: () => setChecked(null) };
+    window.addEventListener('studio:check', asked);
+    return () => window.removeEventListener('studio:check', asked);
+  }, []);
 }
 
 /**
@@ -302,7 +223,7 @@ export default function App() {
       window.removeEventListener('studio:tools', onTools);
     };
   }, [takeChosen, chooseOutput]);
-  const { behind: newerBuild, checked, clear: clearChecked } = useNewerBuild();
+  useUpdateCheckAnswer();
   const run = useRun();
   const usingLocalFolder = settings.useLocal && localStatus === 'ready';
   const section = route.path[0] ?? 'library';
@@ -448,56 +369,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {checked && !newerBuild && (
-        <div className="notice spread" role="status" style={{ margin: 0, borderRadius: 0, alignItems: 'center' }}>
-          <span style={{ flex: 1 }}>
-            {checked.kind === 'looking'
-              ? 'Looking for a newer build…'
-              : checked.kind === 'busy'
-                ? 'The studio is writing a set just now — checking would restart it. Try again when it has finished.'
-                : checked.kind === 'current'
-                  ? `This is the newest build (${thisBuild}).`
-                  : `This window is on build ${thisBuild}; there is no app here to build a newer one.`}
-          </span>
-          {checked.kind !== 'looking' && (
-            <button className="icon-btn" onClick={clearChecked} aria-label="Dismiss">
-              ×
-            </button>
-          )}
-        </div>
-      )}
-      {newerBuild && (
-        <div
-          className="notice"
-          style={{ display: 'flex', gap: 12, alignItems: 'center', margin: 0, borderRadius: 0 }}
-        >
-          <span style={{ flex: 1 }}>
-            {newerBuild.kind === 'page' ? (
-              <>
-                A newer build ({buildLabel(newerBuild.build, newerBuild.builtAt)}) is ready — this window is showing {thisBuild}.
-              </>
-            ) : (
-              <>
-                This window is showing the newest build ({thisBuild}), but the studio’s own server is still the one it
-                started with ({buildLabel(newerBuild.build, newerBuild.builtAt)}) — so anything new it does with the disk isn’t there yet.
-                {canRestart() ? ' Opening the app again picks it up.' : ' Quit and open the app again to pick it up.'}
-              </>
-            )}
-          </span>
-          {newerBuild.kind === 'page' ? (
-            <button className="btn primary" onClick={() => window.location.reload()}>
-              Reload
-            </button>
-          ) : (
-            // Only where it would do something: an older app cannot be asked.
-            canRestart() && (
-              <button className="btn primary" onClick={() => restartApp()} title="Quit the studio and open it again">
-                Quit and reopen
-              </button>
-            )
-          )}
-        </div>
-      )}
       {drop.over && (
         <div className="drop-veil" aria-hidden="true">
           <span>Drop to open</span>
