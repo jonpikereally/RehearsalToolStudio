@@ -6,6 +6,7 @@ import { alwaysOpen, askForFiles, setAlwaysOpen } from '../lib/recent';
 import { showChooser } from '../lib/appWindow';
 import { navigate } from '../lib/router';
 import SettingsSection from './SettingsSection';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * What is open: the session that comes in, and the set folder it fills.
@@ -107,7 +108,7 @@ export default function OpenSettings() {
         </div>
       </div>
 
-      {error && <div className="notice error">{error}</div>}
+      {error && <ErrorNotice code="RTS-OPN-01" text={error} />}
 
       <div className="btn-row">
         <button className="btn primary" onClick={open} disabled={busy}>

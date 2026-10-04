@@ -11,6 +11,7 @@ import { mixesOf, stemsOf } from '../lib/stemMix';
 import { useMissingAudio } from '../lib/useMissingAudio';
 import type { ScanResult } from '../lib/scan';
 import type { Song } from '../types';
+import ErrorNotice from './ErrorNotice';
 
 export default function LibraryView() {
   const {
@@ -146,7 +147,7 @@ export default function LibraryView() {
       )}
 
       {scanning && <div className="notice">{scanProgress || 'Scanning…'}</div>}
-      {syncError && <div className="notice error">{syncError}</div>}
+      {syncError && <ErrorNotice code="RTS-APP-03" text={syncError} />}
 
       {lastScan && !scanning && (
         <div className="notice spread">

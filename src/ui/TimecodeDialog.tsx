@@ -6,6 +6,7 @@ import { formatBytes } from '../lib/songLoader';
 import { writeFile } from '../lib/source';
 import { printFolder } from '../lib/prints';
 import { useStore } from '../lib/store';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Writing a timecode track for the song.
@@ -154,7 +155,7 @@ export default function TimecodeDialog({
           </>
         )}
 
-        {error && <div className="notice error">{error}</div>}
+        {error && <ErrorNotice code="RTS-TC-01" text={error} />}
         {done && <div className="notice">{done}</div>}
 
         <div className="btn-row">

@@ -20,6 +20,7 @@ import ChangesView from './ui/ChangesView';
 import BandView from './ui/BandView';
 import AutoUpdate from './ui/AutoUpdate';
 import SyncBar from './ui/SyncBar';
+import ErrorNotice from './ui/ErrorNotice';
 
 /**
  * The page's part in Rehearsal Tool Studio ▸ Check for Updates, and nothing
@@ -293,7 +294,7 @@ export default function App() {
         <div className="launch-busy">
           <h2>Choosing what to open</h2>
           {takeError ? (
-            <div className="notice error">{takeError}</div>
+            <ErrorNotice code="RTS-APP-02" text={takeError} />
           ) : (
             <p>The Open window is in front. Choose what to do, then the set folder it writes to.</p>
           )}
@@ -375,8 +376,8 @@ export default function App() {
         </div>
       )}
       {drop.error && (
-        <div className="notice error spread" style={{ margin: 0, borderRadius: 0 }}>
-          <span>{drop.error}</span>
+        <div className="spread" style={{ display: 'flex', alignItems: 'center' }}>
+          <ErrorNotice code="RTS-APP-01" text={drop.error} style={{ margin: 0, borderRadius: 0, flex: 1 }} />
           <button className="icon-btn" onClick={drop.clear} aria-label="Dismiss">
             ×
           </button>

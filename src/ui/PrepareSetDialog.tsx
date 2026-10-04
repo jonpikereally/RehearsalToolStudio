@@ -15,6 +15,8 @@ import * as local from '../lib/localSource';
 import type { PublishResult } from '../lib/publish';
 import { SETS_FOLDER } from '../lib/prints';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -174,7 +176,7 @@ export default function PrepareSetDialog({
           setChosen(new Set(parsed.songs.map((s) => s.title).filter((t) => wanted.has(t))));
         }
       } catch (err) {
-        if (live) setError(err instanceof Error ? err.message : String(err));
+        if (live) setError(coded('RTS-PREP-01', err));
       }
     })();
     return () => {
@@ -304,7 +306,7 @@ export default function PrepareSetDialog({
       setRefreshed(out.refreshed);
       setPublished(out.published);
       if (!out.published && out.publishError) {
-        setError(`The files are written, but the band's library could not be: ${out.publishError}`);
+        setError(coded('RTS-PREP-02', `The files are written, but the band's library could not be: ${out.publishError}`));
       }
       // By hand, but the same thing happened to the band's folder, so it goes
       // in the same log as the saves the studio answered on its own.
@@ -328,13 +330,13 @@ export default function PrepareSetDialog({
         // What the stop left behind: nothing, when it came before the first
         // file was written; else the songs written over, which undo puts back.
         const touched = new Set((aside.current?.songs ?? []).map((a) => folderBaseOf(a.folder).toLowerCase())).size;
-        setError(
+        setError(coded('RTS-PREP-03',
           touched
             ? `Stopped. ${touched === 1 ? 'One song' : `${touched} songs`} had been written over — undo puts ${touched === 1 ? 'it' : 'them'} back as ${touched === 1 ? 'it was' : 'they were'}; running again rewrites the rest.`
-            : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.',
+            : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.'),
         );
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(coded('RTS-PREP-04', err));
       }
     } finally {
       running.current = null;
@@ -369,7 +371,7 @@ export default function PrepareSetDialog({
           '.',
       );
     } catch (err) {
-      setError(`Could not undo: ${err instanceof Error ? err.message : String(err)}`);
+      setError(coded('RTS-PREP-05', `Could not undo: ${err instanceof Error ? err.message : String(err)}`));
     } finally {
       setBusy(false);
     }
@@ -401,7 +403,7 @@ export default function PrepareSetDialog({
       setResult((was) => (was ? { ...was, silent: [] } : was));
       setSubmixResult((was) => (was ? { ...was, silent: [] } : was));
     } catch (err) {
-      setError(`The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(coded('RTS-PREP-06', `The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`));
     } finally {
       setBusy(false);
     }
@@ -413,7 +415,7 @@ export default function PrepareSetDialog({
       await go(folder, kind);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if (!/abort/i.test(message)) setError(coded('RTS-PREP-07', message));
     }
   };
 
@@ -495,7 +497,7 @@ export default function PrepareSetDialog({
             </span>
           </div>
           {badSamples.length > 0 && (
-            <div className="notice error" role="alert" style={{ marginBottom: 6 }}>
+            <ErrorNotice code="RTS-PREP-08" role="alert" style={{ marginBottom: 6 }}>
               {badSamples.map((b) => (
                 <div key={b.part}>
                   <strong>
@@ -515,7 +517,7 @@ export default function PrepareSetDialog({
                   Allow a folder…
                 </button>
               </div>
-            </div>
+            </ErrorNotice>
           )}
           {leftOut.length > 0 && (
             <div className="hint" style={{ marginBottom: 6 }}>
@@ -623,7 +625,7 @@ export default function PrepareSetDialog({
         </>
       )}
 
-      {error && <div className="notice error">{error}</div>}
+      {error && <ErrorNotice code="RTS-PREP-04" text={error} />}
       {undone && (
         <div className="notice done" role="status">
           {undone}

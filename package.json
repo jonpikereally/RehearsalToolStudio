@@ -12,7 +12,8 @@
     "slates:helper": "node scripts/slate-helper.mjs",
     "lyrics:studio": "cd lyrics-studio && uv run server.py",
     "apps": "bash scripts/make-mac-apps.sh",
-    "changelog": "node scripts/changelog.mjs"
+    "changelog": "node scripts/changelog.mjs",
+    "errors": "node scripts/error-list.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

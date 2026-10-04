@@ -15,6 +15,8 @@ import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
 import { note } from '../lib/saveLog';
 import { prepareRunning } from '../lib/prepareState';
+import ErrorNotice from './ErrorNotice';
+import { coded } from '../lib/errorCodes';
 
 /**
  * Keeping the prepared set current with the set as Live saves it.
@@ -94,7 +96,7 @@ export default function AutoUpdate() {
           // Never said on opening: a folder not granted yet is how every
            // set starts, and the prepare that grants it is a click away.
           if (current() && why === 'save') {
-            setPhase({ kind: 'error', at, why, message: "Auto-update needs the band's folder, which a prepare chooses. Prepare the set once by hand." });
+            setPhase({ kind: 'error', at, why, message: coded('RTS-AUTO-02', "Auto-update needs the band's folder, which a prepare chooses. Prepare the set once by hand.") });
           }
           return;
         }
@@ -218,16 +220,16 @@ export default function AutoUpdate() {
             ? `Stopped by hand after ${touched === 1 ? 'one song' : `${touched} songs`} had been written over.`
             : 'Stopped by hand before anything was written.'
           : err instanceof Error ? err.message : String(err);
-        note({ kind: aborted ? 'stopped' : 'error', session: setName, text: message });
+        note({ kind: aborted ? 'stopped' : 'error', session: setName, text: aborted ? message : coded('RTS-AUTO-01', message) });
         setPhase({
           kind: 'error',
           at,
           why,
           message: aborted
-            ? touched
+            ? coded('RTS-AUTO-04', touched
               ? `Stopped. ${touched === 1 ? 'One song' : `${touched} songs`} had been written over — undo puts ${touched === 1 ? 'it' : 'them'} back; the next save, or a prepare, writes the rest.`
-              : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.'
-            : err instanceof Error ? err.message : String(err),
+              : 'Stopped before any song was written — the folder is as it was, so there is nothing to undo.')
+            : coded('RTS-AUTO-01', err),
         });
       } finally {
         if (stopper.current === controller) stopper.current = null;
@@ -311,7 +313,7 @@ export default function AutoUpdate() {
       });
       setPhase({ kind: 'undone', at, restored: put.restored, removed: put.removed, songs: put.published.songs });
     } catch (err) {
-      setPhase({ kind: 'error', at, why, message: `Could not undo: ${err instanceof Error ? err.message : String(err)}` });
+      setPhase({ kind: 'error', at, why, message: coded('RTS-AUTO-03', `Could not undo: ${err instanceof Error ? err.message : String(err)}`) });
     }
   };
   const undoable = !!aside.current?.songs.length && (phase?.kind === 'done' || phase?.kind === 'error');
@@ -431,7 +433,8 @@ export default function AutoUpdate() {
           )}
           {phase.kind === 'error' && (
             <>
-              <strong>The update {since(phase)} didn't finish.</strong> {phase.message}
+              <strong>The update {since(phase)} didn't finish.</strong>{' '}
+              <ErrorNotice inline code="RTS-AUTO-01" text={phase.message} />
             </>
           )}
           {phase.kind === 'undone' && (

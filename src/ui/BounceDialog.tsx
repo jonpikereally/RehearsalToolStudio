@@ -7,6 +7,7 @@ import { versionsOf } from '../lib/versions';
 import { formatBytes } from '../lib/songLoader';
 import { writeFile } from '../lib/source';
 import { useStore } from '../lib/store';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Printing the current mix to a file.
@@ -208,7 +209,7 @@ export default function BounceDialog({
           </>
         )}
 
-        {error && <div className="notice error">{error}</div>}
+        {error && <ErrorNotice code="RTS-BNC-01" text={error} />}
         {done && <div className="notice">{done}</div>}
 
         <div className="btn-row">

@@ -39,6 +39,8 @@ import { addRigTracks, type RigTrackSpec } from '../lib/rigTrack';
 import { parseMemberRig, rigTrackSpecFor, studioChanges, RIG_FILES_FOLDER } from '../lib/rigFiles';
 import { locatePrepared } from '../lib/locatePrepared';
 import { remember } from '../lib/remember';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Set tools: everything the studio does *to* an Ableton set.
@@ -234,7 +236,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       setProject(scopeToSetlist(await parseAls(bytes), library, path).project);
       readAt.current = await modifiedAt(from, path);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-01', err));
     }
   };
 
@@ -381,7 +383,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
       const plan = slatePlan(project).filter((entry) => selected.has(entry.title));
       if (!plan.length) {
-        setError('No songs chosen.');
+        setError(coded('RTS-SET-02', 'No songs chosen.'));
         return;
       }
 
@@ -426,7 +428,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
           'Open it beside the set and drag the track across. The original is untouched.',
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-03', err));
       setVoices(await helperVoices());
     } finally {
       setProgress(null);
@@ -467,10 +469,10 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       if (!writing.length) {
         const had = [...new Set(asked.flatMap((a) => a.alreadyHad))];
         setError(
-          had.length
+          coded('RTS-SET-04', had.length
             ? `Nothing to write — ${had.length === 1 ? 'the song' : `all ${had.length} songs`} with chords already ${had.length === 1 ? 'has' : 'have'} ` +
               `${chordTargets.map((k) => NOTATION_LABEL[k].toLowerCase()).join(' and ')}.`
-            : 'Nothing to convert — these songs have no chord track.',
+            : 'Nothing to convert — these songs have no chord track.'),
         );
         return;
       }
@@ -502,7 +504,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
             : ''),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-05', err));
     } finally {
       setProgress(null);
     }
@@ -523,7 +525,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
         forAbleSet: abletReads(trackName),
       });
       if (!clips.length) {
-        setError('Nothing to write — tick at least one kind of information, for songs that have it.');
+        setError(coded('RTS-SET-06', 'Nothing to write — tick at least one kind of information, for songs that have it.'));
         return;
       }
       setProgress('Writing song info…');
@@ -540,7 +542,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
           (empty.length ? ` ${empty.length} song${empty.length === 1 ? ' had' : 's had'} nothing to say: ${empty.slice(0, 4).join(', ')}.` : ''),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-07', err));
     } finally {
       setProgress(null);
     }
@@ -558,7 +560,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       const trackName = addThis(locatorTrack.trim() || DEFAULT_LOCATOR_TRACK);
       const { clips, songs } = locatorClipsFor(project, [...selected], locatorFields, locatorFormat, { keyFor });
       if (!clips.length) {
-        setError('Nothing to write — choose at least one song.');
+        setError(coded('RTS-SET-08', 'Nothing to write — choose at least one song.'));
         return;
       }
       setProgress('Writing locator text…');
@@ -575,7 +577,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
           'song\'s locator, named as the locator should be. The original is untouched.',
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-09', err));
     } finally {
       setProgress(null);
     }
@@ -631,7 +633,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       );
       if (n) void rescan().catch(() => undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-10', err));
     } finally {
       setProgress(null);
     }
@@ -694,8 +696,8 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
 
       if (!specs.length) {
         setError(
-          'No patch changes to write: none programmed in the player for these songs, and no rig files from the band' +
-            (band ? '.' : ' — choose the band’s folder to look for theirs.'),
+          coded('RTS-SET-11', 'No patch changes to write: none programmed in the player for these songs, and no rig files from the band' +
+            (band ? '.' : ' — choose the band’s folder to look for theirs.')),
         );
         return;
       }
@@ -714,7 +716,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
           (notes.length ? ` ${notes.join('. ')}.` : ''),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SET-12', err));
     } finally {
       setProgress(null);
     }
@@ -1357,7 +1359,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
 
           {progress && <div className="notice">{progress}</div>}
           {done && <div className="notice">{done}</div>}
-          {error && <div className="notice error">{error}</div>}
+          {error && <ErrorNotice code="RTS-SET-00" text={error} />}
 
           {tool === 'slates' && <SlatesPanel />}
 

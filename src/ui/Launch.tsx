@@ -9,6 +9,7 @@ import { alwaysOpen, recentOutput, recentSession, setAlwaysOpen, takeAsk } from 
 import { choosingNew, chooserChose, isChooserWindow, type Intent } from '../lib/appWindow';
 import { SETS_FOLDER } from '../lib/prints';
 import { safeSetName } from '../lib/setName';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * The window a launch opens with: what to do, then where it goes.
@@ -378,7 +379,7 @@ export default function Launch() {
                   </button>
                 </div>
 
-                {inError && <div className="notice error">{inError}</div>}
+                {inError && <ErrorNotice code="RTS-LCH-01" text={inError} />}
               </div>
             )}
           </section>
@@ -498,7 +499,7 @@ export default function Launch() {
             </div>
           )}
 
-          {outError && <div className="notice error">{outError}</div>}
+          {outError && <ErrorNotice code="RTS-LCH-02" text={outError} />}
         </section>
       </div>
 

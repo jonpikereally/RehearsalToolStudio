@@ -5612,5 +5612,54 @@ group("a build's name");
   check('one with no time on record is named by its commit alone', buildLabel('914c26d') === '914c26d' && buildLabel('914c26d', null) === '914c26d' && buildLabel('914c26d', 'yesterday') === '914c26d');
 }
 
+/* ------------------------------- error codes ------------------------------- */
+
+group('error codes');
+{
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const { ERROR_CODES, ERROR_AREAS, coded, splitCode } = await import('../src/lib/errorCodes.ts');
+  const { errorListMarkdown } = await import('./error-list.mjs');
+
+  const walk = (dir) =>
+    readdirSync(join(root, dir)).flatMap((n) => {
+      const rel = `${dir}/${n}`;
+      return statSync(join(root, rel)).isDirectory() ? walk(rel) : [rel];
+    });
+  const sources = [
+    ...walk('src').filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith('errorCodes.ts')),
+    ...walk('scripts').filter((f) => /\.(mjs|sh)$/.test(f) && !/selftest|error-list/.test(f)),
+    'mac/RehearsalToolStudio/main.swift',
+    'lyrics-studio/server.py',
+  ];
+  const text = Object.fromEntries(sources.map((f) => [f, readFileSync(join(root, f), 'utf8')]));
+  const used = new Set(Object.values(text).flatMap((t) => [...t.matchAll(/RTS-[A-Z]{2,5}-\d{2}/g)].map((m) => m[0])));
+
+  const unknown = [...used].filter((c) => !ERROR_CODES[c]);
+  check('every error code shown is in the list', !unknown.length, unknown.join(', '));
+  const unused = Object.keys(ERROR_CODES).filter((c) => !used.has(c));
+  check('every code in the list is shown somewhere', !unused.length, unused.join(', '));
+  const badArea = Object.entries(ERROR_CODES).filter(([c, e]) => !ERROR_AREAS[e.area] || c.split('-')[1] !== e.area).map(([c]) => c);
+  check('every code is filed under its own area', !badArea.length, badArea.join(', '));
+
+  // An error notice drawn by hand would have no code: they all go through ErrorNotice.
+  const raw = Object.entries(text)
+    .filter(([f]) => f.startsWith('src/') && !f.endsWith('ErrorNotice.tsx'))
+    .filter(([, t]) => /['"]notice error|notice error['"]|className="notice error/.test(t))
+    .map(([f]) => f);
+  check('every error notice carries a code (drawn by ErrorNotice)', !raw.length, raw.join(', '));
+
+  check('a message is given the code for where it surfaced', coded('RTS-LYR-02', new Error('boom')) === '[RTS-LYR-02] boom');
+  check('but keeps one given deeper down', coded('RTS-LYR-02', '[RTS-LSE-01] Audio file not found: /x.wav') === '[RTS-LSE-01] Audio file not found: /x.wav');
+  const split = splitCode('[RTS-LSE-02] Operation not permitted: macOS refused');
+  check('and the code comes apart from the message to be shown', split.code === 'RTS-LSE-02' && split.message === 'Operation not permitted: macOS refused', JSON.stringify(split));
+
+  const md = await errorListMarkdown();
+  check('the public error list is up to date (npm run errors)', readFileSync(join(root, 'docs/errors.md'), 'utf8') === md);
+  check('and has a heading per code, for links to land on', Object.keys(ERROR_CODES).every((c) => md.includes(`\n### ${c}\n`)));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

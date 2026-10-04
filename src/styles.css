@@ -2160,6 +2160,31 @@ input[type='range'] {
   color: var(--bad-text);
 }
 
+/* An error's code: a link to the public error list, for whoever asks an LLM for help. */
+.error-code {
+  display: inline-block;
+  font: 600 11px ui-monospace, Menlo, monospace;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  margin-right: 2px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+  color: inherit;
+  opacity: 0.85;
+  text-decoration: none;
+  vertical-align: 1px;
+  cursor: help;
+}
+
+.error-code:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.error-text {
+  color: var(--bad-text);
+}
+
 /* A job finished: said in the colour of a thing gone right. */
 .notice.done {
   border-color: var(--good);

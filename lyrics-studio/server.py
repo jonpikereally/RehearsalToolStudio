@@ -113,6 +113,19 @@ def idle_watchdog() -> None:
                 pass
             os._exit(0)
 
+@app.exception_handler(HTTPException)
+async def coded_http_error(request, exc: HTTPException):
+    """An error answered straight from an endpoint carries a code too: its own,
+    else RTS-LSE-00 (see with_code and docs/errors.md)."""
+    from fastapi.responses import JSONResponse
+    detail = exc.detail
+    if isinstance(detail, str):
+        detail = with_code("RTS-LSE-00", detail)
+    elif isinstance(detail, dict) and isinstance(detail.get("message"), str):
+        detail = {**detail, "message": with_code("RTS-LSE-00", detail["message"])}
+    return JSONResponse({"detail": detail}, status_code=exc.status_code, headers=exc.headers)
+
+
 # Rehearsal Tool Studio pings /api/version to show whether this tool is up,
 # then hands sets over by URL. Reads only — every write stays same-origin.
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -1151,7 +1164,7 @@ def ensure_known_als(path: str) -> None:
         return
     p = Path(path)
     if p.suffix.lower() != ".als" or not p.is_file():
-        raise HTTPException(403, "That isn't a Live set this app can work on.")
+        raise HTTPException(403, "[RTS-LSE-08] That isn't a Live set this app can work on.")
     INSPECTED_ALS.add(path)
     save_state()
 
@@ -1461,18 +1474,18 @@ def why_unreadable(fileref, als_dir: Path) -> str:
         try:
             cand.stat()
         except PermissionError:
-            return f"Operation not permitted: macOS refused the lyrics engine access to {cand.parent}"
+            return f"[RTS-LSE-02] Operation not permitted: macOS refused the lyrics engine access to {cand.parent}"
         except OSError:
             continue
         try:
             with open(cand, "rb") as f:
                 f.read(1)
         except PermissionError:
-            return f"Operation not permitted: macOS refused the lyrics engine access to {cand}"
+            return f"[RTS-LSE-02] Operation not permitted: macOS refused the lyrics engine access to {cand}"
         except OSError as e:
-            return f"{cand.name} could not be opened: {e}"
+            return f"[RTS-LSE-11] {cand.name} could not be opened: {e}"
     shown = candidates[0] if candidates else "(no path in the set)"
-    return f"Audio file not found: {shown}"
+    return f"[RTS-LSE-01] Audio file not found: {shown}"
 
 
 def resolve_sample(fileref, als_dir: Path) -> Path | None:
@@ -1664,7 +1677,7 @@ def als_progress(als_path: str, track_id: str):
 def extract_region(sample: str, start: float, dur: float, dest: str) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        raise HTTPException(500, "ffmpeg is not installed, and it is what cuts a region out of its file. "
+        raise HTTPException(500, "[RTS-LSE-04] ffmpeg is not installed, and it is what cuts a region out of its file. "
                                  "In Terminal: brew install ffmpeg")
     subprocess.run(
         [ffmpeg, "-y", "-v", "error", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}",
@@ -1700,10 +1713,10 @@ def als_transcribe(req: AlsTranscribeRequest):
     tracks = [t for t in ls.find("Tracks")
               if t.tag == "AudioTrack" and t.get("Id") in wanted]
     if not tracks:
-        raise HTTPException(404, "Audio track not found in the set.")
+        raise HTTPException(404, "[RTS-LSE-06] Audio track not found in the set.")
     clips = clips_across(tracks)
     if not clips:
-        raise HTTPException(404, "That track has no audio regions.")
+        raise HTTPException(404, "[RTS-LSE-07] That track has no audio regions.")
     chosen = set(req.region_indexes) if req.region_indexes else None
 
     tmap = tempo_map(ls)
@@ -1763,15 +1776,15 @@ def als_transcribe(req: AlsTranscribeRequest):
                 last = said[-1] if said else str(e)
                 # A file that is there but may not be opened: macOS's folder permission, not a bad file.
                 if "Operation not permitted" in last:
-                    problems.append(f"Operation not permitted: macOS refused the lyrics engine access to {sample}")
+                    problems.append(f"[RTS-LSE-02] Operation not permitted: macOS refused the lyrics engine access to {sample}")
                 else:
-                    problems.append(f"ffmpeg could not read {Path(sample).name}: {last}")
+                    problems.append(f"[RTS-LSE-03] ffmpeg could not read {Path(sample).name}: {last}")
                 continue
             except HTTPException:
                 raise
             except Exception as e:  # noqa: BLE001 — said, not swallowed
                 skipped_missing += 1
-                problems.append(f"{Path(sample).name} could not be cut: {type(e).__name__}: {e}")
+                problems.append(f"[RTS-LSE-09] {Path(sample).name} could not be cut: {type(e).__name__}: {e}")
                 continue
 
             out = transcribe_file(region, req.language, req.lyrics, req.isolate, tmp)
@@ -1827,12 +1840,12 @@ def als_transcribe(req: AlsTranscribeRequest):
         TRANSCRIBE_PROGRESS.pop(progress_key, None)
         # A refusal is said as one, so the studio starts the engine again
         # under its own permissions and asks once more.
-        refused = next((p for p in problems if p.startswith("Operation not permitted")), None)
+        refused = next((p for p in problems if "Operation not permitted" in p), None)
         if refused:
             raise HTTPException(403, refused)
         if problems and not done:
             raise HTTPException(400, problems[0] + (f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""))
-        raise HTTPException(400, "No lyrics found on that track "
+        raise HTTPException(400, "[RTS-LSE-05] No lyrics found on that track "
                                  f"({done} regions transcribed, "
                                  f"{skipped_missing} unreadable, {skipped_short} too short"
                                  + (f", {skipped_range} outside the chosen bars"
@@ -1873,6 +1886,15 @@ def als_transcribe(req: AlsTranscribeRequest):
 TRANSCRIBE_JOBS: dict[str, dict] = {}
 
 
+ERROR_CODE = re.compile(r"\[?RTS-[A-Z]{2,5}-\d{2}\]?")
+
+
+def with_code(code: str, message: str) -> str:
+    """Every error a person may read carries a code (docs/errors.md): its own
+    when it has one, else the one for where it surfaced."""
+    return message if ERROR_CODE.search(message) else f"[{code}] {message}"
+
+
 def start_job(work) -> str:
     """Run `work` on a thread and answer with the id /api/job reports it by.
     A job counts as in flight, so the idle watchdog never stops a server
@@ -1889,9 +1911,9 @@ def start_job(work) -> str:
             TRANSCRIBE_JOBS[job] = {"status": "done", "result": work()}
         except HTTPException as e:
             detail = e.detail if isinstance(e.detail, str) else json.dumps(e.detail)
-            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": detail}
+            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": with_code("RTS-LSE-00", detail)}
         except Exception as e:  # noqa: BLE001 — the page needs the words, whatever they are
-            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+            TRANSCRIBE_JOBS[job] = {"status": "failed", "error": with_code("RTS-LSE-10", f"{type(e).__name__}: {e}")}
         finally:
             IN_FLIGHT -= 1
 
