@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Keep macOS's folder permissions across updates**
+
+Every update asked again for access to the folders the studio reads. macOS keeps that permission against an app's designated requirement, and an ad hoc signature's requirement is the hash of that very build, so each update looked like a new app. The packaged app is now signed with a requirement naming its bundle id alone, which is the same from build to build: permission given once stays given. The build says when that signing fails rather than passing over it.
+
 **Offer every track with audio in the song to listen to for lyrics**
 
 The Lyrics tool's track picker offered the song's own group: the tracks filed under the song. A track with audio inside the song but filed elsewhere — a cue track, a pitch reference, a break — was not there to choose. The parser now lists, per song, every audio track with a clip inside its bars, wherever it sits in the set, and the picker offers all of them: the song's own first, then the rest, a group named where two tracks share a name. Ref Vox is still the one chosen to start with.
