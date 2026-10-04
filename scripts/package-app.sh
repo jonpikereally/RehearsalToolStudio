@@ -157,6 +157,19 @@ plutil -lint "$APP/Contents/Info.plist" >/dev/null
 # another Mac (right-click → Open); after that it is an ordinary app.
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 
+# The app itself signed again, saying who it is by its bundle id alone. macOS
+# keeps folder permissions — Desktop, Documents, Downloads — against an app's
+# designated requirement, and an ad hoc signature's is the hash of that very
+# build: every update was a stranger, asked all over again. An identifier is
+# the same from build to build, so leave given once stays given.
+ID="com.pikemusicschool.rehearsaltool.studio"
+if codesign --force --sign - -r="designated => identifier \"$ID\"" "$APP" >/dev/null 2>&1 \
+  && codesign -d -r- "$APP" 2>&1 | grep -q "designated => identifier \"$ID\""; then
+  echo "signed as $ID"
+else
+  echo "warning: could not sign the app as $ID; macOS will ask for folder access after each update" >&2
+fi
+
 ZIP="$OUT/$NAME $STAMP.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
