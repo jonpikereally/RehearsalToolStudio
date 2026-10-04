@@ -36,6 +36,19 @@ export async function findLyricsStudio(): Promise<string | null> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Which build of the studio started the engine at `base`: '' when it does
+ * not say, as one from before it was asked does not.
+ */
+export async function engineStartedBy(base: string): Promise<string> {
+  try {
+    const res = await fetch(`${base}/api/version`, { signal: AbortSignal.timeout(1500) });
+    return ((await res.json()) as { started_by?: string }).started_by ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Lyrics Studio, running: found where it is, or started through the file
  * server and waited for. Its first start on a Mac can take a while, since
  * uv builds its environment; the wait says how long it has been.

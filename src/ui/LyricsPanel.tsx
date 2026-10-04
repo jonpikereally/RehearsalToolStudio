@@ -3,7 +3,7 @@ import { keepOnlyAdded } from '../lib/alsEdit';
 import { inflateAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { addChordTrack, type ChordClip } from '../lib/chordTrack';
 import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyricClips';
-import { ensureLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
+import { engineStartedBy, ensureLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
 import * as local from '../lib/localSource';
 import { remember } from '../lib/remember';
 
@@ -138,6 +138,13 @@ export default function LyricsPanel({
     try {
       setNote('Starting the listening engine…');
       let url = await ensureLyricsStudio((n) => setNote(n));
+      /*
+       * An engine an earlier build started — it outlives the app by twenty
+       * minutes — has that build's folder permissions, which macOS takes back
+       * once the app is updated: every file reads as unreadable. So one this
+       * build didn't start is started again, under this build.
+       */
+      if ((await engineStartedBy(url)) !== __BUILD__) url = await restartLyricsStudio(url, (n) => setNote(n));
       const alsPath = await local.absolutePath(folder.handle, '', setPath);
       setNote(null);
       for (const [i, song] of queue.entries()) {
