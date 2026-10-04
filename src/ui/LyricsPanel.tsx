@@ -6,6 +6,8 @@ import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyric
 import { engineStartedBy, ensureLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
 import * as local from '../lib/localSource';
 import { remember } from '../lib/remember';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Set tools ▸ Lyrics.
@@ -149,12 +151,12 @@ export default function LyricsPanel({
       setNote(null);
       for (const [i, song] of queue.entries()) {
         if (stop.current) {
-          for (const rest of queue.slice(i)) setRows((prev) => (prev[rest.title]?.state === 'queued' ? { ...prev, [rest.title]: { state: 'failed', error: 'Stopped before it was listened to.' } } : prev));
+          for (const rest of queue.slice(i)) setRows((prev) => (prev[rest.title]?.state === 'queued' ? { ...prev, [rest.title]: { state: 'failed', error: coded('RTS-LYR-06', 'Stopped before it was listened to.') } } : prev));
           break;
         }
         const track = trackOf(song);
         if (!track) {
-          setRow(song.title, { state: 'failed', error: 'This song has no audio track to listen to.' });
+          setRow(song.title, { state: 'failed', error: coded('RTS-LYR-04', 'This song has no audio track to listen to.') });
           continue;
         }
         const listening = (n: string) => setRow(song.title, { state: 'listening', note: n });
@@ -181,21 +183,21 @@ export default function LyricsPanel({
           }
           const clips = lyricClipsFrom(result.segments, project, fineness);
           if (!clips.length) {
-            setRow(song.title, { state: 'failed', error: `No words were heard on “${track.name}” inside the song.` });
+            setRow(song.title, { state: 'failed', error: coded('RTS-LYR-05', `No words were heard on “${track.name}” inside the song.`) });
           } else {
             setRow(song.title, { state: 'heard', segments: result.segments, clips, missing: result.regions.missing });
           }
         } catch (err) {
-          setRow(song.title, { state: 'failed', error: err instanceof Error ? err.message : String(err) });
+          setRow(song.title, { state: 'failed', error: coded('RTS-LYR-02', err) });
         }
       }
     } catch (err) {
       // The engine itself would not start: every song still waiting says so.
       const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(coded('RTS-LYR-01', message));
       setRows((prev) => {
         const next = { ...prev };
-        for (const s of queue) if (next[s.title]?.state === 'queued') next[s.title] = { state: 'failed', error: 'Not listened to: the engine did not start.' };
+        for (const s of queue) if (next[s.title]?.state === 'queued') next[s.title] = { state: 'failed', error: coded('RTS-LYR-01', 'Not listened to: the engine did not start.') };
         return next;
       });
     } finally {
@@ -237,7 +239,7 @@ export default function LyricsPanel({
           'Open it beside the set and drag the track across. The original is untouched.',
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-LYR-03', err));
     } finally {
       setWriting(false);
     }
@@ -310,7 +312,7 @@ export default function LyricsPanel({
                     {row.clips.length} line{row.clips.length === 1 ? '' : 's'} heard — {open === song.title ? 'hide' : 'read and correct'}
                   </button>
                 )}
-                {row?.state === 'failed' && <span className="lyric-song-error">{row.error}</span>}
+                {row?.state === 'failed' && <ErrorNotice inline code="RTS-LYR-02" text={row.error} className="lyric-song-error" />}
               </span>
               {row?.state === 'heard' && open === song.title && (
                 <div className="lyric-lines">
@@ -376,7 +378,7 @@ export default function LyricsPanel({
       {note && <div className="notice">{note}</div>}
       {writing && <div className="notice">Writing the set…</div>}
       {done && <div className="notice">{done}</div>}
-      {error && <div className="notice error">{error}</div>}
+      {error && <ErrorNotice code="RTS-LYR-01" text={error} />}
     </div>
   );
 }

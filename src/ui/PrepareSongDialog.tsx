@@ -20,6 +20,8 @@ import { songKey } from '../lib/alsParser';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
 import { audioKeysFor, bandMembers, removeSilentParts } from '../lib/prepareRun';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * One song, prepared for the band.
@@ -125,7 +127,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
         for (const stem of mine.stems.filter(soundsInSong)) initial[stem.name] = 'print';
         setChoice(initial);
       } catch (err) {
-        if (live) setError(err instanceof Error ? err.message : String(err));
+        if (live) setError(coded('RTS-PSG-01', err));
       }
     })();
     return () => {
@@ -199,7 +201,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       );
       setResult((was) => (was ? { ...was, silent: [] } : was));
     } catch (err) {
-      setError(`The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(coded('RTS-PSG-02', `The silent parts could not be removed: ${err instanceof Error ? err.message : String(err)}`));
     } finally {
       setBusy(false);
     }
@@ -307,8 +309,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       setPublished(await publishLibrary(folder));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if ((err as { name?: string })?.name === 'AbortError') setError('Stopped. Parts already written are on disk; running it again rewrites the song from the top.');
-      else if (!/abort/i.test(message)) setError(message);
+      if ((err as { name?: string })?.name === 'AbortError') setError(coded('RTS-PSG-03', 'Stopped. Parts already written are on disk; running it again rewrites the song from the top.'));
+      else if (!/abort/i.test(message)) setError(coded('RTS-PSG-04', message));
     } finally {
       releaseAwake();
       running.current = null;
@@ -354,7 +356,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       setPublished(await publishLibrary(folder));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if (!/abort/i.test(message)) setError(coded('RTS-PSG-05', message));
     } finally {
       setBusy(false);
       setJob(null);
@@ -467,7 +469,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             </div>
           </>
         )}
-        {error && <div className="notice error">{error}</div>}
+        {error && <ErrorNotice code="RTS-PSG-04" text={error} />}
         {result && (
           <div className="notice done" role="status">
             <strong>Done — the song is prepared.</strong>

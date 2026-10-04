@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SongEngine } from '../lib/audioEngine';
 import { useStore } from '../lib/store';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Which device the studio plays out of.
@@ -122,7 +123,7 @@ export default function OutputDevice() {
       </div>
     </div>
     {/* Below the field, not in it: a notice in the row would squeeze the label. */}
-    {error && <div className="notice error">{error}</div>}
+    {error && <ErrorNotice code="RTS-OUT-01" text={error} />}
     </>
   );
 }

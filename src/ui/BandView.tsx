@@ -7,6 +7,8 @@ import {
 } from '../lib/members';
 import { MANIFEST_NAME, type PreparedManifest } from '../lib/preparedSet';
 import PrepareSetDialog from './PrepareSetDialog';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * The band, and what each of them keeps on a fader of their own.
@@ -64,7 +66,7 @@ export default function BandView() {
         setKnown(await membersFromRigs(band).catch(() => []));
       } catch (err) {
         if (live) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(coded('RTS-BND-01', err));
           setSaved([]);
         }
       }
@@ -125,7 +127,7 @@ export default function BandView() {
         setBehind(submixesBehind(manifest.songs ?? [], written.members));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-BND-02', err));
     } finally {
       setBusy(false);
     }
@@ -156,7 +158,7 @@ export default function BandView() {
         one, so they are not offered here.
       </div>
 
-      {error && <div className="notice error">{error}</div>}
+      {error && <ErrorNotice code="RTS-BND-02" text={error} />}
       {saved === null && <div className="notice">Reading the band’s folder…</div>}
 
       {draft.map((member) => (

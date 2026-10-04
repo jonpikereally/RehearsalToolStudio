@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../lib/store';
 import { navigate } from '../lib/router';
 import { APP_NAME } from '../lib/appMode';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * The studio's first run: point it at the band's folder.
@@ -49,7 +50,7 @@ export default function Onboarding() {
             Chosen once and remembered. Each set folder inside it is prepared from an Ableton session, which you point
             at when you open the folder.
           </p>
-          {error && <div className="notice error">{error}</div>}
+          {error && <ErrorNotice code="RTS-ONB-01" text={error} />}
           <button className="btn primary" onClick={() => void chooseFolder()} disabled={busy}>
             {busy ? 'Choosing…' : "Choose the band's folder"}
           </button>

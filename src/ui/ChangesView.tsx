@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { clearNotes, saveNotes, type SaveNote } from '../lib/saveLog';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * What the studio has done, save by save.
@@ -88,7 +89,7 @@ export default function ChangesView() {
                 <span className="change-at">{TIME(n.at)}</span>
                 <span className={`badge${TONE[n.kind]}`}>{LABEL[n.kind]}</span>
                 <span className="change-what">
-                  {n.text}
+                  {n.kind === 'error' ? <ErrorNotice inline code="RTS-AUTO-01" text={n.text} /> : n.text}
                   <span className="change-where">
                     {n.session}
                     {n.set ? ` → ${n.set.split('/').pop()}` : ''}

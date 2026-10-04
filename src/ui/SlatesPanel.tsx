@@ -17,6 +17,8 @@ import {
 import { buildZip } from '../lib/zip';
 import SettingsSection from './SettingsSection';
 import { remember } from '../lib/remember';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 const LS_VOICE = 'ls.slates.voice';
 
@@ -78,7 +80,7 @@ export default function SlatesPanel() {
       setSourcePath(scanPath);
       setWritten(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SLT-01', err));
     }
   };
 
@@ -93,7 +95,7 @@ export default function SlatesPanel() {
       setWritten(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if (!/abort/i.test(message)) setError(coded('RTS-SLT-02', message));
     }
   };
 
@@ -108,7 +110,7 @@ export default function SlatesPanel() {
       }
       download(new Blob([buildZip(entries) as BlobPart], { type: 'application/zip' }), zipName);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SLT-03', err));
       setVoices(await helperVoices());
     } finally {
       setProgress(null);
@@ -140,7 +142,7 @@ export default function SlatesPanel() {
       }
       setWritten(`${count} file${count === 1 ? '' : 's'} in ${dest}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SLT-04', err));
       setVoices(await helperVoices());
     } finally {
       setProgress(null);
@@ -153,7 +155,7 @@ export default function SlatesPanel() {
       const data = await synthesize(speakable(custom), voice);
       download(new Blob([data as BlobPart], { type: 'audio/wav' }), slateFileName(custom));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(coded('RTS-SLT-05', err));
       setVoices(await helperVoices());
     }
   };
@@ -270,10 +272,10 @@ export default function SlatesPanel() {
 
       {progress && <div className="notice">{progress}</div>}
       {error && (
-        <div className="notice error">
-          {error}
-          {voices === null && ` — is the helper still running at ${HELPER_URL}?`}
-        </div>
+        <ErrorNotice
+          code="RTS-SLT-06"
+          text={voices === null ? `${error} — is the helper still running at ${HELPER_URL}?` : error}
+        />
       )}
     </SettingsSection>
   );

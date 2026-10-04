@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { reportError } from '../lib/reportError';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * What stands in for the page when its code throws.
@@ -28,6 +29,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
     return (
       <div style={{ padding: '32px 24px', maxWidth: 820, margin: '0 auto', color: 'var(--text)' }}>
         <h2 style={{ marginTop: 0 }}>The studio's page stopped</h2>
+        <ErrorNotice code="RTS-APP-05" text={`[RTS-APP-05] ${error.name}: ${error.message}`} />
         <p style={{ color: 'var(--text-dim)' }}>
           Something in the page threw while drawing. The error is below and in the launch log; reload
           to try again.

@@ -6,6 +6,8 @@ import { useStore } from '../lib/store';
 import { publishLibrary, type PublishResult } from '../lib/publish';
 import { locatePrepared } from '../lib/locatePrepared';
 import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
+import { coded } from '../lib/errorCodes';
+import ErrorNotice from './ErrorNotice';
 
 /**
  * Publishing what a set says about a song, without re-publishing the song.
@@ -68,7 +70,7 @@ export default function UpdatePreparedPanel({
       setPublished(await publishLibrary(folder));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if (!/abort/i.test(message)) setError(coded('RTS-UPD-01', message));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -81,7 +83,7 @@ export default function UpdatePreparedPanel({
       await go(folder);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/abort/i.test(message)) setError(message);
+      if (!/abort/i.test(message)) setError(coded('RTS-UPD-02', message));
     }
   };
 
@@ -108,7 +110,7 @@ export default function UpdatePreparedPanel({
       </div>
 
       {progress && <div className="notice">{progress}</div>}
-      {error && <div className="notice error">{error}</div>}
+      {error && <ErrorNotice code="RTS-UPD-01" text={error} />}
 
       {result && (
         <div className="notice done">

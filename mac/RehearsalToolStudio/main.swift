@@ -38,6 +38,15 @@ let logPath = packaged ? "~/Library/Logs/Rehearsal Tool Studio/launch.log" : "\(
 let ink = NSColor(red: 0x0d / 255, green: 0x0f / 255, blue: 0x13 / 255, alpha: 1)
 
 /// A page of the app's own, for the moments before and instead of the studio.
+/// The public list of error codes (src/lib/errorCodes.ts writes it): what each means, what to do.
+let errorList = "https://github.com/jonpikereally/RehearsalToolStudio/blob/main/docs/errors.md"
+
+/// An error page's line naming its code, linked to the list, with the same hover the studio's page gives.
+func errorLine(_ code: String) -> String {
+    let hover = "Error \(code). Check the error list for what it means and what to do: \(errorList) — or give your LLM the code and this message."
+    return "<br><br><a href=\"\(errorList)#\(code.lowercased())\" target=\"_blank\" title=\"\(hover)\" style=\"color:#9fb0c8\">Error \(code)</a>"
+}
+
 func page(_ title: String, _ detail: String) -> String {
     """
     <!doctype html><meta charset="utf-8">
@@ -101,7 +110,7 @@ final class StudioWebView: WKWebView {
     }
 }
 
-final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
+final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSAlertDelegate {
     var window: NSWindow!
     var web: StudioWebView!
     /// The small windows in front of the studio, by name: the chooser, the changes.
@@ -191,7 +200,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                 } else {
                     self.web.loadHTMLString(page("The studio didn't start",
                         "Nothing answered on port 5177. The launcher's log says why: " +
-                        "<code>\(logPath)</code>. Quit and try again once that is sorted."),
+                        "<code>\(logPath)</code>. Quit and try again once that is sorted." + errorLine("RTS-MAC-01")),
                         baseURL: nil)
                 }
             }
@@ -304,7 +313,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         pageReady = false
         if again {
             web.loadHTMLString(page("The studio's page stopped twice in a minute",
-                "WebKit shut its web content process down, usually for memory. Reload from the menu (⌘R) to try again; if it keeps happening, quit any song runs and rescan."), baseURL: nil)
+                "WebKit shut its web content process down, usually for memory. Reload from the menu (⌘R) to try again; if it keeps happening, quit any song runs and rescan." + errorLine("RTS-MAC-02")), baseURL: nil)
             return
         }
         web.reload()
@@ -342,6 +351,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             let alert = NSAlert()
             alert.messageText = "The studio is writing a set just now."
             alert.informativeText = "Updating would restart it mid-write. Check again when it has finished."
+            coded(alert, "RTS-MAC-04")
             alert.runModal()
         }
         // Start again: the servers come up with the app, so a server left
@@ -635,6 +645,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                 } else {
                     alert.messageText = "The studio didn't answer."
                     alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."
+                    self.coded(alert, "RTS-MAC-03")
                 }
                 if alert.runModal() == .alertFirstButtonReturn, let build, before != nil, build != before {
                     self.web.reload()
@@ -847,7 +858,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         elif /usr/bin/osascript -e 'do shell script "/bin/sh " & quoted form of "\(swap.path)" with administrator privileges'; then
           echo "swapped, as an admin"
         else
-          echo "not swapped; the old app stays"
+          echo "[RTS-MAC-08] not swapped; the old app stays"
         fi
         /usr/bin/open \(old)
         """
@@ -863,6 +874,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             let failed = NSAlert()
             failed.messageText = "The update couldn't start."
             failed.informativeText = error.localizedDescription
+            coded(failed, "RTS-MAC-05")
             failed.runModal()
             return
         }
@@ -890,6 +902,7 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                     alert.messageText = "The update didn't download."
                     alert.informativeText = error?.localizedDescription
                         ?? "GitHub didn't send the installer. It is also at \(latestInstaller.absoluteString)."
+                    coded(alert, "RTS-MAC-06")
                     alert.runModal()
                     return
                 }
@@ -1038,7 +1051,29 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         let alert = NSAlert()
         alert.messageText = "The download didn't finish"
         alert.informativeText = error.localizedDescription
+        coded(alert, "RTS-MAC-07")
         alert.runModal()
+    }
+
+    // MARK: - Error codes on the app's own dialogs.
+
+    /*
+     * An error dialog carries its code (docs/errors.md), said in the text and
+     * behind the dialog's ? button, which opens that code in the public list —
+     * a dialog has no hover, so the button is how it points there.
+     */
+    func coded(_ alert: NSAlert, _ code: String) {
+        alert.informativeText += "\n\nError \(code). The ? button opens the error list: what it means and what to do. Or give your LLM the code and this message."
+        alert.showsHelp = true
+        alert.helpAnchor = code
+        alert.delegate = self
+    }
+
+    func alertShowHelp(_ alert: NSAlert) -> Bool {
+        if let code = alert.helpAnchor, let url = URL(string: "\(errorList)#\(code.lowercased())") {
+            NSWorkspace.shared.open(url)
+        }
+        return true
     }
 
     // MARK: - The three dialogs a page may put up.
