@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-04
+
+**Rebuild Set tools ▸ Lyrics around the set's songs**
+
+The Lyrics tool was two tools stacked: a one-song form and Lyrics Studio's own page in a frame. It is now one screen doing three things.
+
 ## 2026-10-03
 
 **Take AbleSet's skipped songs from its log when its answer leaves them out**

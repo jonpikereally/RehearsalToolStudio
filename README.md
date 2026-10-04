@@ -36,18 +36,19 @@ with its own repo. This one is only Rehearsal Tool Studio.
   live, spoken slates onto a Slates track, chord-language conversion, patch
   changes written as MIDI clips (the band's own, from the rig files the
   website writes, and the studio's), timed
-  lyric clips via Lyrics Studio, patch changes written into the `.als`,
+  lyric clips heard from the songs' vocals, patch changes written into the `.als`,
   locator names written out as MIDI clips in AbleSet's form or the setlist's,
   a print of any return bus's mix of a song — the edit bus, the headphone
   mix — summed as Live sums it, new songs laid out from a folder of stems
   the way a song already in the set is, and a printable setlist whose
   durations come from the arrangement.
   Everything writes to a copy, never the original.
-- **Lyrics Studio.** Set tools ▸ Lyrics: transcribe a recording or a track
-  of a set on this Mac with Whisper, line the words up with lyrics you paste,
-  check and edit them, and save them as timed MIDI clips, a `.mid`, `.txt` or
-  `.srt` — or go straight to lyric clips on the set. It is part of the
-  studio, not an app or a tab of its own.
+- **Lyrics.** Set tools ▸ Lyrics lists the set's songs and which of them
+  already have words on a `+LYRICS` track. Tick the ones to do — or all the
+  ones without — and it listens to each song's vocal track (Ref Vox where
+  there is one) on this Mac with Whisper, shows what it heard line by line
+  to read and correct, and writes every song's words as MIDI clips on a
+  `+LYRICS` track, in a copy of the set.
 - **Prints a mix** to a file, and drives nothing: this window has no Web MIDI.
 
 ## Installing it
@@ -182,15 +183,15 @@ newer build on focus and offers a reload. Settings shows the build and when it
 was made. A failed build serves the previous one and says why in
 `.studio-build.log`.
 
-Lyrics Studio is part of the studio: its page is in Set tools ▸ Lyrics, inside
-the studio's window. The listening is Python — Whisper on Apple's MLX — so it
-still runs as a server of its own (`lyrics-studio/`, on 8765 or the next free
-port when another app holds that one), but the studio starts it, and the
-studio's server passes `/lyrics-studio/` through to it so the page shares the
-studio's origin. A transcription is started and then asked after, since
-WebKit cuts off a request left unanswered for a minute. Left idle for twenty
-minutes the engine stops itself, giving back Whisper's memory; opening it starts
-it again. Links out of the studio window go to the default browser.
+The listening behind Set tools ▸ Lyrics is Lyrics Studio's engine: Python,
+Whisper on Apple's MLX, so it runs as a server of its own (`lyrics-studio/`,
+on 8765 or the next free port when another app holds that one), started by
+the studio when the tool first needs it. It reads the set file itself, so a
+track's warping and the tempo map are its own. A transcription is started and
+then asked after, since WebKit cuts off a request left unanswered for a
+minute. Left idle for twenty minutes the engine stops itself, giving back
+Whisper's memory; the next song listened to starts it again. Its own page
+still answers at `/lyrics-studio/`, but nothing in the studio leads there. Links out of the studio window go to the default browser.
 
 ## Working on it
 
