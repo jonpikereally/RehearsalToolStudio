@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Say why lyrics audio is unreadable, and restart an engine a past build left**
+
+"No lyrics found on that track (0 regions transcribed, 1 unreadable)" was all the Lyrics tool could say, for every song. Unreadable hid two different things: a file the engine could not find or open, and ffmpeg failing to cut it, whose own words were thrown away. Each is now said: the file not found, by its path; ffmpeg's last line; or, when macOS refuses the engine the file, "Operation not permitted" and where — which the studio already answers by starting the engine again under itself and asking once more.
+
 **Keep macOS's folder permissions across updates**
 
 Every update asked again for access to the folders the studio reads. macOS keeps that permission against an app's designated requirement, and an ad hoc signature's requirement is the hash of that very build, so each update looked like a new app. The packaged app is now signed with a requirement naming its bundle id alone, which is the same from build to build: permission given once stays given. The build says when that signing fails rather than passing over it.
