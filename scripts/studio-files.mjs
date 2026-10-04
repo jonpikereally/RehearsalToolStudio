@@ -44,7 +44,7 @@
  * reopened": a path remembered by the server is a path it can still open
  * tomorrow, where a browser handle had to be granted afresh each session.
  */
-import { accessSync, constants, copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { accessSync, constants, copyFileSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { execFile, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -540,7 +540,14 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
       // An app's PATH has no Homebrew on it, and Lyrics Studio needs ffmpeg from there.
       const path = ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH ?? '/usr/bin:/bin'].join(':');
       // LYRICS_STUDIO_UV: its own uv, for running tools (vocal isolation) on a Mac without uvx.
-      const env = { ...process.env, PATH: path, LYRICS_STUDIO_UV: uv };
+      // LYRICS_STUDIO_STARTED_BY: this build, so a page can tell an engine an older build left running.
+      let build = '';
+      try {
+        build = JSON.parse(readFileSync(join(resources, 'dist', 'build.json'), 'utf8')).build ?? '';
+      } catch {
+        /* no build on disk: the page then restarts any engine it finds, which is safe */
+      }
+      const env = { ...process.env, PATH: path, LYRICS_STUDIO_UV: uv, LYRICS_STUDIO_STARTED_BY: build };
       // Inside an app bundle the code is not a place to write, so what it remembers goes to the Library.
       try {
         accessSync(cwd, constants.W_OK);

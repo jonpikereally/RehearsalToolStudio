@@ -83,6 +83,15 @@ jobs:
           echo "built=$(date -u '+%Y-%m-%d %H:%M UTC')" >>"$GITHUB_OUTPUT"
           echo "tag=build-$(date -u '+%Y%m%d-%H%M')-$STAMP" >>"$GITHUB_OUTPUT"
 
+      - name: Check it is signed as itself
+        # macOS keeps folder permissions against this; a build signed any
+        # other way would ask for them all over again after an update.
+        run: |
+          mkdir -p "$RUNNER_TEMP/check"
+          ditto -x -k "$RUNNER_TEMP/Rehearsal-Tool-Studio.zip" "$RUNNER_TEMP/check"
+          codesign -d -r- "$RUNNER_TEMP/check/Rehearsal Tool Studio.app" 2>&1 | tee "$RUNNER_TEMP/req.txt"
+          grep -q 'designated => identifier "com.pikemusicschool.rehearsaltool.studio"' "$RUNNER_TEMP/req.txt"
+
       - name: Keep it with the run
         uses: actions/upload-artifact@v4
         with:

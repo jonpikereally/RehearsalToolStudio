@@ -80,7 +80,7 @@ _bring_ffmpeg()
 MODEL = "mlx-community/whisper-large-v3-turbo"
 
 # Bump on every user-visible change; the page shows this number.
-VERSION = "1.17.0"
+VERSION = "1.18.0"
 
 app = FastAPI(title="Lyrics Studio", version=VERSION)
 
@@ -163,7 +163,11 @@ def version():
     # Names itself, because the port is not proof: anything can hold 8765, and
     # for a while a light-control app did. Whoever is looking for Lyrics
     # Studio checks for this answer, not for a port that is merely busy.
-    return {"version": VERSION, "app": "lyrics-studio"}
+    # And which build of the studio started it: one started by an earlier
+    # build carries that build's folder permissions, which macOS may have
+    # withdrawn since, and the studio starts it again rather than trust it.
+    return {"version": VERSION, "app": "lyrics-studio",
+            "started_by": os.environ.get("LYRICS_STUDIO_STARTED_BY", "")}
 
 
 @app.get("/")
@@ -1443,6 +1447,34 @@ def region_mapper(clip, tmap: list[tuple[float, float]]):
             lambda t: origin + (t - loop_start))
 
 
+def why_unreadable(fileref, als_dir: Path) -> str:
+    """Why resolve_sample found nothing, in words: macOS refusing the folder
+    reads as a missing file to is_file(), and the two want different cures."""
+    candidates = []
+    p = fileref.find("Path") if fileref is not None else None
+    if p is not None and p.get("Value"):
+        candidates.append(Path(p.get("Value")))
+    rp = fileref.find("RelativePath") if fileref is not None else None
+    if rp is not None and rp.get("Value"):
+        candidates.append(als_dir / rp.get("Value"))
+    for cand in candidates:
+        try:
+            cand.stat()
+        except PermissionError:
+            return f"Operation not permitted: macOS refused the lyrics engine access to {cand.parent}"
+        except OSError:
+            continue
+        try:
+            with open(cand, "rb") as f:
+                f.read(1)
+        except PermissionError:
+            return f"Operation not permitted: macOS refused the lyrics engine access to {cand}"
+        except OSError as e:
+            return f"{cand.name} could not be opened: {e}"
+    shown = candidates[0] if candidates else "(no path in the set)"
+    return f"Audio file not found: {shown}"
+
+
 def resolve_sample(fileref, als_dir: Path) -> Path | None:
     """Find the audio file an AudioClip references, trying the absolute path
     (Live 11+), the relative path (string in 11+, elements in 10), and the
@@ -1682,6 +1714,7 @@ def als_transcribe(req: AlsTranscribeRequest):
     language = ""
     done = skipped_missing = skipped_short = skipped_range = 0
     first_sample = None
+    problems: list[str] = []   # why each unreadable region was, in words
 
     # optional bar range: only the part of the track inside it is transcribed
     range_start = ((req.start_bar - 1) * BEATS_PER_BAR
@@ -1704,6 +1737,7 @@ def als_transcribe(req: AlsTranscribeRequest):
             sample = resolve_sample(clip.find("SampleRef/FileRef"), als_dir)
             if sample is None:
                 skipped_missing += 1
+                problems.append(why_unreadable(clip.find("SampleRef/FileRef"), als_dir))
                 continue
             clip_start, clip_end, beat_to_file, to_arrangement_sec = region_mapper(clip, tmap)
             # clamp this region to the requested bar range
@@ -1723,8 +1757,21 @@ def als_transcribe(req: AlsTranscribeRequest):
             region = str(Path(tmp) / f"region{i}.wav")
             try:
                 extract_region(str(sample), f_start, f_end - f_start, region)
-            except Exception:
+            except subprocess.CalledProcessError as e:
                 skipped_missing += 1
+                said = (e.stderr or b"").decode(errors="replace").strip().splitlines()
+                last = said[-1] if said else str(e)
+                # A file that is there but may not be opened: macOS's folder permission, not a bad file.
+                if "Operation not permitted" in last:
+                    problems.append(f"Operation not permitted: macOS refused the lyrics engine access to {sample}")
+                else:
+                    problems.append(f"ffmpeg could not read {Path(sample).name}: {last}")
+                continue
+            except HTTPException:
+                raise
+            except Exception as e:  # noqa: BLE001 — said, not swallowed
+                skipped_missing += 1
+                problems.append(f"{Path(sample).name} could not be cut: {type(e).__name__}: {e}")
                 continue
 
             out = transcribe_file(region, req.language, req.lyrics, req.isolate, tmp)
@@ -1778,6 +1825,13 @@ def als_transcribe(req: AlsTranscribeRequest):
 
     if not segments:
         TRANSCRIBE_PROGRESS.pop(progress_key, None)
+        # A refusal is said as one, so the studio starts the engine again
+        # under its own permissions and asks once more.
+        refused = next((p for p in problems if p.startswith("Operation not permitted")), None)
+        if refused:
+            raise HTTPException(403, refused)
+        if problems and not done:
+            raise HTTPException(400, problems[0] + (f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""))
         raise HTTPException(400, "No lyrics found on that track "
                                  f"({done} regions transcribed, "
                                  f"{skipped_missing} unreadable, {skipped_short} too short"
