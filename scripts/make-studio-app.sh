@@ -91,5 +91,8 @@ PLIST
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 # Ad hoc signed, which is all an app that never leaves this machine needs.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+# Who it is by its bundle id, not this build's hash, so macOS keeps the
+# folder access it was given across rebuilds (see package-app.sh).
+codesign --force --sign - -r='designated => identifier "com.pikemusicschool.rehearsaltool.studio"' "$APP" >/dev/null 2>&1 \
+  || codesign --force --sign - "$APP" >/dev/null 2>&1 || true
 echo "installed $APP"
