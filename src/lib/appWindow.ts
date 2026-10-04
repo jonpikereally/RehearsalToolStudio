@@ -111,8 +111,8 @@ export const canCheckUpdates = (): boolean => updates;
  * bring the server up to what it built.
  *
  * Only ever asked when nothing is being written: the last step replaces the
- * server, and a prepare talking to it would stop where it stood. The app
- * answers with `studio:checked` when it has finished.
+ * server, and a prepare talking to it would stop where it stood. The app says
+ * how it went in a dialog of its own.
  */
 export const askAppToBuild = (): boolean => updates && askApp({ check: true });
 

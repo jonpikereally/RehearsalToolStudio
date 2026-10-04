@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Keep update news out of the studio's window**
+
+Checking for updates put banners across the top of the window: "Looking for a newer build…", "This is the newest build", "A newer build is ready", "the studio's own server is still…". Everything about updates now belongs to the app: the menu item says when one is available, and Check for Updates answers in a dialog of its own — up to date, a newer build with Reload / Later, or that a set is being written and updating must wait. The page's only part is answering whether it is safe to update now.
+
 **Rebuild Set tools ▸ Lyrics around the set's songs**
 
 The Lyrics tool was two tools stacked: a one-song form and Lyrics Studio's own page in a frame. It is now one screen doing three things.
