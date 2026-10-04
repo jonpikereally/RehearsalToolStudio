@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Write down that every error a user sees carries a code**
+
+A CLAUDE.md for the repo: errors shown to a user carry a short, stable code beside the message, so troubleshooting with an LLM can start from the code. Alongside it, the conventions the repo already follows: prose commits with the changelog regenerated from them, the checks to run, and how changes reach main and the installer.
+
 **Say why lyrics audio is unreadable, and restart an engine a past build left**
 
 "No lyrics found on that track (0 regions transcribed, 1 unreadable)" was all the Lyrics tool could say, for every song. Unreadable hid two different things: a file the engine could not find or open, and ffmpeg failing to cut it, whose own words were thrown away. Each is now said: the file not found, by its path; ffmpeg's last line; or, when macOS refuses the engine the file, "Operation not permitted" and where — which the studio already answers by starting the engine again under itself and asking once more.
