@@ -178,9 +178,10 @@ it remembers live in `~/Library/Application Support/Rehearsal Tool
 Studio/studio-folders.json`, which is why nothing ever has to be "reopened".
 
 `build.json` in `dist/` carries the commit the build came from. The launcher
-holds it against git and rebuilds when they differ; an open window notices a
-newer build on focus and offers a reload. Settings shows the build and when it
-was made. A failed build serves the previous one and says why in
+holds it against git and rebuilds when they differ. Everything about updates
+is said by the app, in its menu and its own dialogs, never in the window:
+Check for Updates answers in a dialog, and offers a reload when it has built
+something newer. Settings shows the build and when it was made. A failed build serves the previous one and says why in
 `.studio-build.log`.
 
 The listening behind Set tools ▸ Lyrics is Lyrics Studio's engine: Python,

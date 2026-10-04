@@ -337,6 +337,13 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         // The page has decided a check is safe — nothing is being written —
         // so the source is built if it has moved and the server caught up.
         if body["check"] as? Bool == true { runUpdateCheck() }
+        // Or that it isn't, since a set is being written: said here, in a dialog, not in the window.
+        if body["checkBusy"] as? Bool == true {
+            let alert = NSAlert()
+            alert.messageText = "The studio is writing a set just now."
+            alert.informativeText = "Updating would restart it mid-write. Check again when it has finished."
+            alert.runModal()
+        }
         // Start again: the servers come up with the app, so a server left
         // behind by a rebuild is fixed by opening the app afresh — which the
         // page can ask for rather than telling somebody to do it by hand.
@@ -613,24 +620,25 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
                 self.note("checked for updates: \(build.map(self.label) ?? "nothing answered"), was \(before.map(self.label) ?? "unknown")")
                 // The launcher pulled whatever GitHub had; the menu says so, or says what is still to come.
                 self.lookForUpdates()
-                // The page knows which build it is showing, so it is the one
-                // that says whether this is news; it is told either way.
-                if self.pageReady {
-                    self.tell("studio:checked", ["build": build ?? ""])
-                    return
-                }
+                // Said in a dialog of the app's own, never in the window.
                 let alert = NSAlert()
                 if let build {
                     let same = before == nil || build == before
                     alert.messageText = same ? "The studio is up to date." : "A newer build is ready."
                     alert.informativeText = same
                         ? "Build \(self.label(build))."
-                        : "Build \(self.label(build)) is built and being served; this window is still on \(before.map(self.label) ?? "an older one")."
+                        : "Build \(self.label(build)) is built. Reload the window to use it."
+                    if !same {
+                        alert.addButton(withTitle: "Reload")
+                        alert.addButton(withTitle: "Later")
+                    }
                 } else {
                     alert.messageText = "The studio didn't answer."
                     alert.informativeText = "Nothing is listening on port 5177. The launcher's log says why: \(logPath)."
                 }
-                alert.runModal()
+                if alert.runModal() == .alertFirstButtonReturn, let build, before != nil, build != before {
+                    self.web.reload()
+                }
             }
         }
     }
@@ -703,15 +711,11 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
             guard let release = newerRelease else {
                 checking = false
                 retitleUpdates()
-                // Up to date: the page says so when it asked, else a dialog does.
-                if pageReady {
-                    tell("studio:checked", ["build": loadedBuild ?? ""])
-                } else {
-                    let alert = NSAlert()
-                    alert.messageText = "The studio is up to date."
-                    alert.informativeText = "Build \(ownBuild().map { label($0.stamp) } ?? "unknown"). New versions arrive as installers on GitHub."
-                    alert.runModal()
-                }
+                // Up to date: said in a dialog of the app's own, never in the window.
+                let alert = NSAlert()
+                alert.messageText = "The studio is up to date."
+                alert.informativeText = "Build \(ownBuild().map { label($0.stamp) } ?? "unknown")."
+                alert.runModal()
                 return
             }
             updatesItem?.title = "Downloading the update…"
