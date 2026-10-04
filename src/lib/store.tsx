@@ -20,6 +20,7 @@ import { note } from './saveLog.ts';
 import { navigate } from './router';
 import { remember } from './remember.ts';
 import { panelWindow } from './appWindow.ts';
+import { coded } from './errorCodes';
 
 /**
  * Library state, persisted to localStorage for instant startup and written to
@@ -513,7 +514,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setSyncState('idle');
         } else {
           setSyncState('error');
-          setSyncError('Could not resolve a sync conflict — try again.');
+          setSyncError(coded('RTS-APP-04', 'Could not resolve a sync conflict — try again.'));
         }
       } catch (err) {
         reportError(err);

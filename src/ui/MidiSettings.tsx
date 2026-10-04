@@ -6,6 +6,7 @@ import {
 } from '../lib/midi';
 import { DEVICES, choiceLabel, choiceValue, optionById, startingDevice } from '../lib/devices';
 import SettingsSection from './SettingsSection';
+import ErrorNotice from './ErrorNotice';
 
 /** Where patch changes go, and whether they go at all. */
 export default function MidiSettings() {
@@ -236,9 +237,10 @@ export default function MidiSettings() {
         </button>
       </div>
 
-      {report && (
-        <div className={report.ok ? 'notice' : 'notice error'}>
-          {report.ok ? (
+      {report && !report.ok && <ErrorNotice code="RTS-MIDI-01" text={report.reason} />}
+      {report?.ok && (
+        <div className="notice">
+          {report.ok && (
             <>
               Sent{' '}
               {describePatch(
@@ -250,8 +252,6 @@ export default function MidiSettings() {
               to <strong>{report.port}</strong>. If the rig didn't change, it isn't listening on
               that channel — or that port isn't the one it's on.
             </>
-          ) : (
-            report.reason
           )}
         </div>
       )}

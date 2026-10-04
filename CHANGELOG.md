@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Give every error a code, with a public list to look it up in**
+
+Each error the studio shows now carries a code — RTS-<area>-<nn> — beside its message: in the page, in the Mac app's dialogs and error pages, and in the Lyrics engine's answers. Hovering an error says to check the error list; the code itself links to its entry there. The list, docs/errors.md, is public on GitHub so anyone can hand it to an LLM with the code and the message, and says what each failure usually means and what to do.
+
 **Write down that every error a user sees carries a code**
 
 A CLAUDE.md for the repo: errors shown to a user carry a short, stable code beside the message, so troubleshooting with an LLM can start from the code. Alongside it, the conventions the repo already follows: prose commits with the changelog regenerated from them, the checks to run, and how changes reach main and the installer.

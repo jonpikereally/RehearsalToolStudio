@@ -44,6 +44,7 @@ import { hasChart } from '../lib/chart';
 import { stemsOf, versionButtons } from '../lib/stemMix';
 import { closeRun, positionIn, useRun } from '../lib/run';
 import type { Marker, Song } from '../types';
+import ErrorNotice from './ErrorNotice';
 
 const LOOP_LENGTHS = [2, 4, 8, 16];
 
@@ -548,7 +549,7 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
           </div>
         )}
 
-        {player.error && <div className="notice error">{player.error}</div>}
+        {player.error && <ErrorNotice code="RTS-PLY-01" text={player.error} />}
 
         {player.audioState === 'suspended' && (
           <div className="notice spread">
