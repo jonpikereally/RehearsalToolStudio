@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-04
 
+**Offer every track with audio in the song to listen to for lyrics**
+
+The Lyrics tool's track picker offered the song's own group: the tracks filed under the song. A track with audio inside the song but filed elsewhere — a cue track, a pitch reference, a break — was not there to choose. The parser now lists, per song, every audio track with a clip inside its bars, wherever it sits in the set, and the picker offers all of them: the song's own first, then the rest, a group named where two tracks share a name. Ref Vox is still the one chosen to start with.
+
 **Keep update news out of the studio's window**
 
 Checking for updates put banners across the top of the window: "Looking for a newer build…", "This is the newest build", "A newer build is ready", "the studio's own server is still…". Everything about updates now belongs to the app: the menu item says when one is available, and Check for Updates answers in a dialog of its own — up to date, a newer build with Reload / Later, or that a set is being written and updating must wait. The page's only part is answering whether it is safe to update now.

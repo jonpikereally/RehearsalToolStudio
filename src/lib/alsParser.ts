@@ -100,6 +100,12 @@ export interface AlsSong {
   /** Patch changes the rig tracks' MIDI clips send inside this song. */
   rigPatches: AlsRigPatch[];
   /**
+   * Every audio track with a clip inside this song, wherever it sits in the
+   * set — the song's own group or not. For a tool that reads a track of the
+   * set itself, like the lyrics, and wants to offer every one that sounds.
+   */
+  audioTracks: { trackId: string; name: string; reference: boolean; group: string | null }[];
+  /**
    * Audio files Ableton has on this song's tracks, when it has its own group.
    * `regions` is null when the track plays throughout, which is the usual case.
    */
@@ -1841,6 +1847,12 @@ export function parseAlsXml(xml: string): AlsProject {
           })),
       ),
       stems,
+      audioTracks: tracks
+        .filter((t) => t.kind === 'AudioTrack' && clipsOfTrack(t).some((c) => c.endBeat > loc.beat && c.startBeat < endBeat))
+        .map((t) => {
+          const group = byId.get(t.groupId)?.name.trim() || null;
+          return { trackId: t.id, name: t.name.trim(), reference: REF_RE.test(t.name) || (!!group && REF_RE.test(group)), group };
+        }),
     };
   });
 
