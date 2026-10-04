@@ -42,9 +42,19 @@ export function lyricClipCount(song: AlsSong): number {
 const backing = (name: string) => /\b(bv|bvs|backing|harmony|harmonies|bgv)\b/i.test(name);
 const vocalish = (name: string) => /\b(vox|vocal|vocals|voice|lead|lv|sing|singer|melody)\b/i.test(name) && !backing(name);
 
-export function listenableTracks(song: AlsSong) {
-  // Only tracks in the set: the click and cues the studio adds have no audio to listen to.
-  return song.stems.filter((st) => st.trackId);
+type Listenable = { trackId: string; name: string; reference: boolean; group: string | null };
+
+/**
+ * Every audio track with a clip inside the song, wherever it sits in the set:
+ * the song's own group first, as the set orders them, then the rest. The
+ * click and cues the studio makes up are not tracks of the set, so not here.
+ */
+export function listenableTracks(song: AlsSong): Listenable[] {
+  const own = new Set(song.stems.map((st) => st.trackId).filter(Boolean));
+  const all: Listenable[] =
+    song.audioTracks ??
+    song.stems.filter((st) => st.trackId).map((st) => ({ trackId: st.trackId!, name: st.name, reference: st.reference, group: null }));
+  return [...all.filter((t) => own.has(t.trackId)), ...all.filter((t) => !own.has(t.trackId))];
 }
 
 export function vocalTrackFor(song: AlsSong) {
@@ -96,7 +106,7 @@ export default function LyricsPanel({
 
   const without = songs.filter((s) => !lyricClipCount(s) && listenableTracks(s).length).map((s) => s.title);
   const trackOf = (song: AlsSong) =>
-    listenableTracks(song).find((st) => st.name === trackFor[song.title]) ?? vocalTrackFor(song);
+    listenableTracks(song).find((st) => st.trackId === trackFor[song.title]) ?? vocalTrackFor(song);
   const setRow = (title: string, row: Row) => setRows((prev) => ({ ...prev, [title]: row }));
   const heard = songs.filter((s) => rows[s.title]?.state === 'heard');
   const busy = running || writing;
@@ -136,7 +146,7 @@ export default function LyricsPanel({
           break;
         }
         const track = trackOf(song);
-        if (!track?.trackId) {
+        if (!track) {
           setRow(song.title, { state: 'failed', error: 'This song has no audio track to listen to.' });
           continue;
         }
@@ -145,7 +155,7 @@ export default function LyricsPanel({
         const listen = () =>
           transcribeTrack(
             url,
-            { alsPath, trackId: track.trackId!, startBar: song.startBar, endBar: song.endBar, isolate },
+            { alsPath, trackId: track.trackId, startBar: song.startBar, endBar: song.endBar, isolate },
             (d, total, phase) => listening(`“${track.name}”: ${phase}, part ${Math.min(d + 1, total)} of ${total}…`),
           );
         try {
@@ -270,14 +280,15 @@ export default function LyricsPanel({
               {tracks.length ? (
                 <select
                   className="jump-select"
-                  value={track?.name ?? ''}
+                  value={track?.trackId ?? ''}
                   disabled={busy}
                   onChange={(e) => setTrackFor((prev) => ({ ...prev, [song.title]: e.target.value }))}
                   title="The track to listen to"
                 >
                   {tracks.map((st) => (
-                    <option key={st.name} value={st.name}>
+                    <option key={st.trackId} value={st.trackId}>
                       {st.name}
+                      {st.group && tracks.some((o) => o !== st && o.name === st.name) ? ` (${st.group})` : ''}
                     </option>
                   ))}
                 </select>
