@@ -3,7 +3,7 @@ import { autoUpdates, useStore } from '../lib/store';
 import { parseAls } from '../lib/alsParser';
 import { readBytes } from '../lib/source';
 import { overallProgress, type PrepareProgress } from '../lib/prepare';
-import { audioKeysFor, runPrepare, standingFor, syncRunningOrder, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
+import { audioKeysFor, keyUnchangedParts, runPrepare, standingFor, syncRunningOrder, titlesOf, undoPrepare, type RunOutcome } from '../lib/prepareRun';
 import { publishLibrary } from '../lib/publish';
 import { SETS_FOLDER } from '../lib/prints';
 import type { Aside } from '../lib/localSource';
@@ -109,6 +109,8 @@ export default function AutoUpdate() {
         // either is called now: known by the songs in it.
         const keys = await audioKeysFor(project, currentSet);
         const folderName = outputSet?.name ?? (await preparedNameFor(band, currentSet, keys.byName));
+        // Parts of songs that have not changed get their keys, so the next edit renders only what it changed.
+        await keyUnchangedParts(band, `${SETS_FOLDER}/${folderName}`, project, keys).catch(() => 0);
         const found = await standingFor(project, currentSet, band, folderName, keys);
         if (!found.manifest) {
           // Nothing prepared under this name is news after a save and not on

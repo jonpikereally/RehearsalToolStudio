@@ -4901,6 +4901,22 @@ group('a song\'s audio as a key');
   check('a re-exported file changes its own part only', bassFile.Bass !== partsBase.Bass && bassFile.Vox === partsBase.Vox);
   check('the song\'s tempo and the encoder are every part\'s', Object.entries(partKeysFor(song(), project, inputs({ bitrate: 128 }))).every(([k, v]) => v !== partsBase[k]));
 
+  // A set prepared before parts had keys gets them for every song that has not changed, nothing rendered.
+  const { keyPartsInManifest } = await import('../src/lib/audioKey.ts');
+  const { partFileName } = await import('../src/lib/prepare.ts');
+  const proj = { ...project, songs: [song()] };
+  const file = (name) => partFileName('Yellow', name);
+  const entry = (audioKey) => ({ folder: 'Yellow (2026-10-04)', firstBarOffsetSec: 0, audioKey, parts: [
+    { label: 'bass', name: 'bass', file: file('Bass') }, { label: 'vox', name: 'vox', file: file('Vox') },
+    { label: 'cues', name: 'cues', kind: 'sampler' }, { label: 'alex', name: 'alex', file: 'submixes/x.mp3', submixFor: 'Alex' },
+  ] });
+  const fill = (audioKey) => keyPartsInManifest({ preparedBy: 'rehearsaltool', songs: [entry(audioKey)] }, proj, { byTitle: { Yellow: base }, byName: {}, parts: { Yellow: partsBase } });
+  const same = fill(base);
+  check('an unchanged song\'s audio parts are keyed as they stand', same.keyed === 2 && same.songs[0].parts[0].key === partsBase.Bass && same.songs[0].parts[1].key === partsBase.Vox, JSON.stringify(same));
+  check('its cues and submixes are left alone', !same.songs[0].parts[2].key && !same.songs[0].parts[3].key);
+  const changedSong = fill('1.other.key.not.this');
+  check('a changed song is not keyed: its files are not what the set says now', changedSong.keyed === 0 && changedSong.songs[0].parts.every((p) => !p.key));
+
   // What the dialog says about each song.
   check('never prepared is new', audioStanding(base, undefined, false).state === 'new');
   check('prepared before keys existed is taken as changed',
