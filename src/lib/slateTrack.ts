@@ -146,8 +146,16 @@ export function addSlatesTrack(xml: string, slates: SlateClip[], nowSec: number)
   let out: string;
   let trackName: string;
   if (existing) {
-    trackName = (existing.text.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] ?? 'Slate';
-    out = xml.slice(0, existing.start) + withClips(existing.text) + xml.slice(existing.end);
+    /*
+     * Its routing, group and mix are kept; its name is not. The copy is to
+     * be dragged from, and a track there called plain "Slates" reads as the
+     * set's own — so it says ADD THIS, as every track the studio adds does.
+     */
+    trackName = addThis((existing.text.match(/<EffectiveName Value="([^"]*)"/) ?? [])[1] || 'Slates');
+    const renamed = existing.text
+      .replace(/<EffectiveName Value="[^"]*"/, `<EffectiveName Value="${esc(trackName)}"`)
+      .replace(/<UserName Value="[^"]*"/, `<UserName Value="${esc(trackName)}"`);
+    out = xml.slice(0, existing.start) + withClips(renamed) + xml.slice(existing.end);
   } else {
     trackName = addThis('Slates');
     let track = trackT.replace(/^(\s*)<AudioTrack Id="\d+"/, `$1<AudioTrack Id="${ids.next()}"`);

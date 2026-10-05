@@ -3383,14 +3383,16 @@ group('slates track');
   check('our own parser still reads the set', parseAlsXml(out).creator === 'Ableton Live 12.4');
 
   // A set that already has a Slate track keeps it: clips land there, replacing
-  // its old arrangement, and its name, fader and routing stay its own.
+  // its old arrangement, and its fader and routing stay its own. Its name in
+  // the copy says ADD THIS, like every track the studio adds.
   const withSlate = xml.replace(/Value="Stems"/g, 'Value="Slate"');
   const reused = addSlatesTrack(
     withSlate,
     [{ title: 'Opener', fileName: 'Opener.wav', durationSec: 1.5, sizeBytes: 132344, startBeat: 8, bpm: 120 }],
     1700000000,
   );
-  check('an existing Slate track is reused', reused.reusedTrack && reused.trackName === 'Slate');
+  check('an existing Slate track is reused, and named ADD THIS in the copy',
+    reused.reusedTrack && reused.trackName === 'ADD THIS Slate' && reused.xml.includes('<EffectiveName Value="ADD THIS Slate"'), reused.trackName);
   check('no second track appears', (reused.xml.match(/<AudioTrack Id=/g) ?? []).length === 1);
   check('its old clips are replaced', !reused.xml.includes('<Name Value="Old Clip"'));
   check('the new clip is on it', reused.xml.includes('<Name Value="Opener"'));
