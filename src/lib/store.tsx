@@ -96,6 +96,11 @@ export interface Settings {
    */
   autoUpdate: AutoUpdate;
   /**
+   * Every automatic update held off, whatever is ticked: saves are still
+   * noticed and offered, nothing is written until it is let go again.
+   */
+  autoPaused: boolean;
+  /**
    * The output device to play out of, where the browser lets a page choose.
    * Kept with its label as well as its id: ids are opaque, and a device that
    * has gone missing is worth naming rather than showing as a code.
@@ -130,6 +135,7 @@ const DEFAULT_SETTINGS: Settings = {
   keepAwake: true,
   useLocal: false,
   autoUpdate: { stems: false, submixes: false, info: false },
+  autoPaused: false,
   outputDevice: null,
 };
 

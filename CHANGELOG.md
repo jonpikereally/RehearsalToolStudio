@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Pause auto update from the top bar**
+
+Auto update is three switches on the Setlists page, and holding all of it off for a while — a session of edits that should not be rendered as they are saved — meant unticking them and remembering which were on. The set bar now has a "Pause auto update" toggle beside Changes…: while it is on, saves are still noticed and offered in the bar, but nothing runs on its own, and the jobs stay ticked for when it is resumed. Resuming answers a save that is waiting, the same as ticking a job does. It is kept with the settings, so a pause survives a restart.
+
 **Hold "ref master" to the same reading as "ref song"**
 
 A set may keep its record on a track called REF MASTER rather than REF SONG. Every place that reads a track's name already took the two alike — the role (a whole mix), the record flag a prepared part carries, the new-set category and model-track match, the member keeps that tidy a whole song away — but nothing said so. The self-test now reads both names through each of them and fails if they ever part.

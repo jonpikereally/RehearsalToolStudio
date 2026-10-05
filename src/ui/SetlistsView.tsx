@@ -101,7 +101,9 @@ export default function SetlistsView() {
         <div className="panel" style={{ paddingTop: 0 }}>
           <div className="control-label">When Live saves the set, on its own</div>
           <div className="hint" style={{ marginBottom: 8 }}>
-            {autoUpdates(settings.autoUpdate)
+            {settings.autoPaused && autoUpdates(settings.autoUpdate)
+              ? 'Paused from the bar at the top: each save is noticed and offered, and nothing is written until auto update is resumed.'
+              : autoUpdates(settings.autoUpdate)
               ? `Watching ${currentSet.split('/').pop()} — what is ticked below is written into “${publishFolderName ?? 'the band’s folder'}” without asking. The rest is offered in the bar.`
               : 'Nothing: each save is noticed and offered as an update, and nothing is written until you say.'}
           </div>

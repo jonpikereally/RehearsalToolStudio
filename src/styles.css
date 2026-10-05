@@ -315,6 +315,12 @@ button {
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
 }
+/* The set's name takes the room; the buttons sit together at the end. */
+.setbar > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .setbar strong {
   color: var(--text);
   font-weight: 600;
