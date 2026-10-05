@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoute, navigate, songUrl } from './lib/router';
 import { closeRun, useRun } from './lib/run';
 import { releaseReady } from './lib/songLoader';
-import { useStore } from './lib/store';
+import { autoUpdates, useStore } from './lib/store';
 import LibraryView from './ui/LibraryView';
 import PlayerView from './ui/PlayerView';
 import SetlistsView from './ui/SetlistsView';
@@ -156,7 +156,7 @@ function useOpenGate(
 
 export default function App() {
   const route = useRoute();
-  const { settings, localStatus, currentSet, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourceFolders, library, openDropped, openSession, watching } = useStore();
+  const { settings, saveSettings, localStatus, currentSet, chooseSet, chooseOutput, outputSet, sessionPath, publishFolderName, resourceFolders, library, openDropped, openSession, watching } = useStore();
   const drop = useDropped(openDropped);
   /*
    * Back to the chooser. In the Mac app it is a window in front of what is
@@ -424,6 +424,21 @@ export default function App() {
               </span>
             )}
           </span>
+          {/* Hold off every automatic update for a while, without unticking what is set to run. */}
+          <button
+            className={settings.autoPaused ? 'chip on' : 'chip'}
+            aria-pressed={settings.autoPaused}
+            onClick={() => saveSettings({ autoPaused: !settings.autoPaused })}
+            title={
+              settings.autoPaused
+                ? 'Auto update is paused: saves are noticed and offered, but nothing is written on its own. Click to resume.'
+                : autoUpdates(settings.autoUpdate)
+                  ? 'Stop the studio updating the prepared set on its own when Live saves, until you resume it.'
+                  : 'Nothing is set to update on its own (see Setlists); pausing keeps it that way if it is switched on.'
+            }
+          >
+            {settings.autoPaused ? '❚❚ Auto update paused' : 'Pause auto update'}
+          </button>
           <button
             className="chip"
             onClick={() => {

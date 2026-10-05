@@ -74,6 +74,9 @@ export default function AutoUpdate() {
   const setName = currentSet?.split('/').pop()?.replace(/\.als$/i, '') ?? 'The set';
 
   const auto = settings.autoUpdate;
+  // Paused from the top bar: the jobs stay ticked, and nothing runs on its own.
+  const paused = settings.autoPaused;
+  const automatic = !paused && autoUpdates(auto);
 
   /**
    * Bring the prepared set up to what the studio is set to keep current.
@@ -266,8 +269,8 @@ export default function AutoUpdate() {
     const at = setSaved.at;
     // Once per save — except that turning a job on while a save waits
     // in the bar is the answer to that save, and it goes ahead now.
-    if (acting.current === at && !(autoUpdates(auto) && phase?.kind === 'saved')) return;
-    if (!autoUpdates(auto)) {
+    if (acting.current === at && !(automatic && phase?.kind === 'saved')) return;
+    if (!automatic) {
       acting.current = at;
       setPhase({ kind: 'saved', at });
       return;
@@ -276,7 +279,7 @@ export default function AutoUpdate() {
     // store holds it back until then, so nothing here need cancel anything.
     catchUp(at, 'save', currentSet);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setSaved, currentSet, auto.stems, auto.submixes, auto.info, phase?.kind]);
+  }, [setSaved, currentSet, auto.stems, auto.submixes, auto.info, paused, phase?.kind]);
 
   /*
    * The same check on opening, without waiting for a save.
@@ -297,7 +300,7 @@ export default function AutoUpdate() {
   const savedRef = useRef(setSaved);
   savedRef.current = setSaved;
   useEffect(() => {
-    if (!currentSet || !autoUpdates(auto) || launched.current === currentSet) return;
+    if (!currentSet || !automatic || launched.current === currentSet) return;
     const go = window.setTimeout(() => {
       // Claimed here rather than when the wait began: an effect that runs
       // twice — React's own doing in development — would otherwise claim the
@@ -310,7 +313,7 @@ export default function AutoUpdate() {
     }, 5000);
     return () => window.clearTimeout(go);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSet, auto.stems, auto.submixes, auto.info]);
+  }, [currentSet, auto.stems, auto.submixes, auto.info, paused]);
 
   const dismiss = () => {
     setPhase(null);
@@ -360,6 +363,7 @@ export default function AutoUpdate() {
           {phase.kind === 'saved' && (
             <>
               <strong>{setName}</strong> was saved at {clock(phase.at)} — the prepared set may be behind it.
+              {paused && autoUpdates(auto) && ' Auto update is paused, so nothing was written.'}
             </>
           )}
           {running && (
