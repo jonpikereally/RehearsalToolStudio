@@ -1,5 +1,5 @@
 import type { AlsProject } from './alsParser';
-import { audioKeyFor, audioStanding, type AudioStanding } from './audioKey';
+import { audioKeyFor, audioStanding, partKeysFor, type AudioStanding } from './audioKey';
 import { resolveStemPath } from './alsImport';
 import { holdAwake } from './keepAwake';
 import * as local from './localSource';
@@ -127,6 +127,8 @@ export interface AudioKeys {
   byTitle: Record<string, string>;
   /** Keyed by song name — the folder's title part, lower-cased — as manifests are matched. */
   byName: Record<string, string>;
+  /** Per song title, each part's own key (partKeysFor): which parts a changed song can keep. */
+  parts?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -161,13 +163,15 @@ export async function audioKeysFor(project: AlsProject, setPath: string): Promis
   };
   const byTitle: Record<string, string> = {};
   const byName: Record<string, string> = {};
+  const parts: Record<string, Record<string, string>> = {};
   for (const song of project.songs) {
     if (byTitle[song.title]) continue;
     const key = audioKeyFor(song, project, inputs);
     byTitle[song.title] = key;
     byName[songFolderBase(song).toLowerCase()] = key;
+    parts[song.title] = partKeysFor(song, project, inputs);
   }
-  return { byTitle, byName };
+  return { byTitle, byName, parts };
 }
 
 /** The band as the folder has them; an unreadable list is no members at all. */
@@ -568,6 +572,10 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
             }),
           parallelShifts: shiftLanes(),
           audioKeys: keys,
+          // Each part's own key, worked out fresh — a stat per file, nothing read.
+          partKeys: (await audioKeysFor(project, setPath).catch(() => null))?.parts,
+          // A part the last prepare wrote, read back so an unchanged one is copied rather than rendered again.
+          readExisting: async (path) => (await local.readBytes(band, '', path.replace(/^\/+/, ''))).bytes,
           songOrder,
           sessionPath,
           onProgress,

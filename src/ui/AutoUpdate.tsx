@@ -201,7 +201,10 @@ export default function AutoUpdate() {
         const refreshed = outcome.refreshed?.count ?? 0;
         const quiet = (outcome.result?.silent.length ?? 0) + (outcome.submixes?.silent.length ?? 0);
         const did = [
-          written ? `${written} song${written === 1 ? '' : 's'} written again` : '',
+          written
+            ? `${written} song${written === 1 ? '' : 's'} written again` +
+              (outcome.result?.partsKept ? ` (${outcome.result.partsKept} unchanged part${outcome.result.partsKept === 1 ? '' : 's'} copied rather than rendered)` : '')
+            : '',
           mixed ? `submixes written for ${mixed} song${mixed === 1 ? '' : 's'}` : '',
           refreshed ? `words and sections refreshed for ${refreshed} song${refreshed === 1 ? '' : 's'}` : '',
         ].filter(Boolean);
