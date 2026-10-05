@@ -195,6 +195,12 @@ export interface PreparedPart {
    * its own so a song folder still reads as the parts the band play.
    */
   file?: string;
+  /**
+   * What the part was rendered from, as a key (audioKey.ts partKeysFor): the
+   * studio's own note, so a later prepare copies an unchanged part instead of
+   * rendering it again. A player ignores it.
+   */
+  key?: string;
   /** The Live tracks the part was rendered from: one, or several for a combined part. */
   sources?: string[];
   /** Rendered from Live's own freeze of the track, its devices included. */

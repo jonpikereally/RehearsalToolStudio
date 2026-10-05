@@ -328,6 +328,8 @@ export default function PrepareSetDialog({
         text: only === 'submixes'
           ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}.${band(out)}`
           : `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
+              out.result?.partsKept ? ` (${out.result.partsKept} unchanged part${out.result.partsKept === 1 ? '' : 's'} copied rather than rendered)` : ''
+            }${
               out.refreshed?.count ? `, ${out.refreshed.count} refreshed` : ''
             }.${band(out)}`,
       });
