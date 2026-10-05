@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Key the parts of unchanged songs without rendering them**
+
+Parts were given keys only when they were rendered, so a set prepared before parts had keys had none: the first edit to any song after the update — a cue moved — still rendered every part of it, there being no key to say the rest had not changed. A song whose own key still matches its entry is exactly what that entry's files are, so its parts can be keyed as they stand. That is now done whenever the set is looked at — on opening, on every save, and before a prepare — writing only the keys into the band's set.json and touching no audio. From then on an edit renders only the parts it changed, the first one included.
+
 **Name the Slates track ADD THIS in the copy, even when the set had one**
 
 Every track the studio adds to a copy of a set is named ADD THIS, so it is plainly the thing to drag into the real one. A set with a Slates track of its own was the exception: the slates went onto that track, to keep its routing, group and mix, and it kept its name — a "Slates" in the copy that read as the set's own. It is now named ADD THIS Slates there too; its routing, fader and everything else are unchanged.

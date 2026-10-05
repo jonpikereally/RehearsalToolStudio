@@ -1,5 +1,5 @@
 import type { AlsProject } from './alsParser';
-import { audioKeyFor, audioStanding, partKeysFor, type AudioStanding } from './audioKey';
+import { audioKeyFor, audioStanding, keyPartsInManifest, partKeysFor, type AudioStanding } from './audioKey';
 import { resolveStemPath } from './alsImport';
 import { holdAwake } from './keepAwake';
 import * as local from './localSource';
@@ -56,6 +56,37 @@ export async function syncRunningOrder(
   const next = { ...manifest, songs };
   await local.writeFile(band, '', path, new Blob([JSON.stringify(next, null, 2)], { type: 'application/json' }));
   return true;
+}
+
+/**
+ * Give the parts of every unchanged song their keys, writing nothing else.
+ *
+ * Parts are keyed when they are rendered, so a set prepared before parts had
+ * keys has none — and the first edit to any song would render all of it,
+ * whatever it was. But a song whose own key still matches its entry is
+ * exactly what that entry's files are, so its parts can be keyed now, as
+ * they stand, without a note of audio being touched. Done whenever a set is
+ * looked at; the next edit then renders only the parts it changed. Answers
+ * how many parts it keyed.
+ */
+export async function keyUnchangedParts(
+  band: local.FolderHandle,
+  setFolder: string,
+  project: AlsProject,
+  keys: AudioKeys,
+): Promise<number> {
+  if (!keys.parts) return 0;
+  const path = `${setFolder}/${MANIFEST_NAME}`;
+  let manifest: PreparedManifest;
+  try {
+    manifest = JSON.parse(new TextDecoder().decode((await local.readBytes(band, '', path)).bytes)) as PreparedManifest;
+  } catch {
+    return 0; // nothing prepared here yet
+  }
+  const { songs, keyed } = keyPartsInManifest(manifest, project, keys);
+  if (!keyed) return 0;
+  await local.writeFile(band, '', path, new Blob([JSON.stringify({ ...manifest, songs }, null, 2)], { type: 'application/json' }));
+  return keyed;
 }
 
 /** A click or cue whose samples cannot all be read, and what that costs. */
@@ -513,6 +544,9 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
     if (selected.size) {
       // What is about to be written over is kept, so the run can be undone.
       const aside = o.aside;
+      // The parts' keys as the set stands; songs that have not changed are keyed in the folder first.
+      const fresh = await audioKeysFor(project, setPath).catch(() => null);
+      if (fresh) await keyUnchangedParts(band, setFolder, project, fresh).catch(() => 0);
       if (aside) await local.undoBegin(band, setFolder);
       const ctx = new AudioContext();
       try {
@@ -573,7 +607,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           parallelShifts: shiftLanes(),
           audioKeys: keys,
           // Each part's own key, worked out fresh — a stat per file, nothing read.
-          partKeys: (await audioKeysFor(project, setPath).catch(() => null))?.parts,
+          partKeys: fresh?.parts,
           // A part the last prepare wrote, read back so an unchanged one is copied rather than rendered again.
           readExisting: async (path) => (await local.readBytes(band, '', path.replace(/^\/+/, ''))).bytes,
           songOrder,
