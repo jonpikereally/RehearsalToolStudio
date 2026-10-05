@@ -13,7 +13,7 @@ import { runningOrderTitles, scopeToSetlist } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
-import { asideSongs, note, songGroups } from '../lib/saveLog';
+import { asideSongs, note, partDetail, songGroups } from '../lib/saveLog';
 import { prepareRunning } from '../lib/prepareState';
 import ErrorNotice from './ErrorNotice';
 import { coded } from '../lib/errorCodes';
@@ -222,6 +222,7 @@ export default function AutoUpdate() {
             ['Audio changed, left for a prepare by hand', held],
             ['Came out silent', [...(outcome.result?.silent ?? []), ...(outcome.submixes?.silent ?? [])].map((p) => `${p.song}: ${p.part}`)],
           ),
+          parts: partDetail(outcome.result, outcome.submixes),
           text: did.length
             ? `${written || mixed ? '' : held.length ? `The audio of ${held.length} song${held.length === 1 ? '' : 's'} has changed (${held.join(', ')}), left for a prepare by hand; ` : 'No audio had changed; '}${did.join(', ')}.` +
               (quiet ? ` ${quiet} part${quiet === 1 ? '' : 's'} came out silent.` : '') +

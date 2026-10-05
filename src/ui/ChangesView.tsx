@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { clearNotes, saveNotes, type SaveNote } from '../lib/saveLog';
 import ErrorNotice from './ErrorNotice';
+import type { PartDetail } from '../lib/saveLog';
 
 /**
  * What the studio has done, save by save.
@@ -105,6 +106,7 @@ export default function ChangesView() {
                         </span>
                       ))
                     : n.songs?.length ? <span className="change-songs">{n.songs.join(' · ')}</span> : null}
+                  {n.parts?.length ? <PartsDetail parts={n.parts} /> : null}
                 </span>
               </div>
             </div>
@@ -114,5 +116,38 @@ export default function ChangesView() {
 
       <div style={{ height: 16 }} />
     </>
+  );
+}
+
+/**
+ * Song by song, what a run did with each part: rendered, written as a
+ * pattern, copied unchanged, or skipped and why. A run of a few songs shows
+ * it outright; a long one keeps it folded, a click away.
+ */
+function PartsDetail({ parts }: { parts: PartDetail[] }) {
+  const lines = parts.map((p) => (
+    <span key={p.song} className="change-part-line">
+      <span className="change-group">{p.song}</span>
+      {[
+        ['rendered', p.rendered],
+        ['pattern', p.patterns],
+        ['copied unchanged', p.copied],
+        ['skipped', p.skipped],
+      ]
+        .filter(([, list]) => (list as string[]).length)
+        .map(([label, list]) => (
+          <span key={label as string} className="change-part-kind">
+            {' '}
+            — {label as string} ({(list as string[]).length}): {(list as string[]).join(', ')}
+          </span>
+        ))}
+    </span>
+  ));
+  if (parts.length <= 3) return <span className="change-parts">{lines}</span>;
+  return (
+    <details className="change-parts">
+      <summary>Which parts, song by song ({parts.length} songs)</summary>
+      {lines}
+    </details>
   );
 }

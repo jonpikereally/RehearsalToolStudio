@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Say part by part what a run did to each song in the Changes window**
+
+An entry said which songs were written again, and how many parts were copied rather than rendered — not which. A prepare now notes, for each song it writes, what became of every part: rendered and encoded, written as a pattern (the click and cues), copied unchanged from the last prepare, or skipped and why. The Changes window shows it song by song under the entry — outright for a run of a few songs, folded behind "Which parts, song by song" for a long one — so a cue edit reads as "rendered: Cues — copied unchanged (6): REF SONG, REF VOX, …".
+
 **Key the parts of unchanged songs without rendering them**
 
 Parts were given keys only when they were rendered, so a set prepared before parts had keys had none: the first edit to any song after the update — a cue moved — still rendered every part of it, there being no key to say the rest had not changed. A song whose own key still matches its entry is exactly what that entry's files are, so its parts can be keyed as they stand. That is now done whenever the set is looked at — on opening, on every save, and before a prepare — writing only the keys into the band's set.json and touching no audio. From then on an edit renders only the parts it changed, the first one included.

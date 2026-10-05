@@ -3271,6 +3271,23 @@ input[type='range'] {
   font-weight: 600;
 }
 
+.change-parts {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.change-parts summary {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.change-part-line {
+  display: block;
+  margin-top: 2px;
+}
+
 /* ---------------------------- first-run choices --------------------------- */
 
 .source-choices {
