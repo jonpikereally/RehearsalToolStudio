@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Name the Slates track ADD THIS in the copy, even when the set had one**
+
+Every track the studio adds to a copy of a set is named ADD THIS, so it is plainly the thing to drag into the real one. A set with a Slates track of its own was the exception: the slates went onto that track, to keep its routing, group and mix, and it kept its name — a "Slates" in the copy that read as the set's own. It is now named ADD THIS Slates there too; its routing, fader and everything else are unchanged.
+
 **Let the set tools take in songs left off AbleSet's setlist**
 
 The set tools worked on the songs AbleSet's setlist names, as the rest of the studio does — but they work on the project, and a song off tonight's setlist still wants its chords, lyrics and slates. "See songs not in current setlist", beside the songs being worked on, takes in every song in the project; it says how many the setlist leaves out and, on hover, which, and is remembered on this Mac. It appears only when the setlist leaves something out. The set is read whole and scoped as it is shown, so turning it on or off needs no reading again.
