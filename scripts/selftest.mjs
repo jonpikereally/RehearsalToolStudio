@@ -5661,6 +5661,81 @@ group('the changes log names what changed');
     asideSongs(aside, true).join() === 'Red' && asideSongs(aside, false).join() === 'Mine', JSON.stringify([asideSongs(aside, true), asideSongs(aside, false)]));
 }
 
+/* ---------------------------- a song's history ---------------------------- */
+
+group("a song's history, as the band's site shows it");
+{
+  const { withChangelog, songChanges, mergeChangelogs, CHANGELOG_KEEP } = await import('../src/lib/songChangelog.ts');
+  const t1 = '2026-10-05T10:00:00.000Z';
+  const t2 = '2026-10-05T11:00:00.000Z';
+  const t3 = '2026-10-05T12:00:00.000Z';
+  const part = (name, renderedAt, extra = {}) => ({ label: name, name, file: `Yellow [${name}].mp3`, renderedAt, ...extra });
+  const entry = (over = {}) => ({
+    folder: 'Yellow (2026-10-05)', title: 'Yellow', firstBarOffsetSec: 0.026, tempo: 120, timeSignature: '4/4', bars: 64,
+    originalKey: 'G', markers: [{ bar: 1, name: 'Intro' }, { bar: 9, name: 'Verse' }, { bar: 33, name: 'Bridge' }],
+    lanes: [{ id: 'chords', name: 'Chords', kind: 'chords', items: [{ bar: 1, text: 'G' }, { bar: 17, text: 'C' }] }],
+    parts: [part('bass', t1), part('keys', t1), part('drums', t1), { label: 'cues', name: 'cues', kind: 'sampler', rev: 'a', notes: [{ beat: 0, note: 60 }], renderedAt: t1 }],
+    ...over,
+  });
+
+  const first = withChangelog(undefined, entry(), { at: t1 });
+  check('a first publish is one entry, "First published"',
+    first.changelog?.length === 1 && first.changelog[0].summary === 'First published' && first.changelog[0].at === t1, JSON.stringify(first.changelog));
+  check('every entry has an ISO time with a zone and a summary', first.changelog.every((e) => /Z$|[+-]\d\d:\d\d$/.test(e.at) && e.summary));
+
+  const same = withChangelog(first, entry({ changelog: undefined }), { at: t2 });
+  check('a republish with nothing different adds nothing, and keeps what was there',
+    JSON.stringify(same.changelog) === JSON.stringify(first.changelog), JSON.stringify(same.changelog));
+  check('a click or cues part written afresh with the same pattern is not a change',
+    songChanges(entry(), entry({ parts: entry().parts.map((p) => (p.kind === 'sampler' ? { ...p, renderedAt: t2 } : p)) })).length === 0);
+
+  // Bass and keys rendered again, the cues moved: said in a band's words.
+  const second = withChangelog(first, entry({
+    parts: [part('bass', t2), part('keys', t2), part('drums', t1), { label: 'cues', name: 'cues', kind: 'sampler', rev: 'a', notes: [{ beat: 4, note: 60 }], renderedAt: t2 }],
+  }), { at: t2 });
+  check('carried forward: the old entry first, as it was, then the new one',
+    second.changelog.length === 2 && JSON.stringify(second.changelog[0]) === JSON.stringify(first.changelog[0]) && second.changelog[1].at === t2, JSON.stringify(second.changelog));
+  const said = [second.changelog[1].summary, ...(second.changelog[1].details ?? [])].join(' | ');
+  check('it says which parts were rendered again, and that the cues changed', /Bass and Keys re-rendered/.test(said) && /Cues changed/.test(said) && !/Drums/.test(said), said);
+  check('a few changes make the summary themselves', second.changelog[1].summary === 'Bass and Keys re-rendered; Cues changed' && !second.changelog[1].details, JSON.stringify(second.changelog[1]));
+
+  const third = withChangelog(second, entry({ markers: [{ bar: 1, name: 'Intro' }, { bar: 9, name: 'Verse' }, { bar: 41, name: 'Bridge' }], parts: second.parts }), { at: t3, note: 'Bridge pushed back' });
+  check('the person\'s words are the summary, what Studio saw is the detail',
+    third.changelog.length === 3 && third.changelog[2].summary === 'Bridge pushed back' && third.changelog[2].details?.includes('Bridge moved to bar 41'), JSON.stringify(third.changelog[2]));
+  check('and every earlier entry is carried forward untouched', JSON.stringify(third.changelog.slice(0, 2)) === JSON.stringify(second.changelog));
+
+  const lines = songChanges(entry(), entry({
+    tempo: 124, originalKey: 'A', firstBarOffsetSec: 0.05, bars: 72, timeSignature: '6/8',
+    tempoMap: [{ bar: 33, bpm: 130 }],
+    markers: [{ bar: 1, name: 'Intro' }, { bar: 9, name: 'Verse' }, { bar: 33, name: 'Bridge' }, { bar: 65, name: 'Outro' }],
+    lanes: [{ id: 'chords', name: 'Chords', kind: 'chords', items: [{ bar: 1, text: 'G' }, { bar: 17, text: 'Am' }, { bar: 18, text: 'D' }] },
+      { id: 'lyrics', name: 'Lyrics', kind: 'lyrics', items: [{ bar: 9, text: 'look at the stars' }] }],
+    parts: [...entry().parts.filter((p) => p.name !== 'keys'), part('pad', t2), part('alex mix', t2, { submixFor: 'Alex', submixOf: ['bass'], file: 'submixes/x.mp3' })],
+  }));
+  const all = lines.join(' | ');
+  check('tempo, tempo map, signature, key, length and lead-in are said',
+    /Tempo 120 → 124 BPM/.test(all) && /Tempo changes now at bar 33/.test(all) && /Time signature 4\/4 → 6\/8/.test(all) && /Key G → A/.test(all)
+      && /Length 64 → 72 bars/.test(all) && /Lead-in 0\.026 s → 0\.050 s/.test(all), all);
+  check('sections added, chords by the bars that changed, a lane added',
+    /Outro added at bar 65/.test(all) && /Chords changed in bars 17–18/.test(all) && /Lyrics added/.test(all), all);
+  check('parts added and removed, and a submix added', /Pad added/.test(all) && /Keys removed/.test(all) && /the submix for Alex added/i.test(all), all);
+
+  // The site keeps fifty: so does Studio, the newest.
+  let long = first;
+  for (let i = 0; i < 60; i++) {
+    long = withChangelog(long, entry({ tempo: 100 + i, changelog: undefined }), { at: new Date(Date.parse(t1) + (i + 1) * 60000).toISOString() });
+  }
+  check(`no more than ${CHANGELOG_KEEP} entries, the newest kept`, long.changelog.length === CHANGELOG_KEEP && /→ 159 BPM/.test(long.changelog[CHANGELOG_KEEP - 1].summary) && long.changelog[0].summary !== 'First published',
+    `${long.changelog.length} ${long.changelog.at(-1)?.summary}`);
+  const huge = withChangelog(first, entry(), { at: t2, note: 'x'.repeat(400) });
+  check('no line longer than 300 characters', huge.changelog === first.changelog || huge.changelog.every((e) => e.summary.length <= 300));
+
+  // The band's library: the set's file is the history; failing that, what was published.
+  check('two accounts of a history merge each entry once, in order',
+    JSON.stringify(mergeChangelogs([first.changelog[0]], second.changelog).map((e) => e.at)) === JSON.stringify([t1, t2]));
+  check('an entry without a time or a summary is not carried', mergeChangelogs([{ at: t1 }, { summary: 'x' }, { at: t1, summary: ' ' }]).length === 0);
+}
+
 /* ------------------------------- error codes ------------------------------- */
 
 group('error codes');
