@@ -5785,5 +5785,36 @@ group('error codes');
   check('and has a heading per code, for links to land on', Object.keys(ERROR_CODES).every((c) => md.includes(`\n### ${c}\n`)));
 }
 
+// A track named "ref master" is the record, exactly as "ref song" is: every
+// place that reads a track's name must come to the same answer for both.
+{
+  const { roleForTrack } = await import('../src/lib/alsImport.ts');
+  const { partInfoFor } = await import('../src/lib/prepare.ts');
+  const { isWholeSong, parseMembers } = await import('../src/lib/members.ts');
+  const { categoryOf, songFromFiles } = await import('../src/lib/newSet.ts');
+  const { isReferenceName, isReferenceLabel } = await import('../src/lib/scan.ts');
+  const { isReferenceStem } = await import('../src/lib/stemMix.ts');
+  const file = (name) => ({ name, relPath: `Stems/${name}`, absPath: `/Set/Stems/${name}`, size: 1000, modified: 1.7e12, seconds: 120, sampleRate: 44100, frames: 120 * 44100 });
+  const reading = (ref) => {
+    const part = partInfoFor('Yellow', ref, true);
+    const model = { title: 'Model', group: {}, inside: [ref, 'REF DRUMS', 'BASS', 'DRUMS'].map((name, i) => ({ kind: 'AudioTrack', id: String(i), parentId: 'g', name, text: '' })) };
+    const matched = songFromFiles({ title: 'New', folder: 'New' }, ['New.wav', 'New_Drums.wav'].map(file), model);
+    return JSON.stringify({
+      role: roleForTrack(ref),
+      part: { role: part.role, reference: part.reference, record: part.record },
+      whole: isWholeSong(ref),
+      category: categoryOf(ref),
+      referenceName: isReferenceName(ref),
+      referenceLabel: isReferenceLabel(ref),
+      referenceStem: isReferenceStem({ name: ref, role: 'mix', reference: true }),
+      matched: matched.parts.map((p) => (p.target === ref ? 'REF' : p.target || `+${p.name}`)).join(),
+      kept: parseMembers([{ member: 'Casey', keeps: [ref.toLowerCase(), 'gtr'] }])[0].keeps.join(),
+    });
+  };
+  for (const spelling of ['REF MASTER', 'Ref Master', 'ref master'])
+    check(`"${spelling}" is used just as "REF SONG" is`, reading(spelling) === reading('REF SONG'), `${reading(spelling)} vs ${reading('REF SONG')}`);
+  check('both are the record, a whole mix', JSON.parse(reading('REF MASTER')).part.record === true && JSON.parse(reading('REF MASTER')).role === 'mix');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

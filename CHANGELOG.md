@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Hold "ref master" to the same reading as "ref song"**
+
+A set may keep its record on a track called REF MASTER rather than REF SONG. Every place that reads a track's name already took the two alike — the role (a whole mix), the record flag a prepared part carries, the new-set category and model-track match, the member keeps that tidy a whole song away — but nothing said so. The self-test now reads both names through each of them and fails if they ever part.
+
 **Publish each song's history for the band's site to show**
 
 Every song Studio writes now carries a changelog — in set.json and its song.json, and in the band's .rehearsal-tool.json — in the form the website reads: when, a summary line, and optional detail lines, oldest first, the newest fifty kept.
