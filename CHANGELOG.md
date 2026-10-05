@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-05
+
+**Name exactly which songs changed in the Changes window**
+
+A Changes entry listed the songs a run had been asked about — every song chosen, every song with submixes behind — which was not what it did: "words and sections refreshed for 1 song" sat over a song whose words had not been touched. A prepare now says which songs it wrote, and each entry names its songs by what happened to them: audio written again, submixes written, words and sections refreshed, audio changed but left for a prepare by hand, parts that came out silent; for a stopped run, the songs written over and added before it stopped; for an undo, those put back and those removed; for a running order change, the order now. An older entry still shows its single list.
+
 ## 2026-10-04
 
 **Give every error a code, with a public list to look it up in**

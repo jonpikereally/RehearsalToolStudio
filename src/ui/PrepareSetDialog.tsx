@@ -7,7 +7,7 @@ import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare, unreadableSamples, type UnreadableSamples } from '../lib/prepareRun';
 import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
-import { note } from '../lib/saveLog';
+import { asideSongs, note, songGroups } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { readBytes } from '../lib/source';
@@ -318,7 +318,13 @@ export default function PrepareSetDialog({
         kind: wrote || out.refreshed?.count ? 'updated' : 'nothing',
         session: setPath.split('/').pop() ?? setPath,
         set: folderName,
-        songs: [...selected],
+        songs: [...new Set([...(out.result?.songTitles ?? []), ...(out.submixes?.songTitles ?? []), ...(out.refreshed?.songs ?? [])])],
+        groups: songGroups(
+          ['Audio written', out.result?.songTitles],
+          ['Submixes written', out.submixes?.songTitles],
+          ['Words and sections refreshed', out.refreshed?.songs],
+          ['Came out silent', [...(out.result?.silent ?? []), ...(out.submixes?.silent ?? [])].map((p) => `${p.song}: ${p.part}`)],
+        ),
         text: only === 'submixes'
           ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}.${band(out)}`
           : `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${
@@ -364,6 +370,7 @@ export default function PrepareSetDialog({
         session: setPath?.split('/').pop() ?? 'the set',
         set: last.folder,
         text: `Undone by hand: ${put.restored} song${put.restored === 1 ? '' : 's'} put back${put.removed ? `, ${put.removed} removed` : ''}. The band sees ${put.published.songs}.`,
+        groups: songGroups(['Put back as they were', asideSongs(last.songs, true)], ['Removed (the run had added them)', asideSongs(last.songs, false)]),
       });
       setUndone(
         `Undone: ${put.restored} song${put.restored === 1 ? '' : 's'} put back as ${put.restored === 1 ? 'it was' : 'they were'}` +
