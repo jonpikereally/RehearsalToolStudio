@@ -13,7 +13,7 @@ import { runningOrderTitles, scopeToSetlist } from '../lib/ableset';
 import { preparedNameFor } from '../lib/locatePrepared';
 import PrepareSetDialog from './PrepareSetDialog';
 import { navigate } from '../lib/router';
-import { note } from '../lib/saveLog';
+import { asideSongs, note, songGroups } from '../lib/saveLog';
 import { prepareRunning } from '../lib/prepareState';
 import ErrorNotice from './ErrorNotice';
 import { coded } from '../lib/errorCodes';
@@ -140,7 +140,13 @@ export default function AutoUpdate() {
           const songOrder = runningOrderTitles(libraryRef.current, currentSet) ?? undefined;
           if (await syncRunningOrder(band, `${SETS_FOLDER}/${folderName}`, project, songOrder).catch(() => false)) {
             await publishLibrary(band).catch(() => undefined);
-            note({ kind: 'updated', session: setName, set: folderName, text: `The running order in “${folderName}” now follows AbleSet's setlist.` });
+            note({
+              kind: 'updated',
+              session: setName,
+              set: folderName,
+              text: `The running order in “${folderName}” now follows AbleSet's setlist.`,
+              groups: songGroups(['Running order now', songOrder]),
+            });
           }
           if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at, held });
           return;
@@ -203,7 +209,14 @@ export default function AutoUpdate() {
           kind: did.length ? 'updated' : 'nothing',
           session: setName,
           set: folderName,
-          songs: [...new Set([...selected, ...behind])],
+          songs: [...new Set([...(outcome.result?.songTitles ?? []), ...(outcome.submixes?.songTitles ?? []), ...(outcome.refreshed?.songs ?? [])])],
+          groups: songGroups(
+            ['Audio written again', outcome.result?.songTitles],
+            ['Submixes written', outcome.submixes?.songTitles],
+            ['Words and sections refreshed', outcome.refreshed?.songs],
+            ['Audio changed, left for a prepare by hand', held],
+            ['Came out silent', [...(outcome.result?.silent ?? []), ...(outcome.submixes?.silent ?? [])].map((p) => `${p.song}: ${p.part}`)],
+          ),
           text: did.length
             ? `${written || mixed ? '' : held.length ? `The audio of ${held.length} song${held.length === 1 ? '' : 's'} has changed (${held.join(', ')}), left for a prepare by hand; ` : 'No audio had changed; '}${did.join(', ')}.` +
               (quiet ? ` ${quiet} part${quiet === 1 ? '' : 's'} came out silent.` : '') +
@@ -220,7 +233,12 @@ export default function AutoUpdate() {
             ? `Stopped by hand after ${touched === 1 ? 'one song' : `${touched} songs`} had been written over.`
             : 'Stopped by hand before anything was written.'
           : err instanceof Error ? err.message : String(err);
-        note({ kind: aborted ? 'stopped' : 'error', session: setName, text: aborted ? message : coded('RTS-AUTO-01', message) });
+        note({
+          kind: aborted ? 'stopped' : 'error',
+          session: setName,
+          text: aborted ? message : coded('RTS-AUTO-01', message),
+          groups: songGroups(['Written over before it stopped', asideSongs(aside.current?.songs, true)], ['Added before it stopped', asideSongs(aside.current?.songs, false)]),
+        });
         setPhase({
           kind: 'error',
           at,
@@ -310,6 +328,7 @@ export default function AutoUpdate() {
         session: setName,
         set: last.folder,
         text: `Undone: ${put.restored} song${put.restored === 1 ? '' : 's'} put back${put.removed ? `, ${put.removed} removed` : ''}. The band sees ${put.published.songs}.`,
+        groups: songGroups(['Put back as they were', asideSongs(last.songs, true)], ['Removed (the run had added them)', asideSongs(last.songs, false)]),
       });
       setPhase({ kind: 'undone', at, restored: put.restored, removed: put.removed, songs: put.published.songs });
     } catch (err) {

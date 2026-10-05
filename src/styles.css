@@ -3251,6 +3251,15 @@ input[type='range'] {
   font-size: 12px;
 }
 
+.change-songs + .change-songs {
+  margin-top: 2px;
+}
+
+.change-group {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* ---------------------------- first-run choices --------------------------- */
 
 .source-choices {

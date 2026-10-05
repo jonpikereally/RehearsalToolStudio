@@ -1,3 +1,4 @@
+import { folderBaseOf } from './preparedSet.ts';
 /**
  * What the studio has made of each save.
  *
@@ -41,8 +42,31 @@ export interface SaveNote {
   set?: string;
   /** One sentence: what happened. */
   text: string;
-  /** The songs written, when any were. */
+  /** The songs written, when any were. Older notes have only this. */
   songs?: string[];
+  /**
+   * Exactly which songs changed, and how: audio written again, submixes
+   * written, words and sections refreshed, held back, put back… one group
+   * per kind of change, each naming its songs.
+   */
+  groups?: SongGroup[];
+}
+
+export interface SongGroup {
+  label: string;
+  songs: string[];
+}
+
+/** The groups worth saying: those with songs in them, each song once. */
+export function songGroups(...pairs: [string, readonly string[] | null | undefined][]): SongGroup[] {
+  return pairs
+    .map(([label, songs]) => ({ label, songs: [...new Set(songs ?? [])] }))
+    .filter((g) => g.songs.length);
+}
+
+/** The songs a run moved aside, by name: those it wrote over (`kept`) or added (`!kept`). */
+export function asideSongs(aside: readonly { folder: string; kept: boolean }[] | null | undefined, kept?: boolean): string[] {
+  return [...new Set((aside ?? []).filter((a) => kept === undefined || a.kept === kept).map((a) => folderBaseOf(a.folder)))];
 }
 
 /** Every note, newest first. */

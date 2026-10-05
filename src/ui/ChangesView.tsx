@@ -94,7 +94,17 @@ export default function ChangesView() {
                     {n.session}
                     {n.set ? ` → ${n.set.split('/').pop()}` : ''}
                   </span>
-                  {n.songs?.length ? <span className="change-songs">{n.songs.join(' · ')}</span> : null}
+                  {/* Exactly which songs changed, and how; an older note has only the one list. */}
+                  {n.groups?.length
+                    ? n.groups.map((g) => (
+                        <span key={g.label} className="change-songs">
+                          <span className="change-group">
+                            {g.label} ({g.songs.length}):
+                          </span>{' '}
+                          {g.songs.join(' · ')}
+                        </span>
+                      ))
+                    : n.songs?.length ? <span className="change-songs">{n.songs.join(' · ')}</span> : null}
                 </span>
               </div>
             </div>

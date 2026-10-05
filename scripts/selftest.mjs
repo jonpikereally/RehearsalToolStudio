@@ -5612,6 +5612,19 @@ group("a build's name");
   check('one with no time on record is named by its commit alone', buildLabel('914c26d') === '914c26d' && buildLabel('914c26d', null) === '914c26d' && buildLabel('914c26d', 'yesterday') === '914c26d');
 }
 
+/* ------------------------------ what changed ------------------------------ */
+
+group('the changes log names what changed');
+{
+  const { songGroups, asideSongs } = await import('../src/lib/saveLog.ts');
+  const g = songGroups(['Audio written again', ['Red', 'Red', 'Mine']], ['Submixes written', []], ['Words and sections refreshed', null], ['Held', ['Lover']]);
+  check('a group per kind of change, each song once, empty kinds left out',
+    JSON.stringify(g) === JSON.stringify([{ label: 'Audio written again', songs: ['Red', 'Mine'] }, { label: 'Held', songs: ['Lover'] }]), JSON.stringify(g));
+  const aside = [{ folder: 'Red {125} (2026-10-04)', kept: true }, { folder: 'Red {125}', kept: true }, { folder: 'Mine {121}', kept: false }];
+  check('songs a run wrote over or added are named by song, not folder',
+    asideSongs(aside, true).join() === 'Red' && asideSongs(aside, false).join() === 'Mine', JSON.stringify([asideSongs(aside, true), asideSongs(aside, false)]));
+}
+
 /* ------------------------------- error codes ------------------------------- */
 
 group('error codes');
