@@ -365,6 +365,8 @@ const DEFAULT_SOURCE_CACHE_BYTES = 1e9;
 export interface PrepareResult {
   folder: string;
   songsWritten: number;
+  /** The songs written, by title, in the order they were — what a log says changed. */
+  songTitles: string[];
   partsWritten: number;
   /**
    * Of those parts, the ones that are a member's submix — the sum of what
@@ -751,6 +753,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const records: PrepareResult['records'] = [];
   const written: PreparedSongInfo[] = [];
   let songsWritten = 0;
+  const songTitles: string[] = [];
   let partsWritten = 0;
   /** Of those, the ones written as a member's submix rather than as a stem. */
   let submixesWritten = 0;
@@ -1179,6 +1182,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
     if (wroteAny) {
       songsWritten++;
+      songTitles.push(song.title);
       samplerParts += samplerHere;
       const words = lyricsFileFor(song, project);
       if (words) await writeFile(`${songFolder}/${safeName(song.title)}.lrc`, words);
@@ -1280,7 +1284,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
+  return { folder, songsWritten, songTitles, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */
