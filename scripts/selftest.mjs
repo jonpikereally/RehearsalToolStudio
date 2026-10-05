@@ -4889,6 +4889,16 @@ group('a song\'s audio as a key');
     audioKeyFor(song({ stems: [stem('Bass', 'Stems/Bass.wav', { clips: [clip('Stems/Bass.wav'), clip('Stems/Other.wav', { disabled: true })] }), stem('Vox', 'Stems/Vox.wav')] }), project, inputs()) === base);
   check('the segments read plainly', /Stems\/Bass\.wav 100-5/.test(audioKeySegments(song(), project, inputs()).files));
 
+  // A key per part: a change to one track leaves every other part's key alone, so only it is rendered again.
+  const { partKeysFor } = await import('../src/lib/audioKey.ts');
+  const partsBase = partKeysFor(song(), project, inputs());
+  const voxMoved = partKeysFor(song({ stems: [stem('Bass', 'Stems/Bass.wav'), stem('Vox', 'Stems/Vox.wav', { clips: [clip('Stems/Vox.wav', { startBar: 5 })] })] }), project, inputs());
+  check('a key per part', Object.keys(partsBase).length === 2 && partsBase.Bass !== partsBase.Vox, JSON.stringify(partsBase));
+  check('one track changed changes its part\'s key and no other', voxMoved.Vox !== partsBase.Vox && voxMoved.Bass === partsBase.Bass, JSON.stringify([partsBase, voxMoved]));
+  const bassFile = partKeysFor(song(), project, inputs({ fileRev: (p) => (p.toLowerCase() === 'stems/bass.wav' ? '200-5' : revs[p.toLowerCase()]) }));
+  check('a re-exported file changes its own part only', bassFile.Bass !== partsBase.Bass && bassFile.Vox === partsBase.Vox);
+  check('the song\'s tempo and the encoder are every part\'s', Object.entries(partKeysFor(song(), project, inputs({ bitrate: 128 }))).every(([k, v]) => v !== partsBase[k]));
+
   // What the dialog says about each song.
   check('never prepared is new', audioStanding(base, undefined, false).state === 'new');
   check('prepared before keys existed is taken as changed',

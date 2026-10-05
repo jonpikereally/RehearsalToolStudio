@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Render only the parts of a song that changed**
+
+A song is written again when anything about its audio changes — and it was written again whole: a cue moved on one track, and every stem of the song was decoded, rendered and encoded once more. Each part now has a key of its own, made of the same facts as the song's but only its own tracks', clips, faders and files, and it goes into the manifest beside the part. When a song is written again, a part whose key still matches is read back from the folder the last prepare wrote and copied into the new one; only the parts that changed are rendered.
+
 **Name exactly which songs changed in the Changes window**
 
 A Changes entry listed the songs a run had been asked about — every song chosen, every song with submixes behind — which was not what it did: "words and sections refreshed for 1 song" sat over a song whose words had not been touched. A prepare now says which songs it wrote, and each entry names its songs by what happened to them: audio written again, submixes written, words and sections refreshed, audio changed but left for a prepare by hand, parts that came out silent; for a stopped run, the songs written over and added before it stopped; for an undo, those put back and those removed; for a running order change, the order now. An older entry still shows its single list.

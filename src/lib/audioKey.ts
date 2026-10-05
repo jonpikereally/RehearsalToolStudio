@@ -119,6 +119,52 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
   };
 }
 
+/**
+ * One key per part, keyed by the part's name: the same facts as the song's
+ * key, but only those that part is made of — its tracks, their clips, faders
+ * and devices, the files by revision — with the song's tempo and the
+ * encoder's settings, which every part shares.
+ *
+ * A song's key says whether anything about it changed; these say which of
+ * its parts did. A song whose cue track moved is written again, but only the
+ * cues need rendering: every other part is the file the last prepare wrote,
+ * and is copied across rather than rendered and encoded all over again.
+ */
+export function partKeysFor(song: AlsSong, project: AlsProject, inputs: AudioKeyInputs): Record<string, string> {
+  const tempo = [
+    `bars ${song.startBar}-${song.endBar}`,
+    `bpm ${num(song.bpm ?? project.tempo)}`,
+    `sig ${project.timeSigNum}/${project.timeSigDen}`,
+    `map ${song.tempoChanges.map((t) => `${num(t.bar)}:${num(t.bpm)}`).join(',')}`,
+  ].join(' ');
+  const settings = `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`;
+  const out: Record<string, string> = {};
+  for (const part of partsFor(song, inputs.plan)) {
+    const lines = [tempo, settings, `part ${part.name}${part.combined ? ' combined' : ''}${part.reference ? ' ref' : ''}`];
+    for (const stem of part.stems) {
+      lines.push(
+        `  ${stem.name} g${num(stem.gain)} p${num(stem.pan)} ${stem.direct ? 'direct' : 'sends-only'} ` +
+          `sends[${stem.sends.map((x) => `${x.bus}:${num(x.level)}`).join(',')}] ` +
+          `devices[${stem.devices
+            .filter((d) => d.on)
+            .map((d) => `${d.kind}(${Object.entries(d.params).map(([k, v]) => `${k}=${typeof v === 'number' ? num(v) : v}`).join(',')})`)
+            .join(';')}]`,
+        `  regions[${stem.regions ? stem.regions.map((r) => `${num(r.startBar)}-${num(r.endBar)}`).join(',') : 'all'}]`,
+      );
+      for (const clip of stem.clips) {
+        if (clip.disabled) continue;
+        lines.push(
+          `    ${clip.path} ${inputs.fileRev(clip.path) ?? 'missing'} @${num(clip.startBar)}-${num(clip.endBar)} src${num(clip.sourceStartSec)} ` +
+            `fade${num(clip.fadeInSec)}/${num(clip.fadeOutSec)} st${num(clip.semitones, 2)} x${num(clip.speed)} ` +
+            `g${num(clip.gain)}${clip.frozen ? ' frozen' : ''}${clip.note !== undefined ? ` n${clip.note} v${clip.velocity ?? ''}` : ''}`,
+        );
+      }
+    }
+    out[part.name] = `${AUDIO_KEY_VERSION}.${fnv(lines.join('\n'))}`;
+  }
+  return out;
+}
+
 export function audioKeyFor(song: AlsSong, project: AlsProject, inputs: AudioKeyInputs): string {
   const s = audioKeySegments(song, project, inputs);
   return `${AUDIO_KEY_VERSION}.${fnv(s.files)}.${fnv(s.arrangement)}.${fnv(s.mix)}.${fnv(s.settings)}`;

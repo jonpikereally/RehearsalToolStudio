@@ -186,6 +186,14 @@ export interface PrepareOptions {
    */
   audioKeys?: Record<string, string>;
   /**
+   * Each part's own key, by song title then part name (partKeysFor). A part
+   * whose key matches the one the folder's manifest has for it is copied
+   * from the last prepare rather than rendered and encoded again.
+   */
+  partKeys?: Record<string, Record<string, string>>;
+  /** Read a file already in the band's folder: an unchanged part, to copy. */
+  readExisting?: (path: string) => Promise<ArrayBuffer>;
+  /**
    * The running order, by title, when it is not the arrangement's — AbleSet's
    * setlist, or a setlist made by hand. The manifest lists songs in it, and
    * the band's app plays them in it. Titles left out follow in set order.
@@ -367,6 +375,8 @@ export interface PrepareResult {
   songsWritten: number;
   /** The songs written, by title, in the order they were — what a log says changed. */
   songTitles: string[];
+  /** Of the parts written, those copied unchanged from the last prepare rather than rendered. */
+  partsKept: number;
   partsWritten: number;
   /**
    * Of those parts, the ones that are a member's submix — the sum of what
@@ -754,6 +764,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const written: PreparedSongInfo[] = [];
   let songsWritten = 0;
   const songTitles: string[] = [];
+  /** Parts copied from the last prepare, their keys unchanged, rather than rendered. */
+  let partsKept = 0;
   let partsWritten = 0;
   /** Of those, the ones written as a member's submix rather than as a stem. */
   let submixesWritten = 0;
@@ -896,6 +908,29 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 
     const own = partsFor(song, opts.plan?.[song.title]);
     const submixes = submixPartsFor(song, own, opts.members ?? []);
+
+    /*
+     * The parts that have not changed since the last prepare, read back from
+     * its folder now — before this song's first write moves that folder
+     * aside for undo — to be copied rather than rendered. Only a part the
+     * manifest keyed, under a key that still matches; never with a plan,
+     * which can change what a part is made of under the same name.
+     */
+    const kept = new Map<string, { info: PreparedPart; bytes: ArrayBuffer }>();
+    const before = existing?.songs.find((e) => sameSong(e.folder, folderName));
+    const keysNow = opts.partKeys?.[song.title];
+    if (before?.parts && keysNow && opts.readExisting && !opts.plan?.[song.title] && !opts.submixesOnly) {
+      for (const part of own) {
+        const key = keysNow[part.name];
+        const was = key && before.parts.find((p) => p.key === key && p.file && !p.submixFor && p.kind !== 'sampler');
+        if (!was) continue;
+        try {
+          kept.set(part.name, { info: was, bytes: await opts.readExisting(`${folder}/${before.folder}/${was.file}`) });
+        } catch {
+          /* gone from the folder: rendered after all */
+        }
+      }
+    }
     // A member's submix is one more part to write, and is written like one —
     // unless the submixes are all that was asked for, when they are the lot.
     const parts = opts.submixesOnly ? submixes : [...own, ...submixes];
@@ -921,6 +956,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     const shifts = new Map<string, AlsSong['stems'][number]['clips'][number]>();
     for (const part of parts) {
       if (!part.combined && part.stems.length === 1 && isSamplerStem(part.stems[0])) continue;
+      if (kept.has(part.name) && !part.submix) continue;
       for (const stem of part.stems) {
         for (const clip of stem.clips) {
           if (!clip.disabled && needsShift(clip) && !shifts.has(shiftKey(clip))) shifts.set(shiftKey(clip), clip);
@@ -1001,6 +1037,21 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         });
 
       try {
+        // Unchanged since the last prepare: the file it wrote, copied across.
+        const reuse = part.submix ? undefined : kept.get(part.name);
+        if (reuse) {
+          if (!wroteAny && !opts.submixesOnly) {
+            await opts.beforeSong?.(folderName, previousFolder && previousFolder !== folderName ? previousFolder : undefined);
+          }
+          report('writing', 1);
+          await writeFile(`${songFolder}/${reuse.info.file}`, new Blob([reuse.bytes]));
+          wroteParts.push({ ...reuse.info, order: wroteParts.length });
+          if (reuse.info.record) records.push({ song: song.title, part: reuse.info.label });
+          partsWritten++;
+          partsKept++;
+          wroteAny = true;
+          continue;
+        }
         /*
          * The set's click and cues are not rendered at all. Each is a pattern
          * of notes striking a few samples, and that — with the samples copied
@@ -1161,6 +1212,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           // decibel under the parts it stands for is a submix somebody will
           // otherwise wonder about.
           ...(pulledDb ? { gainDb: pulledDb } : {}),
+          // What the part was made from, so the next prepare can tell whether to render it again.
+          ...(!part.submix && opts.partKeys?.[song.title]?.[part.name] ? { key: opts.partKeys[song.title][part.name] } : {}),
         };
         wroteParts.push(info);
         if (info.record) records.push({ song: song.title, part: info.label });
@@ -1284,7 +1337,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, songTitles, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
+  return { folder, songsWritten, songTitles, partsKept, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */
