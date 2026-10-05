@@ -42,7 +42,9 @@ with its own repo. This one is only Rehearsal Tool Studio.
   mix — summed as Live sums it, new songs laid out from a folder of stems
   the way a song already in the set is, and a printable setlist whose
   durations come from the arrangement.
-  Everything writes to a copy, never the original.
+  Everything writes to a copy, never the original. They work on the songs
+  AbleSet's setlist names, like the rest of the studio; "See songs not in
+  current setlist" takes in every song in the project.
 - **Lyrics.** Set tools ▸ Lyrics lists the set's songs and which of them
   already have words on a `+LYRICS` track. Tick the ones to do — or all the
   ones without — and it listens to each song's vocal track (Ref Vox where

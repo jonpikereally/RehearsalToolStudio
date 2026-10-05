@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Let the set tools take in songs left off AbleSet's setlist**
+
+The set tools worked on the songs AbleSet's setlist names, as the rest of the studio does — but they work on the project, and a song off tonight's setlist still wants its chords, lyrics and slates. "See songs not in current setlist", beside the songs being worked on, takes in every song in the project; it says how many the setlist leaves out and, on hover, which, and is remembered on this Mac. It appears only when the setlist leaves something out. The set is read whole and scoped as it is shown, so turning it on or off needs no reading again.
+
 **Render only the parts of a song that changed**
 
 A song is written again when anything about its audio changes — and it was written again whole: a cue moved on one track, and every stem of the song was decoded, rendered and encoded once more. Each part now has a key of its own, made of the same facts as the song's but only its own tracks', clips, faders and files, and it goes into the manifest beside the part. When a song is written again, a part whose key still matches is read back from the folder the last prepare wrote and copied into the new one; only the parts that changed are rendered.

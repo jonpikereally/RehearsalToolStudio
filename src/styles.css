@@ -2563,6 +2563,17 @@ input[type='range'] {
   border-color: var(--accent);
 }
 
+/* Set tools: take in the songs AbleSet's setlist leaves out, too. */
+.working-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .working-label {
   font-size: 10.5px;
   font-weight: 700;
