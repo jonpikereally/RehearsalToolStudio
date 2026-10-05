@@ -7,7 +7,7 @@ import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
 import { removeSilentParts, runPrepare, standingFor, titlesOf, undoPrepare, unreadableSamples, type UnreadableSamples } from '../lib/prepareRun';
 import { ALL_INFO, INFO_LABEL, type InfoKinds } from '../lib/updatePrepared';
-import { asideSongs, note, songGroups } from '../lib/saveLog';
+import { asideSongs, note, partDetail, songGroups } from '../lib/saveLog';
 import type { Aside } from '../lib/localSource';
 import { folderBaseOf } from '../lib/preparedSet';
 import { readBytes } from '../lib/source';
@@ -325,6 +325,7 @@ export default function PrepareSetDialog({
           ['Words and sections refreshed', out.refreshed?.songs],
           ['Came out silent', [...(out.result?.silent ?? []), ...(out.submixes?.silent ?? [])].map((p) => `${p.song}: ${p.part}`)],
         ),
+        parts: partDetail(out.result, out.submixes),
         text: only === 'submixes'
           ? `Submixes written by hand for ${out.submixes?.songsWritten ?? 0} song${out.submixes?.songsWritten === 1 ? '' : 's'}.${band(out)}`
           : `Prepared by hand: ${out.result?.songsWritten ?? 0} song${out.result?.songsWritten === 1 ? '' : 's'} written${

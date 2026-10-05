@@ -5648,6 +5648,14 @@ group('the changes log names what changed');
   const g = songGroups(['Audio written again', ['Red', 'Red', 'Mine']], ['Submixes written', []], ['Words and sections refreshed', null], ['Held', ['Lover']]);
   check('a group per kind of change, each song once, empty kinds left out',
     JSON.stringify(g) === JSON.stringify([{ label: 'Audio written again', songs: ['Red', 'Mine'] }, { label: 'Held', songs: ['Lover'] }]), JSON.stringify(g));
+  const { partDetail } = await import('../src/lib/saveLog.ts');
+  const detail = partDetail(
+    { partsBySong: [{ song: 'Red', rendered: ['Cues'], patterns: ['Click'], copied: ['Bass', 'Vox'] }], skipped: [{ song: 'Red', part: 'Gtr', reason: 'missing x.wav' }] },
+    { partsBySong: [{ song: 'Red', rendered: ['Alex (submix)'], patterns: [], copied: [] }] },
+    null,
+  );
+  check('a run says, song by song, which parts were rendered, patterned, copied or skipped',
+    JSON.stringify(detail) === JSON.stringify([{ song: 'Red', rendered: ['Cues', 'Alex (submix)'], patterns: ['Click'], copied: ['Bass', 'Vox'], skipped: ['Gtr (missing x.wav)'] }]), JSON.stringify(detail));
   const aside = [{ folder: 'Red {125} (2026-10-04)', kept: true }, { folder: 'Red {125}', kept: true }, { folder: 'Mine {121}', kept: false }];
   check('songs a run wrote over or added are named by song, not folder',
     asideSongs(aside, true).join() === 'Red' && asideSongs(aside, false).join() === 'Mine', JSON.stringify([asideSongs(aside, true), asideSongs(aside, false)]));
