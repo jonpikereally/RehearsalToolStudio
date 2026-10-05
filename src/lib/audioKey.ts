@@ -1,5 +1,6 @@
 import type { AlsProject, AlsSong } from './alsParser';
-import { partsFor, type SongPlan } from './prepare.ts';
+import { partFileName, partsFor, songFolderBase, type SongPlan } from './prepare.ts';
+import { sameSong, type PreparedManifest } from './preparedSet.ts';
 
 /**
  * A song's audio, as a key: everything that decides what its parts sound
@@ -194,4 +195,31 @@ export function audioStanding(now: string, before: string | undefined, prepared:
   if (a[3] !== b[3]) why.push('a fader, device or the plan changed');
   if (a[4] !== b[4]) why.push('the encoder settings changed');
   return { state: 'changed', why: why.join('; ') || 'something changed' };
+}
+
+/** keyUnchangedParts on a manifest in hand: its songs with the keys added, and how many. */
+export function keyPartsInManifest(
+  manifest: PreparedManifest,
+  project: AlsProject,
+  keys: { byTitle: Record<string, string>; parts?: Record<string, Record<string, string>> },
+): { songs: PreparedManifest['songs']; keyed: number } {
+  if (!Array.isArray(manifest.songs) || !keys.parts) return { songs: manifest.songs, keyed: 0 };
+  let keyed = 0;
+  const songs = manifest.songs.map((entry) => {
+    const song = project.songs.find((s) => sameSong(entry.folder, songFolderBase(s)));
+    const partKeys = song && keys.parts?.[song.title];
+    if (!song || !partKeys || !entry.parts?.length || !entry.audioKey || entry.audioKey !== keys.byTitle[song.title]) return entry;
+    const byFile = new Map(partsFor(song).map((part) => [partFileName(song.title, part.name, part.reference), partKeys[part.name]]));
+    let here = 0;
+    const parts = entry.parts.map((part) => {
+      if (part.key || !part.file || part.submixFor || part.kind === 'sampler') return part;
+      const key = byFile.get(part.file);
+      if (!key) return part;
+      here++;
+      return { ...part, key };
+    });
+    keyed += here;
+    return here ? { ...entry, parts } : entry;
+  });
+  return { songs, keyed };
 }
