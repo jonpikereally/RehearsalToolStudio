@@ -50,6 +50,38 @@ export interface SaveNote {
    * per kind of change, each naming its songs.
    */
   groups?: SongGroup[];
+  /** Song by song, what became of each part a run wrote: rendered, a pattern, copied, or skipped and why. */
+  parts?: PartDetail[];
+}
+
+export interface PartDetail {
+  song: string;
+  rendered: string[];
+  patterns: string[];
+  copied: string[];
+  skipped: string[];
+}
+
+/** One PartDetail per song across the passes of a run (stems, then submixes), skips included. */
+export function partDetail(
+  ...runs: ({ partsBySong?: { song: string; rendered: string[]; patterns: string[]; copied: string[] }[]; skipped?: { song: string; part: string; reason: string }[] } | null | undefined)[]
+): PartDetail[] {
+  const by = new Map<string, PartDetail>();
+  const of = (song: string) => {
+    let d = by.get(song);
+    if (!d) by.set(song, (d = { song, rendered: [], patterns: [], copied: [], skipped: [] }));
+    return d;
+  };
+  for (const run of runs) {
+    for (const p of run?.partsBySong ?? []) {
+      const d = of(p.song);
+      d.rendered.push(...p.rendered);
+      d.patterns.push(...p.patterns);
+      d.copied.push(...p.copied);
+    }
+    for (const k of run?.skipped ?? []) of(k.song).skipped.push(`${k.part} (${k.reason})`);
+  }
+  return [...by.values()];
 }
 
 export interface SongGroup {

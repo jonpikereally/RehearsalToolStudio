@@ -377,6 +377,12 @@ export interface PrepareResult {
   songTitles: string[];
   /** Of the parts written, those copied unchanged from the last prepare rather than rendered. */
   partsKept: number;
+  /**
+   * Each song written, and what became of each of its parts: rendered and
+   * encoded, written as a pattern (a click or cues), or copied unchanged
+   * from the last prepare. What a log says, part by part.
+   */
+  partsBySong: { song: string; rendered: string[]; patterns: string[]; copied: string[] }[];
   partsWritten: number;
   /**
    * Of those parts, the ones that are a member's submix — the sum of what
@@ -766,6 +772,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   const songTitles: string[] = [];
   /** Parts copied from the last prepare, their keys unchanged, rather than rendered. */
   let partsKept = 0;
+  const partsBySong: PrepareResult['partsBySong'] = [];
   let partsWritten = 0;
   /** Of those, the ones written as a member's submix rather than as a stem. */
   let submixesWritten = 0;
@@ -901,6 +908,8 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     // The folder this song had before, when the day has moved its name on.
     const previousFolder = existing?.songs.find((e) => sameSong(e.folder, folderName))?.folder;
     let wroteAny = false;
+    /** What became of each part, by name, for the log. */
+    const fate = { song: song.title, rendered: [] as string[], patterns: [] as string[], copied: [] as string[] };
     /** The parts that actually reached the folder, for the manifest. */
     const wroteParts: PreparedPart[] = [];
     /** How many of this song's parts were written as patterns, not files. */
@@ -1049,6 +1058,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           if (reuse.info.record) records.push({ song: song.title, part: reuse.info.label });
           partsWritten++;
           partsKept++;
+          fate.copied.push(part.name);
           wroteAny = true;
           continue;
         }
@@ -1098,6 +1108,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           });
           samplerHere++;
           partsWritten++;
+          fate.patterns.push(part.name);
           wroteAny = true;
           continue;
         }
@@ -1222,6 +1233,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         }
         partsWritten++;
         if (part.submix) submixesWritten++;
+        fate.rendered.push(part.submix ? `${part.name} (submix)` : part.name);
         wroteAny = true;
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') throw err;
@@ -1236,6 +1248,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     if (wroteAny) {
       songsWritten++;
       songTitles.push(song.title);
+      partsBySong.push(fate);
       samplerParts += samplerHere;
       const words = lyricsFileFor(song, project);
       if (words) await writeFile(`${songFolder}/${safeName(song.title)}.lrc`, words);
@@ -1337,7 +1350,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
     songTitle: '', partName: '', partIndex: 0, partCount: 0, stage: 'done', ratio: 1,
   });
 
-  return { folder, songsWritten, songTitles, partsKept, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
+  return { folder, songsWritten, songTitles, partsKept, partsBySong, partsWritten, submixesWritten, samplerParts, samplesShared: samplesWritten.size, silent, skipped, paddingSec, records };
 }
 
 /** Where a clip sits and which slice of its file it plays, in seconds. */
