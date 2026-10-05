@@ -2,7 +2,8 @@ import { emptyLibrary, type Library, type Setlist, type Song } from '../types.ts
 import * as local from './localSource.ts';
 import { isProjectScaffolding, mergeScan } from './scan.ts';
 import type { FileEntry } from './files.ts';
-import { applyManifest, isManifestName, setFolderOf, type PreparedManifest } from './preparedSet.ts';
+import { applyManifest, folderBaseOf, isManifestName, setFolderOf, type PreparedManifest } from './preparedSet.ts';
+import { mergeChangelogs } from './songChangelog.ts';
 import { isPreparedSet, isPrint } from './prints.ts';
 
 /**
@@ -115,6 +116,17 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
   const result = mergeScan(existing, publishable(files), '');
   const songs = result.library.songs;
 
+  /*
+   * Each song's history as the library last published it, by set and song
+   * rather than by folder: a song rendered again on a new day has a new
+   * folder, and its history is still its own.
+   */
+  const songKey = (song: { folderPath: string }) => {
+    const at = song.folderPath.lastIndexOf('/');
+    return `${song.folderPath.slice(0, at)}/${folderBaseOf(song.folderPath.slice(at + 1))}`.toLowerCase();
+  };
+  const published = new Map(existing.songs.filter((s) => s.changelog?.length).map((s) => [songKey(s), s.changelog]));
+
   // Facts the folder names had no room for: sections, chords, lyrics — and
   // the order the songs are played in.
   const manifests = files.filter((f) => isPreparedSet(f.path) && isManifestName(f.name));
@@ -124,6 +136,18 @@ export async function publishLibrary(folder: local.FolderHandle): Promise<Publis
     if (!doc) continue;
     applyManifest(songs, file.path, doc.data);
     read.push({ path: file.path, manifest: doc.data as PreparedManifest });
+  }
+  /*
+   * The set's file is the song's history when it has one — an undo puts
+   * that file back, history and all, and the library follows it rather than
+   * keep entries for a write that was taken back. When it has none, what the
+   * library last published is carried forward as it was.
+   */
+  for (const song of songs) {
+    const history = song.changelog?.length ? song.changelog : published.get(songKey(song));
+    const kept = mergeChangelogs(history);
+    if (kept.length) song.changelog = kept;
+    else delete song.changelog;
   }
   const setlists = setlistsFromManifests(songs, read, result.library.setlists ?? []);
 
