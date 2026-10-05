@@ -5,6 +5,7 @@ import { folderOrder, lyricsFileFor, mergeSongs, songFolderBase, tempoOf } from 
 import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
 import { songBars, songLengthSec } from './infoTrack.ts';
 import { parseNameMeta } from './scan.ts';
+import { withChangelog } from './songChangelog.ts';
 
 /**
  * Bringing a prepared set's words and structure up to date, without touching a
@@ -154,6 +155,8 @@ export function keepUnasked(before: PreparedSongInfo | null | undefined, now: Pr
 
 export interface UpdateOptions {
   project: AlsProject;
+  /** What changed, in the person's words: each song's changelog summary when given (songChangelog.ts). */
+  changeNote?: string;
   /** The `.als` this set came from, recorded in the manifest. */
   alsPath: string;
   /** The prepared set's folder, relative to the band's folder. */
@@ -387,7 +390,7 @@ export async function updatePrepared(opts: UpdateOptions): Promise<UpdateResult>
       renderedAt: standing.entry?.renderedAt,
       submixesAt: standing.entry?.submixesAt,
     });
-    written.push(keepUnasked(standing.entry, entry, kinds));
+    written.push(withChangelog(standing.entry, keepUnasked(standing.entry, entry, kinds), { at: new Date().toISOString(), note: opts.changeNote }));
     // The folder's own copy of the entry, refreshed with it.
     await writeFile(
       `${songFolder}/${SONG_FILE_NAME}`,

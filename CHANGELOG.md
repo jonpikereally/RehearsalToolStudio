@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-05
 
+**Publish each song's history for the band's site to show**
+
+Every song Studio writes now carries a changelog — in set.json and its song.json, and in the band's .rehearsal-tool.json — in the form the website reads: when, a summary line, and optional detail lines, oldest first, the newest fifty kept.
+
 **Say part by part what a run did to each song in the Changes window**
 
 An entry said which songs were written again, and how many parts were copied rather than rendered — not which. A prepare now notes, for each song it writes, what became of every part: rendered and encoded, written as a pattern (the click and cues), copied unchanged from the last prepare, or skipped and why. The Changes window shows it song by song under the entry — outright for a run of a few songs, folded behind "Which parts, song by song" for a long one — so a cue edit reads as "rendered: Cues — copied unchanged (6): REF SONG, REF VOX, …".

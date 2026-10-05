@@ -1,4 +1,5 @@
 import type { ChartLane, Marker, PatchClip, SamplerNote, SamplerSample, Song, TempoPoint, TimedText, Variant } from '../types';
+import type { ChangelogEntry } from './songChangelog.ts';
 
 /**
  * What a folder of files can't say for itself.
@@ -57,6 +58,13 @@ export interface PreparedSongInfo {
    * out of the set's order. Absent for every song that is in the show.
    */
   offSetlist?: true;
+  /**
+   * The song's history, oldest first, the newest fifty: one entry each time
+   * Studio wrote it and something about it had changed (songChangelog.ts).
+   * Carried forward by every write, never rewritten; the band's site shows
+   * it on the song's page.
+   */
+  changelog?: ChangelogEntry[];
   /**
    * When the song's stems were last rendered, in full; its folder carries the
    * day. A submix pass leaves this alone: the stems are what they were.
@@ -290,6 +298,7 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
     }
     if (song.originalKey !== undefined && typeof song.originalKey !== 'string') bad('"originalKey" must be text');
     if (song.renderedAt !== undefined && typeof song.renderedAt !== 'string') bad('"renderedAt" must be text');
+    if (song.changelog !== undefined && !Array.isArray(song.changelog)) bad('"changelog" must be a list');
     if (song.submixesAt !== undefined && typeof song.submixesAt !== 'string') bad('"submixesAt" must be text');
     if (song.tempo !== undefined && typeof song.tempo !== 'number') bad('"tempo" must be a number');
     if (song.timeSignature !== undefined && !/^\d+\/\d+$/.test(String(song.timeSignature))) bad('"timeSignature" must be like "4/4"');
@@ -469,6 +478,8 @@ export function applyManifest(
     // manifest with none must not wipe what was programmed in the app.
     if (info.patchClips?.length) song.patchClips = info.patchClips;
     if (info.markers?.length) song.markers = markersFrom(info.markers, song.markers);
+    // The song's history goes to the band's library as the set has it.
+    if (info.changelog?.length) song.changelog = info.changelog;
     if (info.parts?.some((p) => p.kind === 'sampler')) samplerVariants(song, info.parts);
     if (info.parts?.some((p) => p.submixFor)) submixFacts(song, info.parts);
     song.tempoUnset = false;

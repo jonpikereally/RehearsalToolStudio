@@ -282,6 +282,11 @@ export interface RigTrack {
 }
 
 export interface Song {
+  /**
+   * The song's history as Studio published it (songChangelog.ts): when, a
+   * line of what changed, and the detail. The band's site shows it.
+   */
+  changelog?: { at: string; summary: string; details?: string[] }[];
   /** Stable id: the Dropbox folder path + base name (lowercased). */
   id: SongId;
   title: string;

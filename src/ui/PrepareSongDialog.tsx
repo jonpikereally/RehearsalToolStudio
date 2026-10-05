@@ -22,6 +22,7 @@ import { updatePrepared, type UpdateResult } from '../lib/updatePrepared';
 import { audioKeysFor, bandMembers, removeSilentParts } from '../lib/prepareRun';
 import { coded } from '../lib/errorCodes';
 import ErrorNotice from './ErrorNotice';
+import ChangeNoteField from './ChangeNoteField';
 
 /**
  * One song, prepared for the band.
@@ -82,6 +83,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
   const [published, setPublished] = useState<PublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** What changed, in the person's words, for the song's history. */
+  const [changeNote, setChangeNote] = useState('');
   const [updated, setUpdated] = useState<UpdateResult | null>(null);
   /** The band, when its folder is already granted, so the submixes can be named before they are made. */
   const [members, setMembers] = useState<MemberMix[]>([]);
@@ -247,6 +250,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       const keys = await audioKeysFor(project, setPath);
       const ctx = new AudioContext();
       const done = await prepareSet({
+        changeNote,
         songOrder: liveOrder?.titles,
         /*
          * The band, but only for Prepare submixes. Rendering the stems writes
@@ -342,6 +346,7 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
       if ('error' in found) throw new Error(found.error);
 
       const done = await updatePrepared({
+        changeNote,
         songOrder: liveOrder?.titles,
         project,
         alsPath: song.setPath,
@@ -581,6 +586,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             </div>
           </div>
         )}
+
+        {!result && <ChangeNoteField value={changeNote} onChange={setChangeNote} disabled={busy} />}
 
         <div className="btn-row">
           {result ? (

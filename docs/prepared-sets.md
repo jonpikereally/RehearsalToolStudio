@@ -344,6 +344,7 @@ way a hand-made folder would.
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |
 | `songs[].audioKey` | no | the Studio's own note of what the song's audio was made from, so its next prepare can skip a song whose audio has not changed. Opaque text; ignore it |
+| `songs[].changelog` | no | the song's history, oldest first, newest 50 kept: `[{ "at": ISO 8601 with a zone, "summary": one line, "details"?: [lines] }]`. See *A song's history* below |
 | `songs[].parts[].key` | no | the same note for one part: a song written again copies a part whose key has not changed from its folder instead of rendering it. Opaque text; ignore it |
 | `songs[].parts` | no | one entry per part written. An audio part is `{label, name, reference?}`: `label` is exactly what stands in the file's square brackets, and is how a file is matched to an entry; `name` is what to put on the fader; `reference` true means the record's own part, to be said beside the name; `role` is `stem` (a fader, the default when absent) or `mix` (a whole song, switched to on its own); `record` true marks the record itself — always a `mix` and a `reference` — which the player must never put under a fader. An audio part may also say what it was made from: `file` (its name in the folder), `sources` (the Live tracks it was rendered from; several for a combined part), `frozen` (rendered from Live's own freeze, devices included), `shifted: {semitones, speed}` (transposed or stretched from its file in the render), `covers: {fromBar, toBar}` (the bars of the song it has audio in, 1-based, inclusive), `gainDb` (the fader level it was rendered at; absent at unity), `renderedAt` (when that file itself was written, ISO — the part's own answer where the song's two dates are the summary), `sizeBytes`, `bitrate`, `sampleRate`. Facts to show, not to act on. A sampler part adds `kind: "sampler"`, `id`, `role`, `rev`, `order`, `samples: [{note, path, rev, sizeBytes, gain?}]` and `notes: [{bar, note, velocity?}]` — `bar` 1-based and fractional through the tempo map **with `firstBarOffsetSec` added, like everything else**; `note` a MIDI number; `velocity` the raw MIDI velocity over 127, which the player squares; `gain` a per-sample level the website ignores |
 | `songs[].patchClips` | no | rig patch changes, `{id, bar, patch: {channel, program?, bank?, controls?, source?}, lengthBars?, endPatch?, member?, name?}`. `bar` is 1-based and may be fractional; `program` and `bank` are the bytes sent (bank = MSB × 128 + LSB), `controls` a list of `{cc, value}`. `member` is whose rig it is, from a track named `RIG <member> (<rig>)` in the set; `name` the clip's name. Send a change a quarter-second before its bar: bank, then program, then the CCs, on `channel` |
@@ -446,6 +447,37 @@ name, `songIds` the library ids of its songs in the order to play them —
 never a song marked `offSetlist`, which is in the library but not the set —
 `updatedAt` the prepare's time. Rebuilt on every publish; a setlist whose id
 does not start with `set:` is somebody's own and is left as it was.
+
+## A song's history
+
+Every song Studio writes carries `changelog`, in `set.json` (and so in each
+`song.json`) and in `.rehearsal-tool.json`, for the website's song page:
+
+```json
+"changelog": [
+  { "at": "2026-10-05T14:30:00.000Z", "summary": "First published" },
+  { "at": "2026-10-06T09:12:00.000Z", "summary": "Bass and Keys re-rendered; Cues changed" },
+  { "at": "2026-10-07T18:40:00.000Z", "summary": "New bass take",
+    "details": ["Bass re-rendered", "Bridge moved to bar 41", "Chords changed in bars 17–24"] }
+]
+```
+
+- **`at`** is when Studio wrote the song, ISO 8601 in UTC (`Z`). **`summary`**
+  is always there: the words given in *What changed?* when the person gave
+  any, else what Studio found, said plainly. **`details`**, when present, is a
+  line per thing found. Lines stop at 300 characters, details at 20.
+- An entry is added only when something about the song is different from
+  what was last written: parts added, removed or rendered again (by name),
+  a click or cue pattern changed, submixes added, removed or rendered again,
+  tempo, tempo changes, time signature, key, length, sections added, moved
+  or removed, a chart lane's changed bars, the lead-in. A write that changes
+  nothing adds nothing. A song's first write is one entry, `First published`.
+- Entries are only ever added, oldest first; the newest 50 are kept.
+- In `.rehearsal-tool.json` a song's history is its `set.json` entry's; a
+  song whose entry has none keeps the history the library last published.
+
+Studio writes this as `songChangelog.ts` says; a reader should drop an entry
+without a valid `at` and `summary` rather than fail on it.
 
 ## `members.json`
 

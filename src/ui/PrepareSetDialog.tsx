@@ -17,6 +17,7 @@ import { SETS_FOLDER } from '../lib/prints';
 import { defaultSetName, safeSetName, setNameFor } from '../lib/setName';
 import { coded } from '../lib/errorCodes';
 import ErrorNotice from './ErrorNotice';
+import ChangeNoteField from './ChangeNoteField';
 
 /**
  * Turning a set into a folder of songs anyone can play.
@@ -76,6 +77,8 @@ export default function PrepareSetDialog({
   const [badSamples, setBadSamples] = useState<UnreadableSamples[]>([]);
   /** Songs in the set that AbleSet's setlist leaves out, and so are never prepared. */
   const [leftOut, setLeftOut] = useState<string[]>([]);
+  /** What changed, in the person's words, for each written song's history. */
+  const [changeNote, setChangeNote] = useState('');
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [result, setResult] = useState<PrepareResult | null>(null);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -277,6 +280,7 @@ export default function PrepareSetDialog({
       aside.current = { folder: folderName, songs: touched };
       const ticked = [...selected];
       const out = await runPrepare({
+        changeNote,
         project: full,
         setPath,
         band: folder,
@@ -789,6 +793,8 @@ export default function PrepareSetDialog({
           {chosenNames && <div className="hint" style={{ marginTop: 4 }}>{chosenNames}</div>}
         </div>
       )}
+
+      {!(result || submixResult) && <ChangeNoteField value={changeNote} onChange={setChangeNote} disabled={busy} />}
 
       <div className="btn-row">
         {result || submixResult ? (

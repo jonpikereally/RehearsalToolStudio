@@ -12,6 +12,7 @@ import { SUBMIX_FOLDER, isClickOrCue, isWholeSong, keepsPart, submixLabel, type 
 import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
+import { withChangelog } from './songChangelog.ts';
 
 /**
  * Turning an Ableton set into a folder of songs anyone can play.
@@ -193,6 +194,12 @@ export interface PrepareOptions {
   partKeys?: Record<string, Record<string, string>>;
   /** Read a file already in the band's folder: an unchanged part, to copy. */
   readExisting?: (path: string) => Promise<ArrayBuffer>;
+  /**
+   * What changed, in the person's own words, when they gave any: the summary
+   * of each written song's changelog entry (songChangelog.ts), with what
+   * Studio saw beneath it.
+   */
+  changeNote?: string;
   /**
    * The running order, by title, when it is not the arrangement's — AbleSet's
    * setlist, or a setlist made by hand. The manifest lists songs in it, and
@@ -1282,7 +1289,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
       // Whether this song came out of the run with submixes on it, and so
       // whether the date of them is this moment or whatever it already was.
       const mixedNow = wroteParts.some((p) => p.submixOf);
-      written.push(opts.submixesOnly && before ? {
+      written.push(withChangelog(before, opts.submixesOnly && before ? {
         ...before,
         ...(mixedNow ? { submixesAt: renderedAt } : {}),
         parts: [...(before.parts ?? []).filter((p) => !p.submixOf), ...wroteParts],
@@ -1316,7 +1323,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
               ].sort((a, b) => a.bar - b.bar)
             : undefined,
         audioKey: opts.audioKeys?.[song.title],
-      });
+      }, { at: renderedAt, note: opts.changeNote }));
       // The song's own copy of its entry, in its folder, for a reader that has
       // only the folder — and the one place the stems' facts are sure to be.
       await writeFile(

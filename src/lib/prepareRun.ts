@@ -427,6 +427,8 @@ export async function standingFor(
 
 export interface RunOptions {
   project: AlsProject;
+  /** What changed, in the person's words, for each written song's changelog (songChangelog.ts). */
+  changeNote?: string;
   setPath: string;
   /** The band's folder, already granted. */
   band: local.FolderHandle;
@@ -551,6 +553,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
       const ctx = new AudioContext();
       try {
         result = await prepareSet({
+          changeNote: o.changeNote,
           project,
           alsPath: setPath,
           only: [...selected],
@@ -635,6 +638,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
       const ctx = new AudioContext();
       try {
         submixResult = await prepareSet({
+          changeNote: o.changeNote,
           project,
           alsPath: setPath,
           only: wantSubmixes,
@@ -725,6 +729,7 @@ export async function runPrepare(o: RunOptions): Promise<RunOutcome> {
           ),
         ];
         const refresh = await updatePrepared({
+          changeNote: o.changeNote,
           project,
           alsPath: setPath,
           setFolder,
