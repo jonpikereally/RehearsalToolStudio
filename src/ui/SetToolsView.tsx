@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { keepOnlyAdded } from '../lib/alsEdit';
 import { inflateAls, parseAls, type AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
@@ -65,11 +65,38 @@ const LS_RETURN = 'ls.settools.return';
 export default function SetToolsView({ shown = true }: { shown?: boolean }) {
   const [folder, setFolder] = useState<local.LocalFolder | null>(null);
   const [setPath, setSetPath] = useState<string | null>(null);
-  const [project, setProject] = useState<AlsProject | null>(null);
+  /** The set as read, every song in it. */
+  const [whole, setProject] = useState<AlsProject | null>(null);
+  /*
+   * Songs AbleSet's setlist leaves out are left out here too, as everywhere
+   * in the studio — unless asked for: the set tools work on the project,
+   * and a song off tonight's setlist still wants its chords and lyrics.
+   * Remembered on this Mac.
+   */
+  const [allSongs, setAllSongs] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ls.settools.allSongs') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [voices, setVoices] = useState<HelperVoice[] | null>(null);
   const [voice, setVoice] = useState(() => localStorage.getItem(LS_VOICE) ?? '');
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const { library, currentSet, setSaved, publishFolder, pickPublishFolder, outputSet, rescan } = useStore();
+  const scoped = useMemo(() => (whole && setPath ? scopeToSetlist(whole, library, setPath) : null), [whole, library, setPath]);
+  /** The songs these tools work on: AbleSet's setlist's, or every song in the project when asked. */
+  const project = allSongs ? whole : (scoped?.project ?? whole);
+  /** Songs in the project that AbleSet's setlist leaves out. */
+  const offSetlist = scoped?.left ?? [];
+  const chooseAllSongs = (on: boolean) => {
+    setAllSongs(on);
+    try {
+      localStorage.setItem('ls.settools.allSongs', on ? '1' : '0');
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
   type Tool = 'check' | 'slates' | 'lyrics' | 'chords' | 'info' | 'locators' | 'returns' | 'stems' | 'patches' | 'setlist' | 'update';
   /* Asked for by name — the launch sends a new session from stems straight here — else the first that applies. */
   const askedTool = useRoute().query.get('tool');
@@ -233,7 +260,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
     try {
       const { bytes } = await local.readBytes(from.handle, '', path);
       // Only the songs AbleSet's setlist names, as everywhere else in the studio.
-      setProject(scopeToSetlist(await parseAls(bytes), library, path).project);
+      setProject(await parseAls(bytes));
       readAt.current = await modifiedAt(from, path);
     } catch (err) {
       setError(coded('RTS-SET-01', err));
@@ -264,7 +291,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
     if (at === null || at === readAt.current) return;
     try {
       const { bytes } = await local.readBytes(folder.handle, '', setPath);
-      const read = scopeToSetlist(await parseAls(bytes), library, setPath).project;
+      const read = await parseAls(bytes);
       readAt.current = at;
       setProject(read);
       // Keys typed in for songs the set didn't name are the set's now, if it
@@ -756,6 +783,17 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
                 {titles.filter((t) => selected.has(t)).slice(0, 4).join(', ')}
                 {selected.size > 4 ? '…' : ''}
               </span>
+            )}
+            {(offSetlist.length > 0 || allSongs) && (
+              <label
+                className="working-all"
+                title={`Songs in the project that AbleSet's setlist leaves out: ${offSetlist.join(', ') || 'none just now'}`}
+              >
+                <input type="checkbox" checked={allSongs} disabled={!!progress} onChange={(e) => chooseAllSongs(e.target.checked)} />
+                <span>
+                  See songs not in current setlist{offSetlist.length ? ` (${offSetlist.length})` : ''}
+                </span>
+              </label>
             )}
             <button
               className={pickerOpen ? 'btn primary' : 'btn'}
