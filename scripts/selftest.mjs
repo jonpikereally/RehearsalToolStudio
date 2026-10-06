@@ -5816,5 +5816,52 @@ group('error codes');
   check('both are the record, a whole mix', JSON.parse(reading('REF MASTER')).part.record === true && JSON.parse(reading('REF MASTER')).role === 'mix');
 }
 
+/* ----------------------- a reference silenced on its way out ----------------------- */
+
+group('a reference silenced on its way out');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { checkSet } = await import('../src/lib/setReview.ts');
+  const mixer = (on = true) => `<Mixer><Speaker><LomId Value="0" /><Manual Value="${on}" /></Speaker><Volume><LomId Value="0" /><Manual Value="1" /></Volume><Pan><LomId Value="0" /><Manual Value="0" /></Pan></Mixer>`;
+  const out = (target) => `<AudioOutputRouting><Target Value="${target}" /></AudioOutputRouting>`;
+  const send = (levels) => `<Sends>${levels.map((l, i) => `<TrackSendHolder Id="${i}"><Send><LomId Value="0" /><Manual Value="${l}" /></Send><Active Value="true" /></TrackSendHolder>`).join('')}</Sends>`;
+  const audio = (id, group, name, target, sends = [0, 0]) => `
+    <AudioTrack Id="${id}"><TrackGroupId Value="${group}" /><EffectiveName Value="${name}" />
+      <DeviceChain>${mixer()}<Devices></Devices>${out(target)}${send(sends)}</DeviceChain>
+      <AudioClip Id="1" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="64" />
+        <LoopStart Value="0" /><StartRelative Value="0" /><Disabled Value="false" /><Fade Value="false" />
+        <SampleRef><FileRef><RelativePath Value="Stems/${name}.wav" /></FileRef><DefaultSampleRate Value="44100" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>`;
+  const groupXml = (id, parent, name, target, on = true) =>
+    `<GroupTrack Id="${id}"><TrackGroupId Value="${parent}" /><EffectiveName Value="${name}" /><DeviceChain>${mixer(on)}<Devices></Devices>${out(target)}${send([0, 0])}</DeviceChain></GroupTrack>`;
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+    ${groupXml(10, -1, 'Yellow', 'AudioOut/Main')}
+    ${groupXml(20, 10, 'REF', 'AudioOut/GroupTrack', false)}
+    ${audio(21, 20, 'Ref Master', 'AudioOut/GroupTrack')}
+    ${audio(22, 20, 'REF VOX', 'AudioOut/GroupTrack', [0, 1])}
+    ${audio(23, 10, 'REF SONG', 'AudioOut/Track.40/TrackIn')}
+    ${audio(24, 10, 'REF DRUMS', 'AudioOut/None')}
+    ${audio(25, 10, 'REF GTR', 'AudioOut/GroupTrack')}
+    ${audio(26, 10, 'Bass', 'AudioOut/GroupTrack')}
+    ${groupXml(40, -1, 'B-REF', 'AudioOut/Main', false)}
+    <ReturnTrack Id="50"><EffectiveName Value="A-MUTED" /><DeviceChain>${mixer(false)}<Devices></Devices>${out('AudioOut/Main')}${send([0, 0])}</DeviceChain></ReturnTrack>
+    <ReturnTrack Id="51"><EffectiveName Value="B-LIVE" /><DeviceChain>${mixer()}<Devices></Devices>${out('AudioOut/Main')}${send([0, 0])}</DeviceChain></ReturnTrack>
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const by = Object.fromEntries(p.songs[0].stems.map((st) => [st.name, st.silencedBy ?? '']));
+  check('a reference in a muted folder is silenced by the folder', by['Ref Master'] === 'REF', JSON.stringify(by));
+  check('but not when it sends to a return that sounds', by['REF VOX'] === '', JSON.stringify(by));
+  check('one routed into a muted bus track is silenced by the bus', by['REF SONG'] === 'B-REF', JSON.stringify(by));
+  check('one with no output is silent', /None/.test(by['REF DRUMS']), JSON.stringify(by));
+  check('one that reaches the main out is heard', by['REF GTR'] === '' && by.Bass === '', JSON.stringify(by));
+  const flagged = checkSet(p).filter((f) => /reference recording/.test(f.message)).map((f) => f.message.match(/“([^”]+)”/)?.[1]);
+  check('only the references that would sound are problems', flagged.sort().join() === 'REF GTR,REF VOX', flagged.join());
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

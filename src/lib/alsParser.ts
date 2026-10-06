@@ -140,6 +140,13 @@ export interface AlsSong {
     sends: { bus: number; level: number; fader?: number }[];
     /** Whether the signal reaches an output on its own, or only through sends. */
     direct: boolean;
+    /**
+     * The track itself is on, but nothing it feeds is: every group or track
+     * its output runs into on the way out is muted (or goes nowhere), and it
+     * sends to no return that sounds. Named by the muted one, so it is silent
+     * at the gig without being muted itself.
+     */
+    silencedBy?: string;
     path: string;
     regions: { startBar: number; endBar: number }[] | null;
     /** Every clip this track plays inside this song, in order. */
@@ -429,6 +436,8 @@ interface Track {
   pan: number;
   devices: Device[];
   output: 'main' | 'group' | 'none' | 'external';
+  /** The Id of a track the output is routed into by name, rather than the group or main. */
+  outputTrack?: string;
   sends: { bus: number; level: number }[];
 }
 
@@ -508,8 +517,14 @@ function devicesOf(chunk: string): Device[] {
 }
 
 /** Where a track's output goes, and what it sends to the return buses. */
-function routingOf(chunk: string): { output: 'main' | 'group' | 'none' | 'external'; sends: { bus: number; level: number }[] } {
+function routingOf(chunk: string): {
+  output: 'main' | 'group' | 'none' | 'external';
+  outputTrack?: string;
+  sends: { bus: number; level: number }[];
+} {
   const target = chunk.match(/<AudioOutputRouting>[\s\S]*?<Target Value="([^"]*)"/)?.[1] ?? 'AudioOut/Main';
+  // "AudioOut/Track.12/TrackIn": into another track — a bus — of the set.
+  const outputTrack = target.match(/^AudioOut\/Track\.(\d+)/)?.[1];
   const output = /GroupTrack/.test(target)
     ? 'group'
     : /None/.test(target)
@@ -525,7 +540,7 @@ function routingOf(chunk: string): { output: 'main' | 'group' | 'none' | 'extern
     // Live's send floor is -70 dB, written as 0.000316: off, not a whisper.
     if (active && Number.isFinite(level) && level > 0.002) sends.push({ bus: index, level });
   });
-  return { output, sends };
+  return { output, ...(outputTrack ? { outputTrack } : {}), sends };
 }
 
 /**
@@ -1400,6 +1415,49 @@ export function parseAlsXml(xml: string): AlsProject {
     (t) => t.kind === 'GroupTrack' && t.groupId === '-1' && !t.name.startsWith('*'),
   );
   const byId = new Map(tracks.map((t) => [t.id, t]));
+  /*
+   * The return tracks by Id and by place, for following a signal out. They
+   * are not in `tracks` on their own — the split above runs them into the
+   * last track's chunk — so they are read from the set's own element.
+   */
+  const returns = [...xml.matchAll(/<ReturnTrack Id="(\d+)"[^>]*>([\s\S]*?)<\/ReturnTrack>/g)].map((m) => {
+    const body = m[2];
+    return {
+      id: m[1],
+      name: decodeXml(body.match(/<EffectiveName Value="([^"]*)"/)?.[1] ?? ''),
+      muted: /<Speaker>[\s\S]{0,200}?<Manual Value="false"/.test(body),
+      ...routingOf(body),
+    };
+  });
+  const returnById = new Map(returns.map((r) => [r.id, r]));
+  /**
+   * What silences a track that is itself switched on: the muted group or bus
+   * its output runs into on the way out (or an output of None), when none of
+   * the sends along the way reaches a return that sounds. Null when it is
+   * heard. A muted track sends nothing either, so a send counts only from a
+   * track or group that is on.
+   */
+  const silencedBy = (t: Track): string | null => {
+    const returnSounds = (bus: number): boolean => {
+      const r = returns[bus];
+      return !!r && !r.muted && r.output !== 'none';
+    };
+    type Hop = Pick<Track, 'name' | 'output' | 'outputTrack' | 'sends'> & { groupId?: string };
+    let at: Hop = t;
+    for (let i = 0; i < 16; i++) {
+      if (at.sends.some((x) => returnSounds(x.bus))) return null;
+      let next: Track | ReturnType<typeof returnById.get> | undefined;
+      if (at.outputTrack) next = byId.get(at.outputTrack) ?? returnById.get(at.outputTrack);
+      else if (at.output === 'group') next = at.groupId ? byId.get(at.groupId) : undefined;
+      else if (at.output === 'none') return `${at.name} (output: None)`;
+      else return null; // the main out, or a hardware output
+      if (!next) return null;
+      const muted = 'kind' in next ? trackIsMuted(next) : next.muted;
+      if (muted) return next.name;
+      at = next;
+    }
+    return null;
+  };
   /**
    * A reference track, by its own name or by the folder holding it.
    *
@@ -1598,6 +1656,10 @@ export function parseAlsXml(xml: string): AlsProject {
               devices,
               sends,
               direct,
+              ...(() => {
+                const by = muted ? null : silencedBy(t);
+                return by ? { silencedBy: by } : {};
+              })(),
               path: sounding?.path ?? '',
               regions: audibleRegions(mine, muted, loc.beat, endBeat, relBar),
               clips,

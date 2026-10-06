@@ -271,7 +271,7 @@ export function checkSet(project: AlsProject): Finding[] {
       const muted = stem.regions !== null && stem.regions.length === 0;
 
       // The finished record playing under the band is the classic live horror.
-      if (stem.reference && active.length && !muted) {
+      if (stem.reference && active.length && !muted && !stem.silencedBy) {
         push(
           'parts',
           'problem',

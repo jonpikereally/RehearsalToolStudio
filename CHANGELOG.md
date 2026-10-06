@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-06
+
+**Count a reference as silent when everything it feeds is muted**
+
+Check set called any reference track that was switched on and had clips playing a problem — "the record itself would sound at the gig" — looking only at the track. Sets often leave the reference tracks on and silence them further along: a REF folder that is muted, a bus track such as B-REF that they are routed into and that is muted, or an output of None. Those were flagged though nothing would be heard.
+
 ## 2026-10-05
 
 **Pause auto update from the top bar**
