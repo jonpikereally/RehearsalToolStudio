@@ -4046,7 +4046,9 @@ group('the mix, as the set has it');
     JSON.stringify(yellow.caveats));
   check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
     `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
-  check('and its length in bars follows', Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6, String(waltz.endBar - waltz.startBar));
+  const { songBars } = await import('../src/lib/infoTrack.ts');
+  check('and its length is counted in its own bars, not the set\'s', songBars(waltz) === 16 && Math.abs((waltz.endBar - waltz.startBar) - 12) < 1e-6,
+    `${songBars(waltz)} own, ${waltz.endBar - waltz.startBar} on the set's ruler`);
 
   const asVariant = mixOf(bass, bass.clips);
   check('the part carries fader times clip gain, and the pan', Math.abs(asVariant.gain - 0.375) < 1e-9 && asVariant.pan === -1, JSON.stringify(asVariant));
@@ -5861,6 +5863,56 @@ group('a reference silenced on its way out');
   check('one that reaches the main out is heard', by['REF GTR'] === '' && by.Bass === '', JSON.stringify(by));
   const flagged = checkSet(p).filter((f) => /reference recording/.test(f.message)).map((f) => f.message.match(/“([^”]+)”/)?.[1]);
   check('only the references that would sound are problems', flagged.sort().join() === 'REF GTR,REF VOX', flagged.join());
+}
+
+/* ----------------------------- a song in its own meter ----------------------------- */
+
+group('a song in its own meter');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { songBars, songLengthSec, onSetRuler, onSetBars, infoClipsFor, DEFAULT_INFO_FIELDS } = await import('../src/lib/infoTrack.ts');
+  const { songDurationSec } = await import('../src/lib/setReview.ts');
+  const { chordProFor } = await import('../src/lib/chordPro.ts');
+  // 4/4 at 120. "Fix You" starts at beat 64 with a 6/8 marker one beat late
+  // (a locator dropped just ahead of the bar line); "Clocks" back in 4/4.
+  const xml = (late) => `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <MainTrack><Mixer><TimeSignature><LomId Value="0" /><Manual Value="201" /><AutomationTarget Id="10"><LockEnvelope Value="0" /></AutomationTarget></TimeSignature></Mixer></MainTrack>
+    <AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="10" /></EnvelopeTarget>
+      <Automation><Events>
+        <EnumEvent Id="1" Time="-63072000" Value="201" />
+        <EnumEvent Id="2" Time="${64 + late}" Value="302" />
+        <EnumEvent Id="3" Time="136" Value="201" />
+      </Events></Automation>
+    </AutomationEnvelope>
+    <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+    <Locator Id="2"><Time Value="64" /><Name Value="Fix You" /></Locator>
+    <Locator Id="3"><Time Value="136" /><Name Value="Clocks" /></Locator>
+    <Locator Id="4"><Time Value="200" /><Name Value="AUTOSTOP" /></Locator>
+  </Ableton>`;
+  for (const late of [0, 1]) {
+    const p = parseAlsXml(xml(late));
+    const fix = p.songs.find((s) => s.title === 'Fix You');
+    const clocks = p.songs.find((s) => s.title === 'Clocks');
+    const when = late ? ', its marker a beat after the locator' : '';
+    check(`a song that starts in 6/8 is in 6/8${when}`, fix.timeSigNum === 6 && fix.timeSigDen === 8 && fix.caveats.length === 0,
+      `${fix.timeSigNum}/${fix.timeSigDen} ${JSON.stringify(fix.caveats)}`);
+    check(`and the next song is back in 4/4${when}`, clocks.timeSigNum === 4 && clocks.timeSigDen === 4);
+  }
+  const p = parseAlsXml(xml(0));
+  const fix = p.songs.find((s) => s.title === 'Fix You');
+  // 72 beats of 6/8 is 24 bars of three quarter-note beats.
+  check('its bars are its own: 24 bars of 6/8', songBars(fix) === 24, String(songBars(fix)));
+  check('its length is the same seconds either way: 36 s', Math.abs(songLengthSec(fix, p) - 36) < 1e-6 && Math.abs(songDurationSec(fix, 3) - 36) < 1e-6,
+    String(songLengthSec(fix, p)));
+  check('its bar 9 is 24 beats in, which the set\'s ruler calls bar 23',
+    Math.abs(onSetRuler(fix, 9, p) - 23) < 1e-9 && Math.abs(onSetBars(fix, 4, p) - 3) < 1e-9, String(onSetRuler(fix, 9, p)));
+  const pro = chordProFor({ ...fix, chords: [{ bar: 1, text: 'C' }], lyrics: [{ bar: 1, text: 'Lights will guide you' }] }, p);
+  check('ChordPro gives its own time', !pro || /\{time: 6\/8\}/.test(pro), pro ?? 'null');
+  const info = infoClipsFor(p, ['Fix You'], DEFAULT_INFO_FIELDS);
+  check('an info clip runs the song\'s length on the set\'s ruler', info.clips.length === 1 && Math.abs(info.clips[0].bar - 17) < 1e-9 && Math.abs(info.clips[0].bars - 18) < 1e-9,
+    JSON.stringify(info.clips));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

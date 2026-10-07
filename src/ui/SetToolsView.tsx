@@ -14,7 +14,7 @@ import {
 } from '../lib/slates';
 import { addSlatesTrack, type SlateClip } from '../lib/slateTrack';
 import { addChordTrack, chordClipsFor, chordNotationsIn } from '../lib/chordTrack';
-import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, type InfoFields } from '../lib/infoTrack';
+import { abletReads, DEFAULT_INFO_FIELDS, DEFAULT_INFO_TRACK, INFO_FIELD_LABEL, infoClipsFor, infoLinesFor, onSetRuler, type InfoFields } from '../lib/infoTrack';
 import { DEFAULT_LOCATOR_FIELDS, DEFAULT_LOCATOR_TRACK, LOCATOR_FIELD_LABEL, LOCATOR_FORMAT_LABEL, locatorClipsFor, locatorTextFor, type LocatorFields, type LocatorFormat } from '../lib/locatorText';
 import { busLabel, describeFeeds, unimitatedOn } from '../lib/returnMix';
 import { runReturnMix } from '../lib/returnMixRun';
@@ -717,7 +717,7 @@ export default function SetToolsView({ shown = true }: { shown?: boolean }) {
       for (const song of library.songs) {
         if (!selected.has(song.title) || !song.patchClips?.length) continue;
         const als = project.songs.find((x) => x.title === song.title);
-        if (als) mine.push(...studioChanges(song.patchClips, als.startBar, isFromMidiClip));
+        if (als) mine.push(...studioChanges(song.patchClips, (bar) => onSetRuler(als, bar, project), isFromMidiClip));
       }
       if (mine.length) specs.push({ member: 'Studio', changes: mine });
 

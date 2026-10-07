@@ -2,6 +2,7 @@ import type { AlsProject } from './alsParser';
 import { addThis, cleanTrack, esc, extractBlock, idMinter, sub, trackInsertPoint } from './alsEdit.ts';
 import { NOTATION_LANE, convertChord, deriveChordLanes, isNashvilleLane, keyAt, laneNotation, notationOf, parseKey, type ChordNotation } from './nashville.ts';
 import type { ChartLane } from '../types';
+import { onSetBars, onSetRuler } from './infoTrack.ts';
 
 /**
  * Writing a chord track into an Ableton set.
@@ -136,12 +137,12 @@ export function chordClipsFor(
     const lengths = new Map((from?.items ?? []).map((i) => [i.bar, i.bars]));
     for (const item of added.items) {
       // Song-relative bars onto the set's own ruler.
-      const bar = song.startBar + (item.bar - 1);
+      const bar = onSetRuler(song, item.bar, project);
       const text = item.text.trim();
       const bars = lengths.get(item.bar);
       // In brackets, as AbleSet reads a chord on a lyrics track: the parser
       // took them off on the way in, and a bare name would show as a word.
-      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]`, ...(bars ? { bars } : {}) });
+      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]`, ...(bars ? { bars: onSetBars(song, bars, project) } : {}) });
     }
   }
 

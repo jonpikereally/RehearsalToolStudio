@@ -84,13 +84,43 @@ function clean(text: string): string {
  * bars rounds up. A "+ 1" here once made every song a bar longer than its
  * files, and than the click.
  */
-export function songBars(song: Pick<AlsSong, 'startBar' | 'endBar'>): number {
+export function songBars(song: Pick<AlsSong, 'startBar' | 'endBar'> & { bars?: number }): number {
+  // In the song's own meter, as the parser counted it; `startBar` and
+  // `endBar` are on the set's ruler, which is another meter when the song
+  // is in 6/8 and the set in 4/4.
+  if (song.bars !== undefined) return Math.max(0, song.bars);
   return Math.max(0, song.endBar - song.startBar);
+}
+
+type Meter = { timeSigNum?: number; timeSigDen?: number };
+
+/** Beats (quarter notes) in one of the song's bars: its own meter, else the set's. */
+export function songBeatsPerBar(song: Meter, project: Pick<AlsProject, 'timeSigNum' | 'timeSigDen'>): number {
+  return (song.timeSigNum || project.timeSigNum) * (4 / (song.timeSigDen || project.timeSigDen));
+}
+
+/** Beats in one bar of the set's ruler, which `startBar` and `endBar` are counted on. */
+export function setBeatsPerBar(project: Pick<AlsProject, 'timeSigNum' | 'timeSigDen'>): number {
+  return project.timeSigNum * (4 / project.timeSigDen);
+}
+
+/** A length in the song's bars, as bars of the set's ruler. */
+export function onSetBars(song: Meter, bars: number, project: Pick<AlsProject, 'timeSigNum' | 'timeSigDen'>): number {
+  return (bars * songBeatsPerBar(song, project)) / setBeatsPerBar(project);
+}
+
+/** A song-relative bar (1 is the song's first) as a bar of the set's ruler. */
+export function onSetRuler(
+  song: Meter & Pick<AlsSong, 'startBar'>,
+  bar: number,
+  project: Pick<AlsProject, 'timeSigNum' | 'timeSigDen'>,
+): number {
+  return song.startBar + onSetBars(song, bar - 1, project);
 }
 
 /** `3:55`, from a song's bars through its tempo map. */
 export function songLengthSec(song: AlsSong, project: AlsProject): number {
-  const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
+  const beatsPerBar = songBeatsPerBar(song, project);
   const bars = songBars(song);
   const changes = [...song.tempoChanges].sort((a, b) => a.bar - b.bar);
   let bpm = song.bpm ?? song.startBpm ?? project.tempo;
@@ -207,9 +237,9 @@ export function infoClipsFor(
     for (const [i, part] of starts.entries()) {
       const until = starts[i + 1]?.bar ?? wholeBars + 1;
       clips.push({
-        bar: song.startBar + (part.bar - 1),
+        bar: onSetRuler(song, part.bar, project),
         text: join(part.lines),
-        bars: opts.wholeSong === false ? 1 : Math.max(1, until - part.bar),
+        bars: onSetBars(song, opts.wholeSong === false ? 1 : Math.max(1, until - part.bar), project),
       });
     }
     songs.push(song.title);
