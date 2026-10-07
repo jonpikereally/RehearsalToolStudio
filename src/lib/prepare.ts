@@ -3,13 +3,13 @@ import { needsRender, renderTrack, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
-import { MANIFEST_NAME, SONG_FILE_NAME, sameSong, folderBaseOf, songFileFor, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
-import { songBars, songBeatsPerBar, songLengthSec } from './infoTrack.ts';
+import { MANIFEST_NAME, SONG_FILE_NAME, sameSong, folderBaseOf, signatureMapOf, songFileFor, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
+import { songBars, songTiming, songLengthSec } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { SUBMIX_FOLDER, isClickOrCue, isWholeSong, keepsPart, submixLabel, type MemberMix } from './members.ts';
-import { barToSec } from './bars.ts';
+import { barToSec, type TimeSong } from './bars.ts';
 import { peakOf } from './bounce.ts';
 import { readPcmWindow, type RangeReader } from './audioSlice.ts';
 import { withChangelog } from './songChangelog.ts';
@@ -714,10 +714,6 @@ export function tempoOf(song: AlsSong, project: AlsProject): number {
   return song.startBpm ?? song.bpm ?? project.tempo;
 }
 
-/** Bars to seconds at the song's own tempo, for placing clips. */
-function barToSeconds(bar: number, bpm: number, perBar: number): number {
-  return ((bar - 1) * perBar * 60) / bpm;
-}
 
 /**
  * The manifest a part-set run should leave behind.
@@ -897,11 +893,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
   for (const [index, song] of chosen.entries()) {
     if (signal?.aborted) throw new DOMException('Preparing cancelled', 'AbortError');
 
-    const bpm = tempoOf(song, project);
-    // The song's bars are counted in its own meter, which may not be the set's.
-    const perBar = songBeatsPerBar(song, project);
+    // Bars to seconds through the song's tempo and meter maps, as the player counts them.
+    const timing = songTiming(song, project);
     // The song runs from bar 1 to the bar line after its last: the render is that long.
-    const durationSec = barToSeconds(1 + songBars(song), bpm, perBar);
+    const durationSec = barToSec(1 + songBars(song), timing);
     /*
      * Today's folder for a song being rendered; the folder it already has for
      * a submix-only run, which is not a new render of the song and must land
@@ -1135,7 +1130,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
               ? {
                   startSec: clip.sourceStartSec,
                   durationSec:
-                    barToSeconds(clip.endBar, bpm, perBar) - barToSeconds(clip.startBar, bpm, perBar) + clip.fadeOutSec + 0.25,
+                    barToSec(clip.endBar, timing) - barToSec(clip.startBar, timing) + clip.fadeOutSec + 0.25,
                 }
               : undefined;
             let buffer = await loadFile(clip.path, clip.absPath, window);
@@ -1160,7 +1155,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
                 })) ??
                 buffer;
             }
-            placements.push(placementOf(placed, buffer, bpm, perBar, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
+            placements.push(placementOf(placed, buffer, timing, speed, (stem.gain ?? 1) * (clip.gain ?? 1)));
           }
         }
         if (!placements.length) continue;
@@ -1307,6 +1302,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         originalKey: song.key ?? undefined,
         notes: song.notes || undefined,
         tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
+        signatureMap: song.meterMap?.length ? signatureMapOf(song.meterMap) : undefined,
         markers: song.sections.length
           ? song.sections.map((s) => ({ bar: s.bar, name: s.text }))
           : undefined,
@@ -1362,16 +1358,15 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
 function placementOf(
   clip: AlsClip,
   buffer: AudioBuffer,
-  bpm: number,
-  perBar: number,
+  timing: TimeSong,
   speed = 1,
   gain = 1,
 ): ClipPlacement {
   return {
     buffer,
     gain,
-    startSec: barToSeconds(clip.startBar, bpm, perBar),
-    endSec: barToSeconds(clip.endBar, bpm, perBar),
+    startSec: barToSec(clip.startBar, timing),
+    endSec: barToSec(clip.endBar, timing),
     // A stretched file's seconds are shorter by the same factor.
     sourceStartSec: clip.sourceStartSec / speed,
     fadeInSec: clip.fadeInSec,
@@ -1393,13 +1388,7 @@ export function lyricsFileFor(song: AlsSong, project: AlsProject): Blob | null {
    * same bar maths the player uses — tempo map included. A song that speeds up
    * halfway would otherwise have every later line drifting further out.
    */
-  const timing = {
-    bpm: tempoOf(song, project),
-    timeSigNum: song.timeSigNum || project.timeSigNum,
-    timeSigDen: song.timeSigDen || project.timeSigDen,
-    firstBarOffsetSec: 0,
-    tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
-  };
+  const timing = songTiming(song, project);
 
   const lines = song.lyrics.map((line) => {
     const seconds = barToSec(line.bar, timing);

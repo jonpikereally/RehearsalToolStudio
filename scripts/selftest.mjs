@@ -3494,7 +3494,7 @@ group('checking a set before it matters');
   check('clips know whether they are warped',
     yellow.stems.find((s) => s.name === 'Bass')?.clips[0].warped === true);
 
-  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, 4), 32), songDurationSec(yellow, 4));
+  check('16 bars at 120 run 32 seconds', near(songDurationSec(yellow, project), 32), songDurationSec(yellow, project));
 
   const findings = checkSet(project);
   {
@@ -4041,9 +4041,9 @@ group('the mix, as the set has it');
   check('a pan cannot go past hard left', bass.pan === -1);
   check('a clip\'s own gain is read', bass.clips[0].gain === 0.5);
   check('the song group\'s fader counts', Math.abs(bass.gain - 0.75) < 1e-9, String(bass.gain));
-  check('a stretch in 2/4 inside the song is one caveat, in bars',
-    yellow.caveats.length === 1 && /^Bars from 25 to 27 are in 2\/4/.test(yellow.caveats[0]),
-    JSON.stringify(yellow.caveats));
+  check('a stretch in 2/4 inside the song is in its meter map, its bars counted as played',
+    JSON.stringify(yellow.meterMap) === '[{"bar":25,"num":2,"den":4},{"bar":29,"num":4,"den":4}]' && yellow.caveats.length === 0,
+    JSON.stringify([yellow.meterMap, yellow.caveats]));
   check('a song that starts in 3/4 is counted in 3/4', waltz.timeSigNum === 3 && waltz.timeSigDen === 4 && waltz.caveats.length === 0,
     `${waltz.timeSigNum}/${waltz.timeSigDen} ${JSON.stringify(waltz.caveats)}`);
   const { songBars } = await import('../src/lib/infoTrack.ts');
@@ -4056,8 +4056,8 @@ group('the mix, as the set has it');
 
   const files = ['Ref Master', 'Bass', 'Drums'].map((n) => ({ path: `/Stems/${n}.wav`, name: `${n}.wav`, rev: 'r', size: 1 }));
   const imported = songsFromProject(p, '/Set.als', files, new Map()).songs;
-  check('the song keeps its own signature and caveats',
-    imported[1].timeSigNum === 3 && imported[0].caveats?.length === 1 && imported[1].caveats === undefined);
+  check('the song keeps its own signature and its meter map',
+    imported[1].timeSigNum === 3 && imported[0].meterMap?.length === 2 && imported[1].meterMap === undefined && imported[0].caveats === undefined);
 }
 
 /* ------------------------ devices and buses, as the set has them ------------------------ */
@@ -5904,15 +5904,65 @@ group('a song in its own meter');
   const fix = p.songs.find((s) => s.title === 'Fix You');
   // 72 beats of 6/8 is 24 bars of three quarter-note beats.
   check('its bars are its own: 24 bars of 6/8', songBars(fix) === 24, String(songBars(fix)));
-  check('its length is the same seconds either way: 36 s', Math.abs(songLengthSec(fix, p) - 36) < 1e-6 && Math.abs(songDurationSec(fix, 3) - 36) < 1e-6,
+  check('its length is the same seconds either way: 36 s', Math.abs(songLengthSec(fix, p) - 36) < 1e-6 && Math.abs(songDurationSec(fix, p) - 36) < 1e-6,
     String(songLengthSec(fix, p)));
   check('its bar 9 is 24 beats in, which the set\'s ruler calls bar 23',
-    Math.abs(onSetRuler(fix, 9, p) - 23) < 1e-9 && Math.abs(onSetBars(fix, 4, p) - 3) < 1e-9, String(onSetRuler(fix, 9, p)));
+    Math.abs(onSetRuler(fix, 9, p) - 23) < 1e-9 && Math.abs(onSetBars(fix, 1, 4, p) - 3) < 1e-9, String(onSetRuler(fix, 9, p)));
   const pro = chordProFor({ ...fix, chords: [{ bar: 1, text: 'C' }], lyrics: [{ bar: 1, text: 'Lights will guide you' }] }, p);
   check('ChordPro gives its own time', !pro || /\{time: 6\/8\}/.test(pro), pro ?? 'null');
   const info = infoClipsFor(p, ['Fix You'], DEFAULT_INFO_FIELDS);
   check('an info clip runs the song\'s length on the set\'s ruler', info.clips.length === 1 && Math.abs(info.clips[0].bar - 17) < 1e-9 && Math.abs(info.clips[0].bars - 18) < 1e-9,
     JSON.stringify(info.clips));
+}
+
+/* ------------------------- the song's map of tempo and meter ------------------------- */
+
+group("the song's map of tempo and meter");
+{
+  const { barToSec, secToBar, beatOfBar, barOfBeat, clickBeats, formatBarBeat, tempoSegments } = await import('../src/lib/bars.ts');
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { songBars, songLengthSec, onSetRuler, songTiming } = await import('../src/lib/infoTrack.ts');
+  const { signatureMapOf, meterMapOf, validateManifest } = await import('../src/lib/preparedSet.ts');
+  // 4/4 at 120 with one bar of 2/4 at bar 25 and 140 BPM from bar 30.
+  const song = { bpm: 120, timeSigNum: 4, timeSigDen: 4, firstBarOffsetSec: 0,
+    meterMap: [{ bar: 25, num: 2, den: 4 }, { bar: 26, num: 4, den: 4 }], tempoMap: [{ bar: 30, bpm: 140 }] };
+  check('a bar of 2/4 is two beats: bar 26 is 98 beats in', beatOfBar(song, 26) === 98 && barOfBeat(song, 98) === 26 && barOfBeat(song, 97) === 25.5);
+  check('and half as long in time', Math.abs(barToSec(26, song) - barToSec(25, song) - 1) < 1e-9 && Math.abs(barToSec(25, song) - 48) < 1e-9);
+  check('the tempo change still lands on its bar', Math.abs(barToSec(30, song) - (48 + 1 + 4 * 2)) < 1e-9 && Math.abs(secToBar(barToSec(31.5, song), song) - 31.5) < 1e-9);
+  check('the stretches break at either change', tempoSegments(song).map((s) => `${s.startBar}:${s.num}/${s.den}@${s.bpm}`).join() === '1:4/4@120,25:2/4@120,26:4/4@120,30:4/4@140');
+  const clicks = clickBeats(song, barToSec(27, song));
+  const inBar25 = clicks.filter((c) => c.sec >= barToSec(25, song) - 1e-9 && c.sec < barToSec(26, song) - 1e-9);
+  check('the click strikes two in the 2/4 bar, the first accented', inBar25.length === 2 && inBar25[0].accent && !inBar25[1].accent);
+  check('and the position reads in it', formatBarBeat(barToSec(25, song) + 0.5, song) === '25.2' && formatBarBeat(barToSec(26, song) + 1.6, song) === '26.4');
+
+  // The same song as a set: locator at 0, 2/4 from beat 96 to 98, 140 from beat 116.
+  const xml = `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+    <AutomationEnvelope Id="2"><EnvelopeTarget><PointeeId Value="9" /></EnvelopeTarget><Automation><Events>
+      <FloatEvent Id="1" Time="-63072000" Value="120" /><FloatEvent Id="2" Time="114" Value="120" /><FloatEvent Id="3" Time="114" Value="140" />
+    </Events></Automation></AutomationEnvelope>
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <MainTrack><Mixer><TimeSignature><LomId Value="0" /><Manual Value="201" /><AutomationTarget Id="10"><LockEnvelope Value="0" /></AutomationTarget></TimeSignature></Mixer></MainTrack>
+    <AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="10" /></EnvelopeTarget><Automation><Events>
+      <EnumEvent Id="1" Time="-63072000" Value="201" /><EnumEvent Id="2" Time="96" Value="199" /><EnumEvent Id="3" Time="98" Value="201" />
+    </Events></Automation></AutomationEnvelope>
+    <Locator Id="1"><Time Value="0" /><Name Value="Our Song" /></Locator>
+    <Locator Id="2"><Time Value="130" /><Name Value="AUTOSTOP" /></Locator>
+  </Ableton>`;
+  const p = parseAlsXml(xml);
+  const [ours] = p.songs;
+  check('the set\'s meter changes become the song\'s map, in bars as played', JSON.stringify(ours.meterMap) === '[{"bar":25,"num":2,"den":4},{"bar":26,"num":4,"den":4}]', JSON.stringify(ours.meterMap));
+  check('and its tempo change is at bar 30, counted the same way', ours.tempoChanges.some((t) => t.bar === 30 && t.bpm === 140), JSON.stringify(ours.tempoChanges));
+  check('it runs 33 bars as played', songBars(ours) === 33, String(songBars(ours)));
+  check('through both maps: 48 + 1 + 8 + 4 × 60/140 × 4 seconds', Math.abs(songLengthSec(ours, p) - (57 + 4 * 4 * 60 / 140)) < 1e-6, String(songLengthSec(ours, p)));
+  check('its bar 26 is the set\'s beat 98', Math.abs((onSetRuler(ours, 26, p) - 1) * 4 - 98) < 1e-9);
+  check('the render counts it as the player does', Math.abs(barToSec(30, songTiming(ours, p)) - 57) < 1e-9);
+
+  const map = signatureMapOf(ours.meterMap);
+  check('the band\'s file writes it as signatureMap', JSON.stringify(map) === '[{"bar":25,"timeSignature":"2/4"},{"bar":26,"timeSignature":"4/4"}]');
+  check('and reads it back', JSON.stringify(meterMapOf(map)) === JSON.stringify(ours.meterMap));
+  const manifest = { version: 1, name: 'x', songs: [{ folder: 'Our Song', title: 'Our Song', firstBarOffsetSec: 0, signatureMap: [{ bar: 2, timeSignature: 'six' }] }] };
+  check('a malformed one is refused', !validateManifest(manifest).ok);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

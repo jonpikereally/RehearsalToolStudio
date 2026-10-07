@@ -1,4 +1,4 @@
-import type { Song, TempoPoint } from '../types';
+import type { MeterPoint, Song, TempoPoint } from '../types';
 
 /**
  * Bar ↔ time conversion.
@@ -9,8 +9,9 @@ import type { Song, TempoPoint } from '../types';
  * constant tempo, which is the common case.
  */
 
-type TimeSong = Pick<Song, 'bpm' | 'timeSigNum' | 'timeSigDen' | 'firstBarOffsetSec'> & {
+export type TimeSong = Pick<Song, 'bpm' | 'timeSigNum' | 'timeSigDen' | 'firstBarOffsetSec'> & {
   tempoMap?: TempoPoint[];
+  meterMap?: MeterPoint[];
   tempoScale?: number;
 };
 
@@ -29,6 +30,62 @@ export interface TempoSegment {
   startSec: number;
   secPerBar: number;
   bpm: number;
+  /** The meter of the stretch: its bars hold `num` beats of 1/`den`. */
+  num: number;
+  den: number;
+}
+
+/**
+ * The meter map as sorted points always starting at bar 1, the later of two
+ * at one bar winning, and a point that changes nothing dropped.
+ */
+export function meterPoints(song: Pick<TimeSong, 'timeSigNum' | 'timeSigDen' | 'meterMap'>): MeterPoint[] {
+  const byBar = new Map<number, MeterPoint>();
+  byBar.set(1, { bar: 1, num: song.timeSigNum, den: song.timeSigDen });
+  for (const p of song.meterMap ?? []) {
+    if (p.bar >= 1 && p.num > 0 && p.den > 0) byBar.set(p.bar, { bar: p.bar, num: p.num, den: p.den });
+  }
+  const points = [...byBar.values()].sort((a, b) => a.bar - b.bar);
+  return points.filter((p, i) => i === 0 || p.num !== points[i - 1].num || p.den !== points[i - 1].den);
+}
+
+/** The meter in force at a bar. */
+export function meterAt(song: Pick<TimeSong, 'timeSigNum' | 'timeSigDen' | 'meterMap'>, bar: number): { num: number; den: number } {
+  let found = meterPoints(song)[0];
+  for (const p of meterPoints(song)) {
+    if (p.bar <= bar + 1e-9) found = p;
+    else break;
+  }
+  return { num: found.num, den: found.den };
+}
+
+/** Quarter notes from the downbeat of bar 1 to `bar`, through the meter map. */
+export function beatOfBar(song: Pick<TimeSong, 'timeSigNum' | 'timeSigDen' | 'meterMap'>, bar: number): number {
+  const points = meterPoints(song);
+  let beat = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const end = points[i + 1]?.bar ?? Infinity;
+    if (i > 0 && bar < p.bar) break;
+    beat += (Math.min(bar, end) - p.bar) * p.num * (4 / p.den);
+  }
+  return beat;
+}
+
+/** The (fractional) bar `beat` quarter notes after the downbeat of bar 1: `beatOfBar` turned round. */
+export function barOfBeat(song: Pick<TimeSong, 'timeSigNum' | 'timeSigDen' | 'meterMap'>, beat: number): number {
+  const points = meterPoints(song);
+  let at = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const perBar = p.num * (4 / p.den);
+    const next = points[i + 1];
+    const span = next ? (next.bar - p.bar) * perBar : Infinity;
+    if (i === 0 && beat < 0) return p.bar + beat / perBar;
+    if (beat < at + span) return p.bar + (beat - at) / perBar;
+    at += span;
+  }
+  return 1;
 }
 
 /**
@@ -64,21 +121,39 @@ function tempoPoints(song: TimeSong): TempoPoint[] {
   return scale === 1 ? points : points.map((p) => ({ ...p, bpm: p.bpm * scale }));
 }
 
-/** Each stretch of constant tempo, with the time its first bar begins. */
+/**
+ * Each stretch of constant tempo and meter, with the time its first bar
+ * begins: a new stretch wherever either changes.
+ */
 export function tempoSegments(song: TimeSong): TempoSegment[] {
-  const points = tempoPoints(song);
-  const perBar = (bpm: number) => quartersPerBar(song) * (60 / bpm);
+  const tempos = tempoPoints(song);
+  const meters = meterPoints(song);
+  const starts = [...new Set([...tempos.map((p) => p.bar), ...meters.map((p) => p.bar)])].sort((a, b) => a - b);
+  const last = <T extends { bar: number }>(list: T[], bar: number): T => {
+    let found = list[0];
+    for (const p of list) {
+      if (p.bar <= bar) found = p;
+      else break;
+    }
+    return found;
+  };
 
   const segments: TempoSegment[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const point = points[i];
-    const previous = segments[i - 1];
+  for (const bar of starts) {
+    const { bpm } = last(tempos, bar);
+    const { num, den } = last(meters, bar);
+    const previous = segments[segments.length - 1];
     const startSec = previous
-      ? previous.startSec + (point.bar - previous.startBar) * previous.secPerBar
+      ? previous.startSec + (bar - previous.startBar) * previous.secPerBar
       : song.firstBarOffsetSec;
-    segments.push({ startBar: point.bar, startSec, secPerBar: perBar(point.bpm), bpm: point.bpm });
+    segments.push({ startBar: bar, startSec, secPerBar: num * (4 / den) * (60 / bpm), bpm, num, den });
   }
   return segments;
+}
+
+/** True when the song's meter changes at some point. */
+export function hasMeterChanges(song: Pick<TimeSong, 'timeSigNum' | 'timeSigDen' | 'meterMap'>): boolean {
+  return meterPoints(song).length > 1;
 }
 
 /** True when the song's tempo actually changes at some point. */
@@ -151,7 +226,7 @@ export function nudgeBars(
 ): number {
   const graceBeats = opts.graceBeats ?? 0.5;
   const bar = secToBar(currentSec, song);
-  const intoBarBeats = (bar - Math.floor(bar)) * song.timeSigNum;
+  const intoBarBeats = (bar - Math.floor(bar)) * meterAt(song, bar).num;
 
   let targetBar: number;
   if (bars < 0 && intoBarBeats > graceBeats) {
@@ -168,7 +243,7 @@ export function formatBarBeat(sec: number, song: TimeSong): string {
   const bar = secToBar(sec, song);
   if (bar < 1) return `–.–`;
   const whole = Math.floor(bar);
-  const beat = Math.floor((bar - whole) * song.timeSigNum) + 1;
+  const beat = Math.floor((bar - whole) * meterAt(song, whole).num) + 1;
   return `${whole}.${beat}`;
 }
 
@@ -203,12 +278,13 @@ export function clickBeats(song: TimeSong, duration: number): ClickBeat[] {
   const beats: ClickBeat[] = [];
   if (!(duration > 0)) return beats;
 
-  const perBar = song.timeSigNum;
   const lastBar = totalBars(duration, song) + 1;
 
   for (let bar = 1; bar <= lastBar; bar++) {
     const barStart = barToSec(bar, song);
     if (barStart > duration) break;
+    // Each bar in its own meter: a bar of 2/4 is two clicks.
+    const perBar = meterAt(song, bar).num;
     const beatLength = secPerBarAt(song, bar) / perBar;
     for (let beat = 0; beat < perBar; beat++) {
       const sec = barStart + beat * beatLength;

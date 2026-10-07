@@ -393,6 +393,7 @@ export function songsFromProject(
       tempoMap: alsSong.tempoChanges.length ? alsSong.tempoChanges : undefined,
       timeSigNum: alsSong.timeSigNum ?? project.timeSigNum,
       timeSigDen: alsSong.timeSigDen ?? project.timeSigDen,
+      meterMap: alsSong.meterMap?.length ? alsSong.meterMap : undefined,
       caveats: alsSong.caveats?.length ? alsSong.caveats : undefined,
       firstBarOffsetSec: prev?.firstBarOffsetSec ?? 0,
       originalKey: alsSong.key ?? prev?.originalKey,
