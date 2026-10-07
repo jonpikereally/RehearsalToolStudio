@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { keepOnlyAdded } from '../lib/alsEdit';
 import { inflateAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { addChordTrack, type ChordClip } from '../lib/chordTrack';
 import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyricClips';
-import { engineStartedBy, ensureLyricsStudio, isFolderRefusal, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
+import { lyricFileFor, lyricFilesIn, type LyricFileEntry } from '../lib/lyricFiles';
+import { engineStartedBy, ensureLyricsStudio, isFolderRefusal, lyricFileText, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
 import * as local from '../lib/localSource';
 import { remember } from '../lib/remember';
 import { coded } from '../lib/errorCodes';
@@ -22,12 +23,25 @@ import ErrorNotice from './ErrorNotice';
  * it reads the set file itself, so warping and the tempo map are its own.
  * What it hears can be read and corrected line by line before anything is
  * written.
+ *
+ * A song with a file of its own in the lyrics folder — found by its title —
+ * gets that file's words: the engine listens for where each is sung and the
+ * clips carry the words as written, rather than as heard.
  */
 
 type Row =
   | { state: 'queued' }
   | { state: 'listening'; note: string }
-  | { state: 'heard'; segments: TranscribedSegment[]; clips: ChordClip[]; missing: number }
+  | {
+      state: 'heard';
+      segments: TranscribedSegment[];
+      clips: ChordClip[];
+      missing: number;
+      /** The lyric file whose words these are, when they are a file's. */
+      from?: string;
+      /** Why the song's lyric file was not used, when it was there but could not be. */
+      fileError?: string;
+    }
   | { state: 'failed'; error: string };
 
 /** The words a song already has: its +LYRICS clips, chord tracks aside. */
@@ -106,6 +120,54 @@ export default function LyricsPanel({
   const [error, setError] = useState<string | null>(null);
   const stop = useRef(false);
 
+  /*
+   * The lyrics folder, remembered from one session to the next, and the
+   * lyric files in it. Read again whenever the panel is shown, so a file
+   * dropped in meanwhile is found.
+   */
+  const [lyricsFolder, setLyricsFolder] = useState<local.LocalFolder | null>(null);
+  const [lyricFiles, setLyricFiles] = useState<LyricFileEntry[]>([]);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const readLyricsFolder = async (chosen: local.LocalFolder | null) => {
+    setFolderError(null);
+    if (!chosen) {
+      setLyricFiles([]);
+      return;
+    }
+    try {
+      setLyricFiles(lyricFilesIn(await local.listFiles(chosen.handle, '')));
+    } catch (err) {
+      setLyricFiles([]);
+      setFolderError(coded('RTS-LYR-07', err));
+    }
+  };
+  useEffect(() => {
+    if (hidden) return;
+    let live = true;
+    void local
+      .storedFolder('lyrics')
+      .catch(() => null)
+      .then((stored) => {
+        if (!live) return;
+        setLyricsFolder(stored);
+        void readLyricsFolder(stored);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden]);
+  const chooseLyricsFolder = async () => {
+    try {
+      const chosen = await local.pickFolder('lyrics');
+      setLyricsFolder(chosen);
+      await readLyricsFolder(chosen);
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') setFolderError(coded('RTS-LYR-07', err));
+    }
+  };
+  const fileOf = (song: AlsSong) => (lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null);
+
   const without = songs.filter((s) => !lyricClipCount(s) && listenableTracks(s).length).map((s) => s.title);
   const trackOf = (song: AlsSong) =>
     listenableTracks(song).find((st) => st.trackId === trackFor[song.title]) ?? vocalTrackFor(song);
@@ -160,11 +222,27 @@ export default function LyricsPanel({
           continue;
         }
         const listening = (n: string) => setRow(song.title, { state: 'listening', note: n });
-        listening(`Listening to “${track.name}”…`);
+        /*
+         * The song's lyric file, read first: its words are what the clips
+         * will say, and knowing them helps the engine hear. One that is there
+         * but cannot be read is said beside what was heard instead.
+         */
+        const file = fileOf(song);
+        let lyrics = '';
+        let fileError: string | undefined;
+        if (file && lyricsFolder) {
+          listening(`Reading ${file.name}…`);
+          try {
+            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path));
+          } catch (err) {
+            fileError = coded('RTS-LYR-07', err);
+          }
+        }
+        listening(`Listening to “${track.name}”${lyrics ? ` for the words in ${file!.name}` : ''}…`);
         const listen = () =>
           transcribeTrack(
             url,
-            { alsPath, trackId: track.trackId, startBar: song.startBar, endBar: song.endBar, isolate },
+            { alsPath, trackId: track.trackId, startBar: song.startBar, endBar: song.endBar, isolate, lyrics, align: !!lyrics },
             (d, total, phase) => listening(`“${track.name}”: ${phase}, part ${Math.min(d + 1, total)} of ${total}…`),
           );
         try {
@@ -185,7 +263,14 @@ export default function LyricsPanel({
           if (!clips.length) {
             setRow(song.title, { state: 'failed', error: coded('RTS-LYR-05', `No words were heard on “${track.name}” inside the song.`) });
           } else {
-            setRow(song.title, { state: 'heard', segments: result.segments, clips, missing: result.regions.missing });
+            setRow(song.title, {
+              state: 'heard',
+              segments: result.segments,
+              clips,
+              missing: result.regions.missing,
+              ...(result.aligned && file ? { from: file.name } : {}),
+              ...(fileError ? { fileError } : {}),
+            });
           }
         } catch (err) {
           setRow(song.title, { state: 'failed', error: coded('RTS-LYR-02', err) });
@@ -254,6 +339,28 @@ export default function LyricsPanel({
       </div>
 
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="control-label">Lyrics folder</span>
+        {lyricsFolder ? (
+          <span style={{ fontSize: 13 }} title="Each song's lyric file is found here by its title: “Fix You.txt”, “03 Fix You.docx”…">
+            <strong>{lyricsFolder.name}</strong> — {songs.filter((s) => fileOf(s)).length} of {songs.length} songs have a file
+          </span>
+        ) : (
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            none — choose one and each song's lyric file is found by its title, its words used as written
+          </span>
+        )}
+        <button className="chip" disabled={busy} onClick={() => void chooseLyricsFolder()}>
+          {lyricsFolder ? 'Change…' : 'Choose a folder…'}
+        </button>
+        {lyricsFolder && (
+          <button className="chip" disabled={busy} onClick={() => void readLyricsFolder(lyricsFolder)} title="Look in the folder again">
+            Look again
+          </button>
+        )}
+      </div>
+      {folderError && <ErrorNotice code="RTS-LYR-07" text={folderError} />}
+
+      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="chip" disabled={busy || !without.length} onClick={() => setPicked(without)}>
           Tick the {without.length} without lyrics
         </button>
@@ -268,6 +375,7 @@ export default function LyricsPanel({
           const tracks = listenableTracks(song);
           const track = trackOf(song);
           const row = rows[song.title];
+          const file = fileOf(song);
           return (
             <div key={song.title} className="lyric-song" role="listitem">
               <label className="lyric-song-name">
@@ -285,6 +393,11 @@ export default function LyricsPanel({
                 </span>
               ) : (
                 <span className="badge warn">no lyrics</span>
+              )}
+              {file && (
+                <span className="badge" title={`Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard`}>
+                  file: {file.name}
+                </span>
               )}
               {tracks.length ? (
                 <select
@@ -309,13 +422,14 @@ export default function LyricsPanel({
                 {row?.state === 'listening' && row.note}
                 {row?.state === 'heard' && (
                   <button className="chip on" onClick={() => setOpen(open === song.title ? null : song.title)}>
-                    {row.clips.length} line{row.clips.length === 1 ? '' : 's'} heard — {open === song.title ? 'hide' : 'read and correct'}
+                    {row.clips.length} line{row.clips.length === 1 ? '' : 's'} {row.from ? `from ${row.from}` : 'heard'} — {open === song.title ? 'hide' : 'read and correct'}
                   </button>
                 )}
                 {row?.state === 'failed' && <ErrorNotice inline code="RTS-LYR-02" text={row.error} className="lyric-song-error" />}
               </span>
               {row?.state === 'heard' && open === song.title && (
                 <div className="lyric-lines">
+                  {row.fileError && <ErrorNotice code="RTS-LYR-07" text={row.fileError} />}
                   {row.missing > 0 && (
                     <div className="notice">
                       {row.missing} part{row.missing === 1 ? '' : 's'} of the track could not be read, so may have words missing.

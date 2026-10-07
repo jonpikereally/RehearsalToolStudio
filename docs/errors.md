@@ -228,6 +228,12 @@ The track was listened to but no words came back. Choose a track with the lead v
 
 The run was stopped before this song. Tick it and run again.
 
+### RTS-LYR-07
+
+**The lyrics folder or a lyric file could not be read**
+
+The lyrics folder could not be listed, or a song's lyric file in it could not be read; the song is listened to without it. If the message carries an RTS-LSE code, look that up. Check the folder is still there and synced, and choose it again in Set tools ▸ Lyrics.
+
 ## Lyrics engine
 
 ### RTS-LSE-00
@@ -301,6 +307,12 @@ Whisper or the engine itself failed while listening. The message has the Python 
 **The audio file could not be opened**
 
 The file is where the set says but could not be opened, for a reason other than macOS permission. The message has the system's words; check the file in the Finder, and that Dropbox has it downloaded.
+
+### RTS-LSE-12
+
+**A lyric file could not be read**
+
+The engine could not get lines of lyrics out of the file: a kind it does not read, a damaged file, one with no lines in it, or a Pages document saved without a preview. Save the lyrics as plain text (.txt), Word (.docx) or PDF into the lyrics folder and run again.
 
 ## Set tools ▸ New songs from stems
 
