@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-07
+
+**Count a song in its own time signature from its first bar**
+
+A song in another meter than the set — a 6/8 song in a 4/4 set — was read in 6/8 only when Live's signature marker sat at or before its locator. A marker a beat or so after it, as happens when the locator is dropped just ahead of the bar line, left the song in 4/4 with a note that it changed partway in. A change inside the song's first bar now counts as the meter it starts in.
+
 ## 2026-10-06
 
 **Count a reference as silent when everything it feeds is muted**

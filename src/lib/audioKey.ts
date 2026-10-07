@@ -108,7 +108,7 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
   const tempo = [
     `bars ${song.startBar}-${song.endBar}`,
     `bpm ${num(song.bpm ?? project.tempo)}`,
-    `sig ${project.timeSigNum}/${project.timeSigDen}`,
+    `sig ${song.timeSigNum || project.timeSigNum}/${song.timeSigDen || project.timeSigDen}`,
     `map ${song.tempoChanges.map((t) => `${num(t.bar)}:${num(t.bpm)}`).join(',')}`,
   ].join(' ');
 
@@ -135,7 +135,7 @@ export function partKeysFor(song: AlsSong, project: AlsProject, inputs: AudioKey
   const tempo = [
     `bars ${song.startBar}-${song.endBar}`,
     `bpm ${num(song.bpm ?? project.tempo)}`,
-    `sig ${project.timeSigNum}/${project.timeSigDen}`,
+    `sig ${song.timeSigNum || project.timeSigNum}/${song.timeSigDen || project.timeSigDen}`,
     `map ${song.tempoChanges.map((t) => `${num(t.bar)}:${num(t.bpm)}`).join(',')}`,
   ].join(' ');
   const settings = `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`;

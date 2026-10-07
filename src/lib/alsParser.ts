@@ -40,8 +40,11 @@ export interface AlsSong {
   title: string;
   /** The locator name exactly as written. */
   raw: string;
+  /** Where the song starts and ends on the set's ruler, counted in the set's opening meter. */
   startBar: number;
   endBar: number;
+  /** The song's length in bars of its own meter (`timeSigNum`/`timeSigDen`). */
+  bars?: number;
   /** Read from the locator name where present. */
   bpm: number | null;
   key: string | null;
@@ -1560,11 +1563,17 @@ export function parseAlsXml(xml: string): AlsProject {
      * ten-thousandth of a beat out — which would otherwise report bar 3 as
      * 2.9996. Snap anything within a thousandth of a bar to the whole number.
      */
-    // The song's own signature, for counting its bars.
-    const signature = signatureChanges.filter((e) => e.beat <= loc.beat + 1e-6).pop() ?? {
-      num: timeSigNum,
-      den: timeSigDen,
-    };
+    /*
+     * The song's own signature, for counting its bars: the one in force where
+     * it starts. A change a little after the locator counts as the song's
+     * too — a locator dropped just ahead of the bar line, or a signature
+     * marker set on the first downbeat after it, is still a song in that
+     * meter from its first bar, not one that changes partway into it.
+     */
+    const before = signatureChanges.filter((e) => e.beat <= loc.beat + 1e-6).pop();
+    const priorBeats = (before?.num ?? timeSigNum) * (4 / (before?.den ?? timeSigDen));
+    const opening = signatureChanges.filter((e) => e.beat > loc.beat + 1e-6 && e.beat < Math.min(endBeat, loc.beat + priorBeats) - 1e-6).pop();
+    const signature = opening ?? before ?? { beat: -Infinity, num: timeSigNum, den: timeSigDen };
     const songBeatsPerBar = signature.num * (4 / signature.den);
     const relBar = (beat: number) => {
       const bar = (beat - loc.beat) / songBeatsPerBar + 1;
@@ -1803,7 +1812,7 @@ export function parseAlsXml(xml: string): AlsProject {
      * after the change land in the wrong place, though the audio plays on.
      */
     const caveats: string[] = [...setPartCaveats];
-    const inside = signatureChanges.filter((c) => c.beat > loc.beat + 1e-6 && c.beat < endBeat);
+    const inside = signatureChanges.filter((c) => c.beat > Math.max(loc.beat, signature.beat) + 1e-6 && c.beat < endBeat);
     const fmt = (b: number) => (Number.isInteger(b) ? String(b) : b.toFixed(1));
     for (let i = 0; i < inside.length; i++) {
       const change = inside[i];
@@ -1852,6 +1861,11 @@ export function parseAlsXml(xml: string): AlsProject {
       notes: group?.annotation.trim() ?? '',
       startBar: toBar(loc.beat),
       endBar: Number.isFinite(endBeat) ? toBar(endBeat) : toBar(loc.beat),
+      // In the song's own meter: a 6/8 song in a 4/4 set has more of its
+      // bars than the set's ruler shows between its locators.
+      bars: Number.isFinite(endBeat)
+        ? ((n) => (Math.abs(n - Math.round(n)) < 0.001 ? Math.round(n) : n))((endBeat - loc.beat) / songBeatsPerBar)
+        : 0,
       bpm: meta.bpm ?? region?.bpm ?? null,
       key: meta.key ?? region?.key ?? openingKey,
       keyChanges,
