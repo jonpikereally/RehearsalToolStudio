@@ -21,7 +21,7 @@ import { normalisePath } from './paths.ts';
  * by the desktop client, and the only place their app can read from — so
  * what the studio prepares is written there rather than beside its source.
  */
-export type FolderSlot = 'songs' | 'publish' | 'resources';
+export type FolderSlot = 'songs' | 'publish' | 'resources' | 'lyrics';
 
 /** A path a set names absolutely, outside the folder: sent as it is, read only. */
 export const isAbsoluteRef = (path: string): boolean => path.startsWith('abs:');
@@ -112,6 +112,7 @@ const PROMPTS: Record<FolderSlot, string> = {
   songs: 'Choose the folder your Ableton sets and stems live in',
   publish: "Choose the band's folder — the one Rehearsal Tool reads",
   resources: "Allow the folder the set's samples live in — read only",
+  lyrics: 'Choose the folder your lyric files are in',
 };
 
 /* --------------------------------- picking -------------------------------- */

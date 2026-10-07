@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-07
 
+**Take a song's words from its lyric file in a lyrics folder**
+
+The Lyrics tool heard every song's words, and what it heard was what went into the clips — misheard words and all, to be corrected by hand. Most songs' words already exist somewhere, typed out.
+
 **Keep the Changes window from putting up the Open window**
 
 The Changes window is the studio's page again in a small window of its own, and the page, finding no set open in it, did what it does on launch with nothing open: asked for the Open window. So looking at the log brought the chooser up in front of it every time. The question of what to open is now never asked from a small window — what is open is the studio's own window's business.

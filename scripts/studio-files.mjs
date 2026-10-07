@@ -58,7 +58,7 @@ import { pipeline } from 'node:stream/promises';
  * is a folder a set's samples live in when they are not inside the project
  * — a click, a bank of spoken cues — and is only ever read.
  */
-export const SLOTS = new Set(['songs', 'publish', 'resources']);
+export const SLOTS = new Set(['songs', 'publish', 'resources', 'lyrics']);
 
 /** Where the launcher writes, and where the page's own errors go too. */
 const LAUNCH_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', '.studio-build.log');

@@ -106,6 +106,8 @@ export interface Transcription {
   language: string;
   segments: TranscribedSegment[];
   regions: { transcribed: number; missing: number; short: number; out_of_range: number; total: number };
+  /** Whether the words are a lyric file's, placed by what was heard, rather than what was heard. */
+  aligned?: boolean;
 }
 
 /**
@@ -124,6 +126,8 @@ export async function transcribeTrack(
     endBar?: number;
     language?: string;
     lyrics?: string;
+    /** With `lyrics`: the words come from them, timed by what is heard. */
+    align?: boolean;
     isolate?: boolean;
   },
   onProgress?: (done: number, total: number, phase: string) => void,
@@ -160,6 +164,7 @@ export async function transcribeTrack(
         end_bar: req.endBar ?? null,
         language: req.language ?? '',
         lyrics: req.lyrics ?? '',
+        align: !!req.align,
         isolate: !!req.isolate,
       }),
     });
@@ -193,8 +198,27 @@ export async function transcribeTrack(
       language: String(body.language ?? ''),
       segments: ((body.segments as Raw[]) ?? []).map((s) => ({ ...word(s), words: (s.words ?? []).map(word) })),
       regions: (body.regions as Transcription['regions']) ?? { transcribed: 0, missing: 0, short: 0, out_of_range: 0, total: 0 },
+      aligned: body.aligned === true,
     };
   } finally {
     polling = false;
   }
+}
+
+/**
+ * The words in a lyric file — text, LRC, ChordPro, Word, PDF or Pages — read
+ * by the engine down to plain lines, section names and chords left out.
+ */
+export async function lyricFileText(base: string, path: string): Promise<string> {
+  const res = await fetch(`${base}/api/lyrics_file`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { text?: string; detail?: unknown };
+  if (!res.ok || typeof body.text !== 'string') {
+    const detail = body.detail ?? `${res.status} from Lyrics Studio`;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return body.text;
 }

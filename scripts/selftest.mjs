@@ -5965,5 +5965,32 @@ group("the song's map of tempo and meter");
   check('a malformed one is refused', !validateManifest(manifest).ok);
 }
 
+/* ------------------------------ a song's lyric file ------------------------------ */
+
+group("a song's lyric file");
+{
+  const { lyricFileFor, lyricFilesIn } = await import('../src/lib/lyricFiles.ts');
+  const files = lyricFilesIn([
+    { path: '/Fix You.docx', name: 'Fix You.docx' },
+    { path: '/Fix You.txt', name: 'Fix You.txt' },
+    { path: '/Coldplay/03 The Scientist - Coldplay.pdf', name: '03 The Scientist - Coldplay.pdf' },
+    { path: '/Viva La Vida.pages/Index.zip', name: 'Index.zip' },
+    { path: '/Viva La Vida.pages/preview.jpg', name: 'preview.jpg' },
+    { path: '/Yellow.mp3', name: 'Yellow.mp3' },
+    { path: '/Red Dress.txt', name: 'Red Dress.txt' },
+    { path: '/Don’t Panic.lrc', name: 'Don’t Panic.lrc' },
+  ]);
+  check('a folder\'s lyric files are its documents, a Pages package as one, audio left out',
+    files.map((f) => f.name).sort().join() === '03 The Scientist - Coldplay.pdf,Don’t Panic.lrc,Fix You.docx,Fix You.txt,Red Dress.txt,Viva La Vida.pages',
+    files.map((f) => f.name).sort().join());
+  check('the plainest file of the title wins', lyricFileFor('Fix You', files)?.name === 'Fix You.txt');
+  check('a title inside a longer name is found', lyricFileFor('The Scientist', files)?.name === '03 The Scientist - Coldplay.pdf');
+  check('as is a Pages document', lyricFileFor('Viva la Vida', files)?.path === '/Viva La Vida.pages');
+  check('apostrophes and case do not matter', lyricFileFor("Don't Panic", files)?.name === 'Don’t Panic.lrc');
+  check('a title\'s own brackets are left out', lyricFileFor('Fix You (Live)', files)?.name === 'Fix You.txt');
+  check('a word is not a part of a word', lyricFileFor('Red', files)?.name === 'Red Dress.txt' && lyricFileFor('Re', files) === null);
+  check('and a song with none has none', lyricFileFor('Clocks', files) === null);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);

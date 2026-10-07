@@ -9,6 +9,7 @@
 #   "librosa",
 #   "numpy",
 #   "imageio-ffmpeg",
+#   "pypdf",
 # ]
 # ///
 """Lyrics Studio — local webapp: transcribe song lyrics and export timed MIDI clips.
@@ -334,6 +335,130 @@ def align_lyrics(whisper_segments: list[dict], lyrics_text: str) -> list[dict]:
             "words": [{"text": w["text"], "start": w["start"], "end": w["end"]} for w in lw],
         })
     return segments
+
+
+# ---------------------------------------------------------------------------
+# Lyric files: the words of a song as somebody typed them, in whatever they
+# typed them in — read down to plain lines, one per sung line.
+# ---------------------------------------------------------------------------
+
+LYRIC_EXTENSIONS = (".txt", ".text", ".lrc", ".cho", ".chopro", ".chordpro", ".pro", ".crd",
+                    ".docx", ".doc", ".rtf", ".odt", ".pdf", ".pages")
+
+# A line that names a part of the song rather than being sung: "Chorus",
+# "[Verse 2]", "(Bridge)", "Pre-Chorus:", "Chorus x2". Left out, or it would
+# be given a time and written as a clip.
+SECTION_LINE = re.compile(
+    r"^[\[(]?\s*(intro|verse|pre[- ]?chorus|chorus|post[- ]?chorus|bridge|hook|refrain|tag|"
+    r"interlude|instrumental|solo|breakdown|outro|ending|coda|vamp|turnaround)"
+    r"(\s*\d+|\s+[a-d])?\s*[\])]?\s*:?\s*(\(?\s*(x\s*\d+|\d+\s*x)\s*\)?)?\s*$", re.I)
+
+
+def _lyric_lines(text: str) -> str:
+    """Plain lines: section names, chords in brackets and stray spacing gone."""
+    out = []
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = re.sub(r"\[[^\]]*\]", "", raw)          # [C], [00:12.34], [Chorus]
+        line = re.sub(r"\s+", " ", line).strip()
+        if not line or SECTION_LINE.match(raw.strip()) or SECTION_LINE.match(line):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _pdf_text(data: bytes) -> str:
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def _docx_text(data: bytes) -> str:
+    import zipfile
+    import xml.etree.ElementTree as ET
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        root = ET.fromstring(z.read("word/document.xml"))
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    lines = []
+    for para in root.iter(f"{w}p"):
+        bits = []
+        for node in para.iter():
+            if node.tag == f"{w}t" and node.text:
+                bits.append(node.text)
+            elif node.tag in (f"{w}br", f"{w}cr"):
+                bits.append("\n")
+            elif node.tag == f"{w}tab":
+                bits.append(" ")
+        lines.append("".join(bits))
+    return "\n".join(lines)
+
+
+def _pages_text(path: Path) -> str:
+    """A Pages document keeps a PDF of itself for Quick Look, when it was
+    saved with one; that is the only text in it that can be read without
+    Pages."""
+    import zipfile
+    names = ("QuickLook/Preview.pdf", "preview.pdf", "Preview.pdf")
+    if path.is_dir():
+        for name in names:
+            if (path / name).exists():
+                return _pdf_text((path / name).read_bytes())
+    else:
+        with zipfile.ZipFile(path) as z:
+            for name in names:
+                if name in z.namelist():
+                    return _pdf_text(z.read(name))
+    raise HTTPException(422, f"[RTS-LSE-12] {path.name} has no text the engine can read without Pages. "
+                             "Open it in Pages and export it as PDF, Word or plain text into the lyrics folder.")
+
+
+def lyric_file_text(path_str: str) -> str:
+    path = Path(path_str)
+    ext = path.suffix.lower()
+    if ext not in LYRIC_EXTENSIONS:
+        raise HTTPException(400, f"[RTS-LSE-12] {path.name} is not a kind of file lyrics are read from.")
+    if not path.exists():
+        raise HTTPException(404, f"[RTS-LSE-12] {path.name} is not there any more.")
+    try:
+        if ext == ".pages":
+            text = _pages_text(path)
+        elif ext == ".pdf":
+            text = _pdf_text(path.read_bytes())
+        elif ext == ".docx":
+            text = _docx_text(path.read_bytes())
+        elif ext in (".doc", ".rtf", ".odt"):
+            # macOS's own converter, which reads Word, RTF and OpenDocument.
+            done = subprocess.run(["textutil", "-convert", "txt", "-stdout", str(path)],
+                                  capture_output=True, check=True)
+            text = done.stdout.decode("utf-8", errors="replace")
+        else:
+            raw = path.read_bytes()
+            text = raw.decode("utf-8-sig", errors="replace")
+            if ext in (".cho", ".chopro", ".chordpro", ".pro", ".crd"):
+                text = re.sub(r"\{[^}]*\}", "", text)          # {title: …}, {soc}, {comment: …}
+            if ext == ".lrc":
+                text = re.sub(r"<\d+:\d+(?:\.\d+)?>", "", text)  # word timings
+    except HTTPException:
+        raise
+    except PermissionError as e:
+        raise HTTPException(403, f"[RTS-LSE-02] Operation not permitted: macOS refused the lyrics engine access to {path}: {e}")
+    except Exception as e:  # noqa: BLE001 — said, not swallowed
+        raise HTTPException(422, f"[RTS-LSE-12] {path.name} could not be read: {type(e).__name__}: {e}")
+    lines = _lyric_lines(text)
+    if not lines.strip():
+        raise HTTPException(422, f"[RTS-LSE-12] {path.name} has no lyric lines in it.")
+    return lines
+
+
+class LyricFileRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/lyrics_file")
+def lyrics_file(req: LyricFileRequest):
+    """The words in a lyric file, as plain lines — what the studio shows and
+    hands back as the lyrics to listen for."""
+    text = lyric_file_text(req.path)
+    return {"text": text, "lines": len(text.splitlines())}
 
 
 class AlignRequest(BaseModel):
@@ -1695,6 +1820,9 @@ class AlsTranscribeRequest(BaseModel):
     track_ids: list[str] | None = None   # a combined source: read all of these
     language: str = ""
     lyrics: str = ""
+    # With lyrics: the clips carry these words, timed by what was heard,
+    # rather than what was heard.
+    align: bool = False
     isolate: bool = False
     start_bar: float | None = None   # limit transcription to this bar range
     end_bar: float | None = None
@@ -1853,6 +1981,26 @@ def als_transcribe(req: AlsTranscribeRequest):
 
     TRANSCRIBE_PROGRESS.pop(progress_key, None)
     segments.sort(key=lambda s: s["start"])
+    aligned = False
+    if req.align and req.lyrics.strip():
+        # The file's own lines, each word placed where the nearest heard word
+        # was — arrangement seconds still, so the beats come the same way.
+        try:
+            placed = align_lyrics(segments, req.lyrics)
+        except HTTPException:
+            placed = []
+        if placed:
+            def beats(t: float) -> float:
+                return seconds_to_beats(tmap, t)
+            segments = [{
+                "start": seg["start"], "end": seg["end"],
+                "start_beat": beats(seg["start"]), "end_beat": beats(seg["end"]),
+                "text": seg["text"],
+                "words": [{"text": w["text"], "start": w["start"], "end": w["end"],
+                           "start_beat": beats(w["start"]), "end_beat": beats(w["end"])}
+                          for w in seg["words"]],
+            } for seg in placed]
+            aligned = True
     if first_sample:
         SERVABLE_AUDIO.add(first_sample)
         save_state()
@@ -1865,7 +2013,7 @@ def als_transcribe(req: AlsTranscribeRequest):
         "tempo_source": "leader" if leader_segments(ls) else "master",
         "duration": max(s["end"] for s in segments),
         "segments": segments,
-        "aligned": False,
+        "aligned": aligned,
         # times are arrangement seconds; als_write converts them back to beats
         # through the set's own tempo map
         "mapping": {"type": "arrangement_seconds"},
