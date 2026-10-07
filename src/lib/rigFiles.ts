@@ -3,6 +3,7 @@ import type { Patch, PatchClip } from '../types';
 import { songFolderBase } from './prepare.ts';
 import { folderBaseOf } from './preparedSet.ts';
 import type { RigTrackSpec } from './rigTrack.ts';
+import { onSetRuler } from './infoTrack.ts';
 
 /**
  * A band member's patch changes, as the website writes them.
@@ -101,7 +102,7 @@ export function rigTrackSpecFor(
     if (only && !only.has(song.title)) continue;
     for (const change of list) {
       changes.push({
-        bar: song.startBar + (change.bar - 1),
+        bar: onSetRuler(song, change.bar, project),
         name: change.name ?? `${file.member}: bar ${change.bar}`,
         patch: { ...change.patch, source: change.patch.source ?? `${file.member}${file.rig ? ` (${file.rig})` : ''}` },
       });
@@ -117,10 +118,12 @@ export function rigTrackSpecFor(
  */
 export function studioChanges(
   clips: PatchClip[],
-  startBar: number,
+  /** The song's first bar on the set's ruler, or how to put a song bar there (for a song in another meter). */
+  startBar: number | ((bar: number) => number),
   isFromSet: (clip: PatchClip) => boolean,
 ): RigTrackSpec['changes'] {
+  const toSet = typeof startBar === 'number' ? (bar: number) => startBar + (bar - 1) : startBar;
   return clips
     .filter((c) => !isFromSet(c))
-    .map((c) => ({ bar: startBar + (c.bar - 1), name: c.patch.source ?? 'patch change', patch: c.patch }));
+    .map((c) => ({ bar: toSet(c.bar), name: c.patch.source ?? 'patch change', patch: c.patch }));
 }

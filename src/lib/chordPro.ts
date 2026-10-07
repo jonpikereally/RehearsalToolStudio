@@ -46,7 +46,7 @@ export function chordProFor(song: AlsSong, project: AlsProject): string | null {
     directive('title', song.title),
     directive('key', song.key ?? undefined),
     directive('tempo', Math.round(song.bpm ?? project.tempo)),
-    directive('time', `${project.timeSigNum}/${project.timeSigDen}`),
+    directive('time', `${song.timeSigNum || project.timeSigNum}/${song.timeSigDen || project.timeSigDen}`),
   ].filter(Boolean) as string[];
 
   /*
