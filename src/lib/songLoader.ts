@@ -196,6 +196,7 @@ function readyKey(song: Song, opts: LoadOptions, sampleRate: number): string {
     song.timeSigDen,
     song.firstBarOffsetSec,
     song.tempoMap ?? null,
+    song.meterMap ?? null,
   ]);
 }
 

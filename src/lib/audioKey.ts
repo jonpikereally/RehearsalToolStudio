@@ -110,6 +110,7 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
     `bpm ${num(song.bpm ?? project.tempo)}`,
     `sig ${song.timeSigNum || project.timeSigNum}/${song.timeSigDen || project.timeSigDen}`,
     `map ${song.tempoChanges.map((t) => `${num(t.bar)}:${num(t.bpm)}`).join(',')}`,
+    ...timingSince(song),
   ].join(' ');
 
   return {
@@ -118,6 +119,19 @@ export function audioKeySegments(song: AlsSong, project: AlsProject, inputs: Aud
     mix: mix.join('\n'),
     settings: `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`,
   };
+}
+
+/**
+ * What a song with tempo or meter changes adds to its key: its meter map,
+ * and that its render now follows both maps. Such a song was once rendered
+ * as if it kept its first tempo and meter throughout — the wrong length, and
+ * a clip after a change in the wrong place — so its key moves and it is
+ * rendered once more. A song with neither keeps the key it had.
+ */
+function timingSince(song: AlsSong): string[] {
+  const meters = song.meterMap ?? [];
+  if (!meters.length && !song.tempoChanges.length) return [];
+  return [`meter ${meters.map((m) => `${num(m.bar)}:${m.num}/${m.den}`).join(',')}`, 'timing 2'];
 }
 
 /**
@@ -137,6 +151,7 @@ export function partKeysFor(song: AlsSong, project: AlsProject, inputs: AudioKey
     `bpm ${num(song.bpm ?? project.tempo)}`,
     `sig ${song.timeSigNum || project.timeSigNum}/${song.timeSigDen || project.timeSigDen}`,
     `map ${song.tempoChanges.map((t) => `${num(t.bar)}:${num(t.bpm)}`).join(',')}`,
+    ...timingSince(song),
   ].join(' ');
   const settings = `bitrate ${inputs.bitrate} rate ${inputs.sampleRate}`;
   const out: Record<string, string> = {};

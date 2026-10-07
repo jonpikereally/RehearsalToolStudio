@@ -142,7 +142,7 @@ export function chordClipsFor(
       const bars = lengths.get(item.bar);
       // In brackets, as AbleSet reads a chord on a lyrics track: the parser
       // took them off on the way in, and a bare name would show as a word.
-      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]`, ...(bars ? { bars: onSetBars(song, bars, project) } : {}) });
+      if (text) clips.push({ bar, text: /^\[.*\]$/.test(text) ? text : `[${text}]`, ...(bars ? { bars: onSetBars(song, item.bar, bars, project) } : {}) });
     }
   }
 

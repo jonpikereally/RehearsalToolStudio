@@ -1,4 +1,18 @@
-import type { ChartLane, Marker, PatchClip, SamplerNote, SamplerSample, Song, TempoPoint, TimedText, Variant } from '../types';
+import type { ChartLane, Marker, MeterPoint, PatchClip, SamplerNote, SamplerSample, Song, TempoPoint, TimedText, Variant } from '../types';
+
+/** A song's meter changes as the manifest writes them. */
+export function signatureMapOf(points: MeterPoint[]): { bar: number; timeSignature: string }[] {
+  return points.map((p) => ({ bar: p.bar, timeSignature: `${p.num}/${p.den}` }));
+}
+
+/** And back; undefined for none. */
+export function meterMapOf(list: { bar: number; timeSignature: string }[] | undefined): MeterPoint[] | undefined {
+  const points = (list ?? [])
+    .map((m) => ({ bar: m.bar, sig: /^(\d+)\/(\d+)$/.exec(String(m.timeSignature)) }))
+    .filter((m): m is { bar: number; sig: RegExpExecArray } => typeof m.bar === 'number' && !!m.sig)
+    .map((m) => ({ bar: m.bar, num: Number(m.sig[1]), den: Number(m.sig[2]) }));
+  return points.length ? points : undefined;
+}
 import type { ChangelogEntry } from './songChangelog.ts';
 
 /**
@@ -98,6 +112,13 @@ export interface PreparedSongInfo {
   /** Free text about the song — the info text on its group track in Live. */
   notes?: string;
   tempoMap?: TempoPoint[];
+  /**
+   * Time signature changes inside the song: `{ "bar": 25, "timeSignature":
+   * "2/4" }`, bar 1 being `timeSignature`. Every bar in the entry — markers,
+   * chords, the tempo map, these — is counted as played, each in the meter
+   * in force there.
+   */
+  signatureMap?: { bar: number; timeSignature: string }[];
   markers?: { bar: number; name: string }[];
   chords?: TimedText[];
   /**
@@ -303,6 +324,14 @@ export function validateManifest(raw: unknown): { ok: boolean; errors: string[] 
     if (song.tempo !== undefined && typeof song.tempo !== 'number') bad('"tempo" must be a number');
     if (song.timeSignature !== undefined && !/^\d+\/\d+$/.test(String(song.timeSignature))) bad('"timeSignature" must be like "4/4"');
     if (song.bars !== undefined && typeof song.bars !== 'number') bad('"bars" must be a number');
+    if (song.signatureMap !== undefined) {
+      if (!Array.isArray(song.signatureMap)) bad('"signatureMap" must be a list');
+      else song.signatureMap.forEach((m, j) => {
+        if (!m || typeof m.bar !== 'number' || !/^\d+\/\d+$/.test(String(m.timeSignature))) {
+          bad(`"signatureMap"[${j}] needs a numeric "bar" and a "timeSignature" like "2/4"`);
+        }
+      });
+    }
     if (song.durationSec !== undefined && typeof song.durationSec !== 'number') bad('"durationSec" must be a number');
     for (const [field, wantBar] of [['tempoMap', 'bpm'], ['chords', 'text']] as const) {
       const list = song[field] as unknown;
@@ -399,6 +428,7 @@ export function manifestFromSongs(
       if (song.originalKey) info.originalKey = song.originalKey;
       if (song.notes) info.notes = song.notes;
       if (song.tempoMap?.length) info.tempoMap = song.tempoMap;
+      if (song.meterMap?.length) info.signatureMap = signatureMapOf(song.meterMap);
       if (song.markers?.length) info.markers = song.markers.map((m) => ({ bar: m.bar, name: m.name }));
       if (song.chords?.length) info.chords = song.chords;
       if (song.lyrics?.length || song.lanes?.length) {
@@ -472,6 +502,7 @@ export function applyManifest(
     if (info.originalKey) song.originalKey = info.originalKey;
     if (info.notes !== undefined) song.notes = info.notes || undefined;
     if (info.tempoMap?.length) song.tempoMap = info.tempoMap;
+    song.meterMap = meterMapOf(info.signatureMap);
     if (info.chords?.length) song.chords = info.chords;
     if (info.lanes?.length) song.lanes = info.lanes;
     // Set-wins-else-keep, the same bargain the direct importer strikes: a

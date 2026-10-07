@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-07
 
+**Follow a song's whole map of tempo and time signature**
+
+A song was counted in the meter it starts in from beginning to end: a bar of 2/4 partway through was noted as a caveat and otherwise ignored, so every bar after it — sections, chords, the click, loops, cues — was numbered and placed a beat or two out. And the render placed clips and measured the song at its opening tempo, so a song with a tempo change came out the wrong length.
+
 **Count a song in its own time signature from its first bar**
 
 A song in another meter than the set — a 6/8 song in a 4/4 set — was read in 6/8 only when Live's signature marker sat at or before its locator. A marker a beat or so after it, as happens when the locator is dropped just ahead of the bar line, left the song in 4/4 with a note that it changed partway in. A change inside the song's first bar now counts as the meter it starts in.

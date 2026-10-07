@@ -232,6 +232,18 @@ export interface TempoPoint {
   bpm: number;
 }
 
+/**
+ * A time signature change inside a song, at a 1-based bar. Bars are counted
+ * as they are played — each in the meter in force there — so a song with a
+ * bar of 2/4 in it has a bar 25 that is two beats long and a bar 26 that is
+ * four again.
+ */
+export interface MeterPoint {
+  bar: number;
+  num: number;
+  den: number;
+}
+
 /** A lyric line or a chord, pinned to a 1-based bar. */
 export interface TimedText {
   bar: number;
@@ -313,8 +325,14 @@ export interface Song {
    * a point says otherwise. Absent means a single constant tempo throughout.
    */
   tempoMap?: TempoPoint[];
+  /** The meter at bar 1. */
   timeSigNum: number;
   timeSigDen: number;
+  /**
+   * Time signature changes within the song, if it has any; bar 1 is in
+   * `timeSigNum`/`timeSigDen` unless a point says otherwise.
+   */
+  meterMap?: MeterPoint[];
   /**
    * Seconds from the start of the file to the downbeat of bar 1.
    * Ableton exports from 1.1.1 are 0; set this if your render has a lead-in.
