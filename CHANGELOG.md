@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-07
 
+**Keep the Changes window from putting up the Open window**
+
+The Changes window is the studio's page again in a small window of its own, and the page, finding no set open in it, did what it does on launch with nothing open: asked for the Open window. So looking at the log brought the chooser up in front of it every time. The question of what to open is now never asked from a small window — what is open is the studio's own window's business.
+
 **Follow a song's whole map of tempo and time signature**
 
 A song was counted in the meter it starts in from beginning to end: a bar of 2/4 partway through was noted as a caveat and otherwise ignored, so every bar after it — sections, chords, the click, loops, cues — was numbered and placed a beat or two out. And the render placed clips and measured the song at its opening tempo, so a song with a tempo change came out the wrong length.

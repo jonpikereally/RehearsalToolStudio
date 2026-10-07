@@ -270,7 +270,12 @@ export default function App() {
     if (section === 'lyrics') navigate('/tools', { tool: 'lyrics' });
   }, [section]);
   const [toolsOpened, setToolsOpened] = useState(false);
-  const needsChoosing = !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
+  /*
+   * Never from a small window. The Changes window runs this same page with
+   * nothing open in it — what is open is the studio's own window's — so
+   * asking here put the Open window up every time the log was looked at.
+   */
+  const needsChoosing = !panelWindow() && !aside && !!publishFolderName && (!outputSet || !usingLocalFolder || !currentSet);
   const gate = useOpenGate(needsChoosing, takeChosen);
   let body: JSX.Element | null;
   let toolsShown = false;
