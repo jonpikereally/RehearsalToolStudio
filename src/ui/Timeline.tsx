@@ -114,7 +114,7 @@ export default function Timeline({
     }
     return lines;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, gridStep, barSec, duration, song.bpm, song.timeSigNum, song.timeSigDen, song.firstBarOffsetSec]);
+  }, [bars, gridStep, barSec, duration, song.bpm, song.timeSigNum, song.timeSigDen, song.firstBarOffsetSec, song.tempoMap, song.meterMap]);
 
   return (
     <div

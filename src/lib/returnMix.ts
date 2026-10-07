@@ -2,9 +2,9 @@ import type { AlsClip, AlsProject, AlsSong } from './alsParser';
 import type { Bus } from '../types';
 import { renderTrack, type ClipPlacement } from './arrangement.ts';
 import { buildChain, deviceLabel } from './fx.ts';
-import { songBars, songBeatsPerBar } from './infoTrack.ts';
+import { songBars, songTiming } from './infoTrack.ts';
+import { barToSec } from './bars.ts';
 import { peakOf } from './bounce.ts';
-import { tempoOf } from './prepare.ts';
 
 /**
  * A song as one of the set's return buses hears it.
@@ -115,9 +115,6 @@ export interface ReturnRender {
   pulledDb: number;
 }
 
-function barToSeconds(bar: number, bpm: number, perBar: number): number {
-  return ((bar - 1) * perBar * 60) / bpm;
-}
 
 const needsShift = (clip: AlsClip) => (clip.semitones ?? 0) !== 0 || Math.abs((clip.speed ?? 1) - 1) > 1e-6;
 
@@ -164,10 +161,9 @@ async function processBus(input: AudioBuffer, bus: Bus, withFader: boolean): Pro
 export async function renderReturnMix(opts: RenderReturnOptions): Promise<ReturnRender> {
   const { song, project, sampleRate, signal } = opts;
   const buses = project.buses ?? [];
-  const bpm = tempoOf(song, project);
-  // The song's bars are counted in its own meter, which may not be the set's.
-  const perBar = songBeatsPerBar(song, project);
-  const durationSec = barToSeconds(1 + songBars(song), bpm, perBar);
+  // Bars to seconds through the song's tempo and meter maps, as the player counts them.
+  const timing = songTiming(song, project);
+  const durationSec = barToSec(1 + songBars(song), timing);
   const frames = Math.max(1, Math.round(durationSec * sampleRate));
   const report = (stage: 'reading' | 'rendering' | 'processing', ratio: number) => opts.onProgress?.(stage, ratio);
   const fed: string[] = [];
@@ -194,7 +190,7 @@ export async function renderReturnMix(opts: RenderReturnOptions): Promise<Return
         const window = clip.frozen
           ? {
               startSec: clip.sourceStartSec,
-              durationSec: barToSeconds(clip.endBar, bpm, perBar) - barToSeconds(clip.startBar, bpm, perBar) + clip.fadeOutSec + 0.25,
+              durationSec: barToSec(clip.endBar, timing) - barToSec(clip.startBar, timing) + clip.fadeOutSec + 0.25,
             }
           : undefined;
         const loaded = await opts.loadClip(clip, window);
@@ -210,8 +206,8 @@ export async function renderReturnMix(opts: RenderReturnOptions): Promise<Return
         placements.push({
           buffer,
           gain: feed.level * (clip.gain ?? 1),
-          startSec: barToSeconds(clip.startBar, bpm, perBar),
-          endSec: barToSeconds(clip.endBar, bpm, perBar),
+          startSec: barToSec(clip.startBar, timing),
+          endSec: barToSec(clip.endBar, timing),
           // Placed against where the cut began; a stretched file's seconds are shorter by the same factor.
           sourceStartSec: (clip.sourceStartSec - loaded.fromSec) / speed,
           fadeInSec: clip.fadeInSec,

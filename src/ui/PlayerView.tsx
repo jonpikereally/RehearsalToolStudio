@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { usePlayer } from '../lib/usePlayer';
 import { useMediaSession } from '../lib/useMediaSession';
 import { back, navigate, setlistUrl, songUrl } from '../lib/router';
-import { barToSec, formatBarBeat, formatTime, hasTempoChanges, secToBar, tempoAt, tempoSegments, totalBars } from '../lib/bars';
+import { barToSec, formatBarBeat, formatTime, hasTempoChanges, meterPoints, secToBar, tempoAt, tempoSegments, totalBars } from '../lib/bars';
 import { formatSemitones, transposeKeyName } from '../lib/pitchService';
 import { visibleVariants } from '../lib/songLoader';
 import Timeline from './Timeline';
@@ -419,7 +419,7 @@ export default function PlayerView({ songId, setlistId, shown = true }: { songId
             song.title
           )}
           <span className="sub" style={{ display: 'block' }}>
-            {song.tempoUnset ? 'tempo not set' : tempoSummary(song)} · {song.timeSigNum}/{song.timeSigDen}
+            {song.tempoUnset ? 'tempo not set' : tempoSummary(song)} · {meterSummary(song)}
             {displayKey ? ` · ${displayKey}` : song.transpose ? ` · ${formatSemitones(song.transpose)}` : ''}
             {step ? ` · ${step.index + 1}/${step.total}` : ''}
           </span>
@@ -1025,6 +1025,13 @@ function tempoSummary(song: import('../types').Song): string {
   if (!hasTempoChanges(song)) return `${round(song.bpm)} BPM`;
   const bpms = tempoSegments(song).map((seg) => seg.bpm);
   return `${round(Math.min(...bpms))}–${round(Math.max(...bpms))} BPM`;
+}
+
+/** The song's meter, and the others it moves through: "4/4, with 2/4". */
+function meterSummary(song: import('../types').Song): string {
+  const first = `${song.timeSigNum}/${song.timeSigDen}`;
+  const others = [...new Set(meterPoints(song).map((p) => `${p.num}/${p.den}`))].filter((m) => m !== first);
+  return others.length ? `${first}, with ${others.join(', ')}` : first;
 }
 
 const round = (n: number) => Math.round(n * 10) / 10;

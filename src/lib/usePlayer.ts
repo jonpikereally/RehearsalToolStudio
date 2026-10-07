@@ -322,7 +322,7 @@ export function usePlayer(
     engine.setClickBeats(clickBeats(song, state.duration));
   }, [
     song?.bpm, song?.timeSigNum, song?.timeSigDen, song?.firstBarOffsetSec,
-    song?.tempoMap, state.ready, state.duration,
+    song?.tempoMap, song?.meterMap, state.ready, state.duration,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* -------------------------------- position -------------------------------- */

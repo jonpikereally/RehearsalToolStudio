@@ -1,4 +1,4 @@
-import type { Bus, Device } from '../types';
+import type { Bus, Device, MeterPoint } from '../types';
 /**
  * Reading an Ableton Live set.
  *
@@ -84,6 +84,12 @@ export interface AlsSong {
   /** The time signature in force where the song starts. */
   timeSigNum: number;
   timeSigDen: number;
+  /**
+   * Time signature changes inside the song, at the bars they fall on — bars
+   * counted as played, each in its own meter, as every other song-relative
+   * bar here is. Absent when the song keeps one meter.
+   */
+  meterMap?: MeterPoint[];
   /**
    * What this app cannot play as Ableton does: a time signature change
    * partway through, say. Shown with the song, so nobody is surprised.
@@ -1575,8 +1581,32 @@ export function parseAlsXml(xml: string): AlsProject {
     const opening = signatureChanges.filter((e) => e.beat > loc.beat + 1e-6 && e.beat < Math.min(endBeat, loc.beat + priorBeats) - 1e-6).pop();
     const signature = opening ?? before ?? { beat: -Infinity, num: timeSigNum, den: timeSigDen };
     const songBeatsPerBar = signature.num * (4 / signature.den);
+    /*
+     * The song's bars as they are played: each stretch between signature
+     * changes counted in its own meter, so a bar of 2/4 is one bar, and the
+     * bars after it are numbered as Live numbers them.
+     */
+    const meters: { beat: number; bar: number; num: number; den: number; perBar: number }[] = [
+      { beat: loc.beat, bar: 1, num: signature.num, den: signature.den, perBar: songBeatsPerBar },
+    ];
+    for (const c of signatureChanges) {
+      if (c.beat <= Math.max(loc.beat, signature.beat) + 1e-6 || !(c.beat < endBeat)) continue;
+      const prev = meters[meters.length - 1];
+      if (c.num === prev.num && c.den === prev.den) continue;
+      const raw = prev.bar + (c.beat - prev.beat) / prev.perBar;
+      const bar = Math.abs(raw - Math.round(raw)) < 0.001 ? Math.round(raw) : Math.round(raw * 1000) / 1000;
+      meters.push({ beat: c.beat, bar, num: c.num, den: c.den, perBar: c.num * (4 / c.den) });
+    }
+    const rawBar = (beat: number) => {
+      let m = meters[0];
+      for (const x of meters) {
+        if (x.beat <= beat + 1e-9) m = x;
+        else break;
+      }
+      return m.bar + (beat - m.beat) / m.perBar;
+    };
     const relBar = (beat: number) => {
-      const bar = (beat - loc.beat) / songBeatsPerBar + 1;
+      const bar = rawBar(beat);
       const rounded = Math.round(bar);
       return Math.abs(bar - rounded) < 0.001 ? rounded : Math.round(bar * 1000) / 1000;
     };
@@ -1806,30 +1836,8 @@ export function parseAlsXml(xml: string): AlsProject {
 
     if (!stems.length) warnings.push(`No audio tracks found for “${meta.title}”.`);
 
-    /*
-     * What cannot be played as Ableton plays it. A time signature change
-     * inside the song: this app counts one signature per song, so bars
-     * after the change land in the wrong place, though the audio plays on.
-     */
+    // What cannot be played as Ableton plays it: the set's own parts, said for every song.
     const caveats: string[] = [...setPartCaveats];
-    const inside = signatureChanges.filter((c) => c.beat > Math.max(loc.beat, signature.beat) + 1e-6 && c.beat < endBeat);
-    const fmt = (b: number) => (Number.isInteger(b) ? String(b) : b.toFixed(1));
-    for (let i = 0; i < inside.length; i++) {
-      const change = inside[i];
-      // Only a stretch in another meter; a change back is the end of one.
-      if (change.num === signature.num && change.den === signature.den) continue;
-      const before = inside[i - 1];
-      if (before && before.num === change.num && before.den === change.den) continue;
-      const from = relBar(change.beat);
-      const after = inside.slice(i + 1).find((c) => c.num !== change.num || c.den !== change.den);
-      const to = after ? relBar(after.beat) : null;
-      const where =
-        to !== null && to - from <= 1.001 ? `Bar ${fmt(from)} is` : `Bars from ${fmt(from)}${to !== null ? ` to ${fmt(to)}` : ' on'} are`;
-      caveats.push(
-        `${where} in ${change.num}/${change.den}; bars, loops and the click here are counted in ` +
-          `${signature.num}/${signature.den} throughout.`,
-      );
-    }
 
     // The key marks inside this song, the last at any bar winning.
     const marksHere = new Map<number, { key?: string; shift?: number }>();
@@ -1864,7 +1872,7 @@ export function parseAlsXml(xml: string): AlsProject {
       // In the song's own meter: a 6/8 song in a 4/4 set has more of its
       // bars than the set's ruler shows between its locators.
       bars: Number.isFinite(endBeat)
-        ? ((n) => (Math.abs(n - Math.round(n)) < 0.001 ? Math.round(n) : n))((endBeat - loc.beat) / songBeatsPerBar)
+        ? ((n) => (Math.abs(n - Math.round(n)) < 0.001 ? Math.round(n) : n))(rawBar(endBeat) - 1)
         : 0,
       bpm: meta.bpm ?? region?.bpm ?? null,
       key: meta.key ?? region?.key ?? openingKey,
@@ -1893,6 +1901,7 @@ export function parseAlsXml(xml: string): AlsProject {
         .map((l) => ({ bar: relBar(l.beat), name: l.name })),
       timeSigNum: signature.num,
       timeSigDen: signature.den,
+      ...(meters.length > 1 ? { meterMap: meters.slice(1).map(({ bar, num, den }) => ({ bar, num, den })) } : {}),
       caveats,
       rigTracks: rigTrackDefs
         .map((t) => ({

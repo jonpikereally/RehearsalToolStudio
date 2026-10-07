@@ -2,7 +2,7 @@ import type { AlsProject, AlsSong } from './alsParser';
 import { clipsFromMarks, clipsFromRig, laneList, songIdFor } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
 import { folderOrder, lyricsFileFor, mergeSongs, songFolderBase, tempoOf } from './prepare.ts';
-import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, songFileFor, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
+import { MANIFEST_NAME, SONG_FILE_NAME, folderBaseOf, sameSong, signatureMapOf, songFileFor, type PreparedManifest, type PreparedSongInfo } from './preparedSet.ts';
 import { songBars, songLengthSec } from './infoTrack.ts';
 import { parseNameMeta } from './scan.ts';
 import { withChangelog } from './songChangelog.ts';
@@ -144,6 +144,7 @@ export function keepUnasked(before: PreparedSongInfo | null | undefined, now: Pr
     bars: kinds.info ? now.bars : before.bars,
     durationSec: kinds.info ? now.durationSec : before.durationSec,
     tempoMap: pick(kinds.info, 'tempoMap'),
+    signatureMap: pick(kinds.info, 'signatureMap'),
     markers: pick(kinds.sections, 'markers'),
     chords: pick(kinds.chords, 'chords'),
     // The lanes carry the words and the chords both, so they follow whichever
@@ -243,6 +244,7 @@ export function songInfoFor(
     originalKey: song.key ?? undefined,
     notes: song.notes || undefined,
     tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
+    signatureMap: song.meterMap?.length ? signatureMapOf(song.meterMap) : undefined,
     markers: song.sections.length
       ? song.sections.map((s) => ({ bar: s.bar, name: s.text }))
       : undefined,
@@ -273,6 +275,7 @@ export function wordsChanged(entry: PreparedSongInfo, song: AlsSong, project: Al
       key: x.originalKey ?? null,
       notes: x.notes ?? '',
       tempoMap: x.tempoMap ?? [],
+      signatureMap: x.signatureMap ?? [],
       markers: x.markers ?? [],
       chords: x.chords ?? [],
       lanes: x.lanes ?? [],

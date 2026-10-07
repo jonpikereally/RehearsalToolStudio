@@ -281,6 +281,7 @@ way a hand-made folder would.
       "originalKey": "G",
       "notes": "Piano intro. Watch the drummer for the stop.",
       "tempoMap": [{ "bar": 1, "bpm": 85 }, { "bar": 41, "bpm": 90 }],
+      "signatureMap": [{ "bar": 25, "timeSignature": "2/4" }, { "bar": 26, "timeSignature": "4/4" }],
       "markers": [{ "bar": 1, "name": "Intro" }, { "bar": 5, "name": "Verse 1" }],
       "chords": [{ "bar": 5, "text": "IV" }, { "bar": 7, "text": "V" }],
       "parts": [
@@ -333,13 +334,14 @@ way a hand-made folder would.
 | `songs[].renderedAt` | no | when the song's **stems** were last rendered, ISO; the folder name carries the day. A submix pass does not move it |
 | `songs[].submixesAt` | no | when the song's **submixes** were last written, ISO; absent when it has none. Its own date because it is its own work: the band changes, a member's submix is written again, and every stem beside it is untouched — so a song can honestly hold stems from Tuesday and submixes from Friday |
 | `songs[].tempo` | no | the tempo at the song's start, to one decimal — what the folder name used to carry. `tempoMap` has the rest |
-| `songs[].timeSignature` | no | the meter, as `4/4` |
+| `songs[].timeSignature` | no | the meter at bar 1, as `4/4` — the song's own, which need not be the set's |
 | `songs[].bars` | no | the song's length in bars: from its first bar to where it ends, at the next song's locator or its stop. Fractional when the end sits mid-bar. A set prepared before September 2026 said one bar more than this — the bar line the song ends on was counted as a bar it plays |
 | `songs[].durationSec` | no | the song's length in seconds, through its tempo map — the same bars, timed. The files are this long (plus the lead-in); earlier sets overstated it by a bar the same way |
 | `songs[].firstBarOffsetSec` | no | seconds from the start of each file to the downbeat of bar 1 |
 | `songs[].originalKey` | no | the key the set gave the song |
 | `songs[].notes` | no | free text about the song, from the info text of its group track in Live; line breaks kept, worth showing as typed |
 | `songs[].tempoMap` | no | `{bar, bpm}` list, 1-based bars; the full map, first entry included |
+| `songs[].signatureMap` | no | `{bar, timeSignature}` list of the meter changes inside the song, bar 1 being `timeSignature`. Every bar in the entry — this, `tempoMap`, `markers`, `chords`, `lanes`, `bars` — is counted as played, each bar in the meter in force there: after a single bar of 2/4 at bar 25, bar 26 is the next downbeat. Time runs bar by bar through both maps: a bar lasts its meter's quarter notes (`num × 4 / den`) at the tempo in force |
 | `songs[].markers` | no | `{bar, name}` list of sections |
 | `songs[].chords` | no | `{bar, text}` list, one chord per bar it changes on |
 | `songs[].lanes` | no | the set's `+LYRICS` tracks kept apart: `{id, name, kind: "lyrics" \| "chords", items: [{bar, text}]}` |

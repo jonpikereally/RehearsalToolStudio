@@ -173,6 +173,11 @@ export function songChanges(prev: PreparedSongInfo, next: PreparedSongInfo): str
   if ((prev.timeSignature ?? null) !== (next.timeSignature ?? null) && next.timeSignature) {
     out.push(prev.timeSignature ? `Time signature ${prev.timeSignature} → ${next.timeSignature}` : `Time signature set to ${next.timeSignature}`);
   }
+  if (JSON.stringify(prev.signatureMap ?? []) !== JSON.stringify(next.signatureMap ?? [])) {
+    out.push(next.signatureMap?.length
+      ? `Time signature changes now at bar${next.signatureMap.length === 1 ? '' : 's'} ${next.signatureMap.map((m) => `${m.bar} (${m.timeSignature})`).join(', ')}`
+      : 'Time signature changes removed');
+  }
   if ((prev.originalKey ?? null) !== (next.originalKey ?? null)) {
     out.push(
       next.originalKey ? (prev.originalKey ? `Key ${prev.originalKey} → ${next.originalKey}` : `Key set to ${next.originalKey}`) : 'Key removed',
