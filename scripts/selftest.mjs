@@ -718,7 +718,7 @@ group('ableton set import');
   const song = res.songs[0];
   check('tempo comes from the set', song.bpm === 136);
   check('and is no longer flagged unset', song.tempoUnset === false);
-  check('the tempo map carries over', JSON.stringify(song.tempoMap) === '[{"bar":91,"bpm":140}]');
+  check('the tempo map carries over, whole: from bar 1 at the song\'s tempo', JSON.stringify(song.tempoMap) === '[{"bar":1,"bpm":136},{"bar":91,"bpm":140}]', JSON.stringify(song.tempoMap));
   check('key carries over', song.originalKey === 'Eb');
   check('sections become markers', song.markers.map((m) => m.name).join() === 'INTRO,VERSE 1');
   check('markers keep their bar', song.markers[1].bar === 11);

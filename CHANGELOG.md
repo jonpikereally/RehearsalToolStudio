@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-08
+
+**Publish a song's tempo map whole, from bar 1**
+
+A song's tempo map was its own tempo changes, and a set's automation usually has no point where a song starts — its tempo is whatever an earlier point left it at. So a song that steps from 136 to 140 at bar 91 was published as [{ bar: 91, bpm: 140 }]. The band's player takes the map's first point as the song's tempo, as the contract says it may ("the full map, first entry included"), and played the first ninety bars at 140: every marker, chord and click before the change in the wrong place.
+
 ## 2026-10-07
 
 **Take a song's words from its lyric file in a lyrics folder**
