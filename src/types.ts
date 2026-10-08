@@ -162,6 +162,8 @@ export interface VariantClip {
   startBar: number;
   endBar: number;
   sourceStartSec: number;
+  /** Where in the file the clip stops, for one piece of a file warped through several tempos. */
+  sourceEndSec?: number;
   fadeInSec: number;
   fadeOutSec: number;
   /** The clip's own transposition in Live, in semitones. */

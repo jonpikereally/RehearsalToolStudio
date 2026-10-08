@@ -331,6 +331,7 @@ export function songsFromProject(
                 startBar: clip.startBar,
                 endBar: clip.endBar,
                 sourceStartSec: clip.sourceStartSec,
+                ...(clip.sourceEndSec !== undefined ? { sourceEndSec: clip.sourceEndSec } : {}),
                 fadeInSec: clip.fadeInSec,
                 fadeOutSec: clip.fadeOutSec,
                 semitones: clip.semitones ?? 0,

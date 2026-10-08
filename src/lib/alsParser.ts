@@ -15,6 +15,7 @@ import type { Bus, Device, MeterPoint } from '../types';
 import { isRigLocator } from './alsPatch.ts';
 import { rigTrackMember, sendsPatches, withoutPatchFlag } from './rigTrack.ts';
 import { transposeKey } from './nashville.ts';
+import { WARP_CROSSFADE_SEC, warpMarkersIn, warpPieces, type WarpMarker } from './warp.ts';
 
 export interface TempoChange {
   /** Beats from the start of the set. */
@@ -218,6 +219,8 @@ interface RawClip {
   fadeOutSec: number;
   /** Beats of the file per second of it, or null when the clip isn't warped. */
   warpBps: number | null;
+  /** Every warp marker, in file order; empty when the clip isn't warped. */
+  markers: WarpMarker[];
   /**
    * The beat of the clip's own timeline that sits at the file's first sample.
    * Usually 0; a freeze clip that begins off the bar line counts its beats
@@ -252,6 +255,13 @@ export interface AlsClip {
   endBar: number;
   /** Offset into the file where this clip starts playing. */
   sourceStartSec: number;
+  /**
+   * Where in the file it stops, for a clip that is one piece of a file
+   * warped through several tempos — see `warpPieces`. A renderer need only
+   * stretch the file from `sourceStartSec` to here. Absent for any other
+   * clip, which plays its file on from its start for as long as it lasts.
+   */
+  sourceEndSec?: number;
   disabled: boolean;
   fadeInSec: number;
   fadeOutSec: number;
@@ -913,6 +923,7 @@ function rawClipsIn(chunk: string, frozen: boolean): RawClip[] {
       fadeInSec: fades && !Number.isNaN(fadeIn) ? fadeIn : 0,
       fadeOutSec: fades && !Number.isNaN(fadeOut) ? fadeOut : 0,
       warpBps: warpRate(body),
+      markers: /<IsWarped Value="true"/.test(body) ? warpMarkersIn(body) : [],
       fileStartBeat: fileStartBeat(body),
       sampleRate: num(/<DefaultSampleRate Value="(\d+)"/) || null,
       gain: (() => {
@@ -1306,6 +1317,9 @@ export function parseAlsXml(xml: string): AlsProject {
    * beat zero, or a freeze clip that begins off the bar line reads its file
    * from most of a bar in.
    */
+  /** The tempo in force at a beat of the set. */
+  const bpmAt = (beat: number): number => tempoChanges.filter((t) => t.beat <= beat + 1e-9).pop()?.bpm ?? tempo;
+
   const frozenSourceSec = (c: RawClip, atBeat: number): number =>
     secondsBetween(c.startBeat - (c.sourceStartBeat - c.fileStartBeat), atBeat);
 
@@ -1611,6 +1625,69 @@ export function parseAlsXml(xml: string): AlsProject {
       return Math.abs(bar - rounded) < 0.001 ? rounded : Math.round(bar * 1000) / 1000;
     };
 
+    /*
+     * An audio clip cut to this song, as the renderer wants it: where it
+     * sits, which slice of its file it plays, and how fast. Usually one
+     * clip. A warped clip whose file bends against the song's clock — it
+     * changes tempo itself, or the song changes tempo over it — is cut into
+     * straight pieces, each at its own speed; see `warpPieces`. A song with
+     * one tempo and a clip whose markers make one line is worked out as it
+     * always was, so its audio is not made again for nothing.
+     */
+    const songTempoBeats = tempoChanges.filter((t) => t.beat > loc.beat + 1e-6 && t.beat < endBeat).map((t) => t.beat);
+    const placeClip = (c: RawClip): Pick<AlsClip, 'startBar' | 'endBar' | 'sourceStartSec' | 'sourceEndSec' | 'speed' | 'fadeInSec' | 'fadeOutSec'>[] => {
+      const from = Math.max(c.startBeat, loc.beat);
+      const to = Math.min(c.endBeat, endBeat);
+      const whole = {
+        startBar: relBar(from),
+        endBar: relBar(to),
+        sourceStartSec: c.frozen ? frozenSourceSec(c, from) : sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
+        fadeInSec: c.fadeInSec,
+        fadeOutSec: c.fadeOutSec,
+        // A warped file at another tempo is stretched to this song's:
+        // its beats per second against the song's, where they differ.
+        // A freeze file was rendered along the timeline and needs none.
+        speed:
+          !c.frozen && c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
+            ? startBpm / 60 / c.warpBps
+            : 1,
+      };
+      if (c.frozen || !c.warpBps) return [whole];
+      const pieces = warpPieces({
+        markers: c.markers,
+        fromBeat: from,
+        toBeat: to,
+        clipBeatAt: (beat) => c.sourceStartBeat + (beat - c.startBeat),
+        secAt: (beat) => secondsBetween(loc.beat, beat),
+        tempoBeats: songTempoBeats,
+      });
+      if (!pieces || (pieces.length === 1 && !songTempoBeats.length)) return [whole];
+      if (pieces.length === 1) {
+        // One line, but against a song that changes tempo: its speed is the line's, not the opening tempo's.
+        const [only] = pieces;
+        return [{ ...whole, sourceStartSec: only.sourceStartSec, speed: Math.abs(only.speed - 1) > 0.005 ? only.speed : 1 }];
+      }
+      /*
+       * Each piece runs a hair past the next one's start and fades out
+       * across it as the next fades in: two stretches of one file at two
+       * speeds meet without a click.
+       */
+      const overlap = WARP_CROSSFADE_SEC;
+      return pieces.map((p, i) => {
+        const last = i === pieces.length - 1;
+        const toBeat = last ? p.toBeat : p.toBeat + (overlap * bpmAt(p.toBeat)) / 60;
+        return {
+          startBar: relBar(p.fromBeat),
+          endBar: relBar(toBeat),
+          sourceStartSec: p.sourceStartSec,
+          sourceEndSec: last ? p.sourceEndSec : p.sourceEndSec + overlap * p.speed,
+          fadeInSec: i === 0 ? c.fadeInSec : overlap,
+          fadeOutSec: last ? c.fadeOutSec : overlap,
+          speed: p.speed,
+        };
+      });
+    };
+
     // Match a group track to the song by name, so stems can be attributed.
     const group = groupFor(meta.title, loc.beat, endBeat);
     const stems: AlsSong['stems'] = group
@@ -1661,29 +1738,18 @@ export function parseAlsXml(xml: string): AlsProject {
              * cue.
              */
             const mine = all.filter((c) => c.endBeat > loc.beat && c.startBeat < endBeat);
-            const clips: AlsClip[] = mine.map((c) => ({
-              path: c.path,
-              startBar: relBar(Math.max(c.startBeat, loc.beat)),
-              endBar: relBar(Math.min(c.endBeat, endBeat)),
-              sourceStartSec: c.frozen
-                ? frozenSourceSec(c, Math.max(c.startBeat, loc.beat))
-                : sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
-              disabled: c.disabled,
-              fadeInSec: c.fadeInSec,
-              fadeOutSec: c.fadeOutSec,
-              warped: c.warpBps !== null,
-              semitones: c.semitones,
-              gain: c.gain,
-              absPath: c.absPath ?? undefined,
-              // A warped file at another tempo is stretched to this song's:
-              // its beats per second against the song's, where they differ.
-              // A freeze file was rendered along the timeline and needs none.
-              speed:
-                !c.frozen && c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
-                  ? startBpm / 60 / c.warpBps
-                  : 1,
-              ...(c.frozen ? { frozen: true as const } : {}),
-            }));
+            const clips: AlsClip[] = mine.flatMap((c) =>
+              placeClip(c).map((placed) => ({
+                path: c.path,
+                ...placed,
+                disabled: c.disabled,
+                warped: c.warpBps !== null,
+                semitones: c.semitones,
+                gain: c.gain,
+                absPath: c.absPath ?? undefined,
+                ...(c.frozen ? { frozen: true as const } : {}),
+              })),
+            );
             const sounding = mine.find((c) => !c.disabled) ?? mine[0];
             return {
               name: t.name,
@@ -1794,27 +1860,19 @@ export function parseAlsXml(xml: string): AlsProject {
         }
         for (const c of clipsOfTrack(t)) {
           if (c.disabled || c.endBeat <= loc.beat || c.startBeat >= endBeat) continue;
-          clips.push({
-            path: c.path,
-            startBar: relBar(Math.max(c.startBeat, loc.beat)),
-            endBar: relBar(Math.min(c.endBeat, endBeat)),
-            sourceStartSec: c.frozen
-              ? frozenSourceSec(c, Math.max(c.startBeat, loc.beat))
-              : sourceStartSec(c, Math.max(0, loc.beat - c.startBeat)),
-            disabled: false,
-            fadeInSec: c.fadeInSec,
-            fadeOutSec: c.fadeOutSec,
-            warped: c.warpBps !== null,
-            semitones: c.semitones,
-            gain: c.gain * level,
-            absPath: c.absPath ?? undefined,
-            speed:
-              !c.frozen && c.warpBps && Math.abs(startBpm / 60 / c.warpBps - 1) > 0.005
-                ? startBpm / 60 / c.warpBps
-                : 1,
-            track: t.name.trim(),
-            ...(c.frozen ? { frozen: true as const } : {}),
-          });
+          for (const placed of placeClip(c)) {
+            clips.push({
+              path: c.path,
+              ...placed,
+              disabled: false,
+              warped: c.warpBps !== null,
+              semitones: c.semitones,
+              gain: c.gain * level,
+              absPath: c.absPath ?? undefined,
+              track: t.name.trim(),
+              ...(c.frozen ? { frozen: true as const } : {}),
+            });
+          }
         }
       }
       if (!clips.length) continue;

@@ -1,5 +1,5 @@
 import type { AlsClip, AlsProject, AlsSong } from './alsParser';
-import { needsRender, renderTrack, type ClipPlacement } from './arrangement.ts';
+import { needsRender, renderTrack, sliceBuffer, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
@@ -958,8 +958,19 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
      * kept, so nothing is shifted twice.
      */
     const held = new Map<string, AudioBuffer>();
-    const shiftKey = (clip: { path: string; semitones?: number; speed?: number }) =>
-      `${(resolvePath(clip.path) ?? clip.path).toLowerCase()}|${clip.semitones ?? 0}|${(clip.speed ?? 1).toFixed(4)}`;
+    /*
+     * One piece of a file warped through several tempos plays only its own
+     * slice of the file, and that slice is all that is stretched — at the
+     * piece's speed, cached under the file and the slice together.
+     */
+    const isPiece = (clip: AlsClip) => clip.sourceEndSec !== undefined && !clip.frozen;
+    const pieceOf = (clip: AlsClip, buffer: AudioBuffer) =>
+      isPiece(clip) ? sliceBuffer(buffer, clip.sourceStartSec, clip.sourceEndSec!) : { buffer, fromSec: 0 };
+    const shiftSource = (clip: AlsClip) =>
+      (resolvePath(clip.path) ?? clip.path) +
+      (isPiece(clip) ? `#${clip.sourceStartSec.toFixed(3)}-${clip.sourceEndSec!.toFixed(3)}` : '');
+    const shiftKey = (clip: AlsClip) =>
+      `${shiftSource(clip).toLowerCase()}|${clip.semitones ?? 0}|${(clip.speed ?? 1).toFixed(4)}`;
     const needsShift = (clip: { semitones?: number; speed?: number }) =>
       (clip.semitones ?? 0) !== 0 || Math.abs((clip.speed ?? 1) - 1) > 1e-6;
     const shifts = new Map<string, AlsSong['stems'][number]['clips'][number]>();
@@ -1009,10 +1020,10 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
           }
           if (buffer) {
             const kept = await opts.shift!({
-              buffer,
+              buffer: pieceOf(clip, buffer).buffer,
               semitones: clip.semitones ?? 0,
               speed: clip.speed ?? 1,
-              source: resolvePath(clip.path) ?? clip.path,
+              source: shiftSource(clip),
               prime: true,
               onProgress: (ratio) => {
                 partial.set(key, Math.min(1, Math.max(0, ratio)));
@@ -1133,13 +1144,16 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
                     barToSec(clip.endBar, timing) - barToSec(clip.startBar, timing) + clip.fadeOutSec + 0.25,
                 }
               : undefined;
-            let buffer = await loadFile(clip.path, clip.absPath, window);
-            if (!buffer) {
+            const loaded = await loadFile(clip.path, clip.absPath, window);
+            if (!loaded) {
               skipped.push({ song: song.title, part: stem.name, reason: `missing ${clip.path}` });
               continue;
             }
+            const piece = pieceOf(clip, loaded);
+            let buffer = piece.buffer;
             // Placed against where the cut began, when it was one.
-            const placed = cutFrom.get(buffer) ? { ...clip, sourceStartSec: clip.sourceStartSec - cutFrom.get(buffer)! } : clip;
+            const from = (cutFrom.get(loaded) ?? 0) + piece.fromSec;
+            const placed = from ? { ...clip, sourceStartSec: clip.sourceStartSec - from } : clip;
             // As Live plays it: the clip's own transposition and warp speed —
             // rendered above and read back from the cache, or held from above
             // when the cache would not take it.
@@ -1151,7 +1165,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
                   buffer,
                   semitones: clip.semitones ?? 0,
                   speed,
-                  source: resolvePath(clip.path) ?? clip.path,
+                  source: shiftSource(clip),
                 })) ??
                 buffer;
             }

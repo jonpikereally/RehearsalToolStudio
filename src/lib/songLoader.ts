@@ -5,7 +5,7 @@ import { getShiftedBuffer } from './pitchService';
 import type { SongEngine, TrackConfig } from './audioEngine';
 import { loadMix, loadedVariants, settingFor } from './stemMix';
 import { isReferenceName, isUnpitched } from './scan';
-import { renderTrack, type ClipPlacement } from './arrangement.ts';
+import { renderTrack, sliceBuffer, type ClipPlacement } from './arrangement.ts';
 import { barToSec } from './bars';
 import { readPcmWindow } from './audioSlice.ts';
 
@@ -549,6 +549,10 @@ async function buildSong(
           }
           files.set(fileKey, buffer);
         }
+        // One piece of a file warped through several tempos: its own slice, stretched alone.
+        const piece = clip.sourceEndSec !== undefined && !clip.frozen ? sliceBuffer(buffer, clip.sourceStartSec, clip.sourceEndSec) : null;
+        if (piece) buffer = piece.buffer;
+        const cutAt = (fromSec.get(fileKey) ?? 0) + (piece?.fromSec ?? 0);
         /*
          * Each clip is shifted by its own transposition in Live plus the
          * player's, and stretched by its warp plus the player's speed, before
@@ -561,7 +565,7 @@ async function buildSong(
           report('transposing', i / arranged.length, true);
           buffer = await getShiftedBuffer({
             ctx,
-            path: clip.path,
+            path: piece ? `${clip.path}#${clip.sourceStartSec.toFixed(3)}-${clip.sourceEndSec!.toFixed(3)}` : clip.path,
             rev: variant.rev,
             semitones: clipShift,
             tempo: clipTempo,
@@ -574,7 +578,7 @@ async function buildSong(
           buffer,
           startSec: barToSec(clip.startBar, song),
           endSec: barToSec(clip.endBar, song),
-          sourceStartSec: (clip.sourceStartSec - (fromSec.get(fileKey) ?? 0)) / clipTempo,
+          sourceStartSec: (clip.sourceStartSec - cutAt) / clipTempo,
           fadeInSec: clip.fadeInSec,
           fadeOutSec: clip.fadeOutSec,
           gain: clip.gain,
