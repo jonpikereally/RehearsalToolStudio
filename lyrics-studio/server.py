@@ -1745,6 +1745,9 @@ def describe_set(root, als_path: str) -> dict:
         name_el = track.find("Name/EffectiveName")
         name = name_el.get("Value") if name_el is not None else track.tag
         if track.tag == "AudioTrack":
+            # The tempo track's clips set the tempo; they never carry a voice.
+            if name.strip().lower() == "tempo track":
+                continue
             clips = clips_across([track])
             if not clips:
                 continue

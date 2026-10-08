@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Never listen to the tempo track for lyrics**
+
+A track named "Tempo Track" holds the clips that set the set's tempo; they have no voice, yet it was offered among the tracks to listen to for a song, and was a source for the engine to transcribe. The set reader no longer lists it as one of a song's audio tracks, the Lyrics tool's choice of track skips it, and the engine leaves it out of the sources it describes — including from the combined source of same-named tracks.
+
 **Keep lyric timing to where the song is sung, not across the breaks**
 
 Whisper infers word times from attention, not from the waveform, and is at its worst across a stretch with no singing: the last word before an instrumental break was held through it, the first after was pulled back into it, words were invented in it ("Thank you."), and pasted lyrics with no heard word to take a time from were spread evenly over the whole gap. The clips made from those words started early, ran through the break, and merged sections that were really apart.
