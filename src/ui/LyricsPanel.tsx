@@ -70,7 +70,8 @@ export function listenableTracks(song: AlsSong): Listenable[] {
   const all: Listenable[] =
     song.audioTracks ??
     song.stems.filter((st) => st.trackId).map((st) => ({ trackId: st.trackId!, name: st.name, reference: st.reference, group: null }));
-  return [...all.filter((t) => own.has(t.trackId)), ...all.filter((t) => !own.has(t.trackId))];
+  const heard = all.filter((t) => !/^tempo track$/i.test(t.name.trim()));
+  return [...heard.filter((t) => own.has(t.trackId)), ...heard.filter((t) => !own.has(t.trackId))];
 }
 
 export function vocalTrackFor(song: AlsSong) {

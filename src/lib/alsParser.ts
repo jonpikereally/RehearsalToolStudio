@@ -1989,9 +1989,10 @@ export function parseAlsXml(xml: string): AlsProject {
             ...(r.controls.length ? { controls: r.controls } : {}),
           })),
       ),
+      // The tempo track's clips drive the click, never carry a voice: not a track to listen to.
       stems,
       audioTracks: tracks
-        .filter((t) => t.kind === 'AudioTrack' && clipsOfTrack(t).some((c) => c.endBeat > loc.beat && c.startBeat < endBeat))
+        .filter((t) => t.kind === 'AudioTrack' && !/^tempo track$/i.test(t.name.trim()) && clipsOfTrack(t).some((c) => c.endBeat > loc.beat && c.startBeat < endBeat))
         .map((t) => {
           const group = byId.get(t.groupId)?.name.trim() || null;
           return { trackId: t.id, name: t.name.trim(), reference: REF_RE.test(t.name) || (!!group && REF_RE.test(group)), group };
