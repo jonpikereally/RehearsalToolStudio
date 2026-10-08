@@ -209,11 +209,11 @@ export async function transcribeTrack(
  * The words in a lyric file — text, LRC, ChordPro, Word, PDF or Pages — read
  * by the engine down to plain lines, section names and chords left out.
  */
-export async function lyricFileText(base: string, path: string): Promise<string> {
+export async function lyricFileText(base: string, path: string, title = ''): Promise<string> {
   const res = await fetch(`${base}/api/lyrics_file`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path, title }),
   });
   const body = (await res.json().catch(() => ({}))) as { text?: string; detail?: unknown };
   if (!res.ok || typeof body.text !== 'string') {

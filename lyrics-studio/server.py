@@ -41,6 +41,7 @@ from fastapi.responses import FileResponse, Response
 from mido import MetaMessage, Message, MidiFile, MidiTrack
 from pydantic import BaseModel
 
+import lyrics_text
 import timing
 
 APP_DIR = Path(__file__).resolve().parent
@@ -418,7 +419,7 @@ def _pages_text(path: Path) -> str:
                              "Open it in Pages and export it as PDF, Word or plain text into the lyrics folder.")
 
 
-def lyric_file_text(path_str: str) -> str:
+def lyric_file_text(path_str: str, title: str = "") -> str:
     path = Path(path_str)
     ext = path.suffix.lower()
     if ext not in LYRIC_EXTENSIONS:
@@ -450,7 +451,8 @@ def lyric_file_text(path_str: str) -> str:
         raise HTTPException(403, f"[RTS-LSE-02] Operation not permitted: macOS refused the lyrics engine access to {path}: {e}")
     except Exception as e:  # noqa: BLE001 — said, not swallowed
         raise HTTPException(422, f"[RTS-LSE-12] {path.name} could not be read: {type(e).__name__}: {e}")
-    lines = _lyric_lines(text)
+    # The sheet's own title and artist are not sung.
+    lines = _lyric_lines(lyrics_text.strip_header(text, [title, path.stem]))
     if not lines.strip():
         raise HTTPException(422, f"[RTS-LSE-12] {path.name} has no lyric lines in it.")
     return lines
@@ -458,13 +460,14 @@ def lyric_file_text(path_str: str) -> str:
 
 class LyricFileRequest(BaseModel):
     path: str
+    title: str = ""
 
 
 @app.post("/api/lyrics_file")
 def lyrics_file(req: LyricFileRequest):
     """The words in a lyric file, as plain lines — what the studio shows and
     hands back as the lyrics to listen for."""
-    text = lyric_file_text(req.path)
+    text = lyric_file_text(req.path, req.title)
     return {"text": text, "lines": len(text.splitlines())}
 
 

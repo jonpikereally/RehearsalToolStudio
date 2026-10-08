@@ -236,7 +236,7 @@ export default function LyricsPanel({
         if (file && lyricsFolder) {
           listening(`Reading ${file.name}…`);
           try {
-            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path));
+            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path), song.title);
           } catch (err) {
             fileError = coded('RTS-LYR-07', err);
           }
@@ -335,12 +335,8 @@ export default function LyricsPanel({
 
   return (
     <div hidden={hidden} className="lyrics-panel">
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-        {without.length
-          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Select the songs to hear lyrics for.`
-          : `Every song has lyrics on a +LYRICS track. Select any to hear them again.`}
-      </div>
-
+      <section className="lyric-step">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">1</span> Set up</h3>
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className="control-label">Lyrics folder</span>
         {lyricsFolder ? (
@@ -362,6 +358,29 @@ export default function LyricsPanel({
         )}
       </div>
       {folderError && <ErrorNotice code="RTS-LYR-07" text={folderError} />}
+
+      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="control-label">Clips</span>
+        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
+          <button key={f} className={fineness === f ? 'chip on' : 'chip'} aria-pressed={fineness === f} disabled={busy} onClick={() => chooseFineness(f)}>
+            {FINENESS_LABEL[f]}
+          </button>
+        ))}
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 0 }}>
+          <input type="checkbox" checked={isolate} disabled={busy} onChange={(e) => setIsolate(e.target.checked)} />
+          <span style={{ fontSize: 14 }}>Isolate the voice first (slower; for a track with music on it)</span>
+        </label>
+      </div>
+
+      </section>
+
+      <section className="lyric-step">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">2</span> Songs</h3>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        {without.length
+          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Select the songs to hear lyrics for.`
+          : `Every song has lyrics on a +LYRICS track. Select any to hear them again.`}
+      </div>
 
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="chip" disabled={busy || !without.length} onClick={() => setPicked(without)}>
@@ -468,18 +487,10 @@ export default function LyricsPanel({
         })}
       </div>
 
-      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
-          <button key={f} className={fineness === f ? 'chip on' : 'chip'} aria-pressed={fineness === f} disabled={busy} onClick={() => chooseFineness(f)}>
-            {FINENESS_LABEL[f]}
-          </button>
-        ))}
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 8 }}>
-          <input type="checkbox" checked={isolate} disabled={busy} onChange={(e) => setIsolate(e.target.checked)} />
-          <span style={{ fontSize: 14 }}>Isolate the voice first (slower; for a track with music on it)</span>
-        </label>
-      </div>
+      </section>
 
+      <section className="lyric-step lyric-actions">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">3</span> Listen, then write</h3>
       <div className="btn-row">
         {running ? (
           <button className="btn" onClick={() => (stop.current = true)}>
@@ -498,6 +509,8 @@ export default function LyricsPanel({
         Listening runs on this Mac, a minute or so per song. The clips go on a +LYRICS track in a copy of the set named
         “… (lyrics).als”. Save the set in Live first, so it is read as it stands.
       </div>
+
+      </section>
 
       {note && <div className="notice">{note}</div>}
       {writing && <div className="notice">Writing the set…</div>}
