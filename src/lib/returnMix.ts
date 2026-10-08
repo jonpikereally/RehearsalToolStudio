@@ -1,6 +1,6 @@
 import type { AlsClip, AlsProject, AlsSong } from './alsParser';
 import type { Bus } from '../types';
-import { renderTrack, type ClipPlacement } from './arrangement.ts';
+import { renderTrack, sliceBuffer, type ClipPlacement } from './arrangement.ts';
 import { buildChain, deviceLabel } from './fx.ts';
 import { songBars, songTiming } from './infoTrack.ts';
 import { barToSec } from './bars.ts';
@@ -198,10 +198,17 @@ export async function renderReturnMix(opts: RenderReturnOptions): Promise<Return
           missing.push(clip.path);
           continue;
         }
-        let buffer = loaded.buffer;
+        // One piece of a file warped through several tempos: its own slice, stretched alone.
+        const piece = clip.sourceEndSec !== undefined && !clip.frozen
+          ? sliceBuffer(loaded.buffer, clip.sourceStartSec - loaded.fromSec, clip.sourceEndSec - loaded.fromSec)
+          : null;
+        let buffer = piece?.buffer ?? loaded.buffer;
+        const cutAt = loaded.fromSec + (piece?.fromSec ?? 0);
         const speed = clip.speed ?? 1;
         if (opts.shift && needsShift(clip)) {
-          buffer = (await opts.shift({ buffer, semitones: clip.semitones ?? 0, speed, source: opts.resolvePath?.(clip.path) ?? clip.path })) ?? buffer;
+          const source = (opts.resolvePath?.(clip.path) ?? clip.path) +
+            (piece ? `#${clip.sourceStartSec.toFixed(3)}-${clip.sourceEndSec!.toFixed(3)}` : '');
+          buffer = (await opts.shift({ buffer, semitones: clip.semitones ?? 0, speed, source })) ?? buffer;
         }
         placements.push({
           buffer,
@@ -209,7 +216,7 @@ export async function renderReturnMix(opts: RenderReturnOptions): Promise<Return
           startSec: barToSec(clip.startBar, timing),
           endSec: barToSec(clip.endBar, timing),
           // Placed against where the cut began; a stretched file's seconds are shorter by the same factor.
-          sourceStartSec: (clip.sourceStartSec - loaded.fromSec) / speed,
+          sourceStartSec: (clip.sourceStartSec - cutAt) / speed,
           fadeInSec: clip.fadeInSec,
           fadeOutSec: clip.fadeOutSec,
         });

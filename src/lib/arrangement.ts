@@ -25,6 +25,30 @@ export interface ClipPlacement {
   gain?: number;
 }
 
+/**
+ * The stretch of a decoded file from `fromSec` to `toSec`, with a little
+ * either side, and where in the file it begins.
+ *
+ * For a clip that is one piece of a file warped through several tempos:
+ * stretching the whole file at every piece's speed costs the file's length
+ * once per piece, where its own slice costs only that. The margin keeps the
+ * stretcher's ragged edges outside what is played.
+ */
+export const SLICE_MARGIN_SEC = 0.5;
+
+export function sliceBuffer(buffer: AudioBuffer, fromSec: number, toSec: number): { buffer: AudioBuffer; fromSec: number } {
+  const rate = buffer.sampleRate;
+  const first = Math.max(0, Math.floor((fromSec - SLICE_MARGIN_SEC) * rate));
+  const end = Math.min(buffer.length, Math.ceil((toSec + SLICE_MARGIN_SEC) * rate));
+  if (first === 0 && end >= buffer.length) return { buffer, fromSec: 0 };
+  const length = Math.max(1, end - first);
+  const out = new AudioBuffer({ length, numberOfChannels: buffer.numberOfChannels, sampleRate: rate });
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    out.copyToChannel(buffer.getChannelData(c).subarray(first, first + length), c);
+  }
+  return { buffer: out, fromSec: first / rate };
+}
+
 /** How much of a fade to allow, as a share of the clip; a fade can't outlast it. */
 function clampFade(fade: number, span: number): number {
   if (!(fade > 0)) return 0;
