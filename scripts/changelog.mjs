@@ -2,6 +2,13 @@
  * Write CHANGELOG.md from the commits themselves.
  *
  *     node scripts/changelog.mjs        (or: npm run changelog)
+ *     node scripts/changelog.mjs --since build-20261008-1530-cf59cc6
+ *
+ * The second prints, rather than writes, the entries of one update: every
+ * commit after the given release up to this one, newest first. The
+ * installer's release carries it as its notes, so each update says what it
+ * changed where it is offered. Given an empty ref, or one this history
+ * does not have, it prints this commit's entry alone.
  *
  * Every change to the studio is already described where it was made — the
  * commit's subject says what changed, its body says why — so the log is read
@@ -18,9 +25,23 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIELD = '\x1f';
 const RECORD = '\x1e';
 
+const sinceAt = process.argv.indexOf('--since');
+const since = sinceAt === -1 ? null : (process.argv[sinceAt + 1] ?? '');
+
+/** Whether this history has the ref at all: a first release, or a shallow clone, may not. */
+function known(ref) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: repo, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const range = since === null ? [] : since && known(since) ? [`${since}..HEAD`] : ['-1', 'HEAD'];
 const log = execFileSync(
   'git',
-  ['log', `--pretty=format:%ad${FIELD}%s${FIELD}%b${RECORD}`, '--date=short'],
+  ['log', `--pretty=format:%ad${FIELD}%s${FIELD}%b${RECORD}`, '--date=short', ...range],
   { cwd: repo, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
 );
 
@@ -47,6 +68,13 @@ const entries = log
     const [date, subject, body = ''] = record.split(FIELD);
     return { date, subject, description: description(body) };
   });
+
+/** One update's entries, for its release notes: no title, no dates — the release has both. */
+if (since !== null) {
+  const notes = entries.flatMap((entry) => [`**${entry.subject}**`, '', ...(entry.description ? [entry.description, ''] : [])]);
+  process.stdout.write(notes.length ? notes.join('\n').trimEnd() + '\n' : 'No changes since the last release.\n');
+  process.exit(0);
+}
 
 const lines = [
   '# Changelog',

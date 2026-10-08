@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Say what each update changed, in its release and from the app menu**
+
+A release's notes said which build it was and pointed at CHANGELOG.md, whose newest entries are the newest commits — not necessarily this update's, and nothing at all about what had come in since the build installed. Now each release carries its own changelog: every commit since the release before it, subject and description as CHANGELOG.md tells them, written by the same script with --since. The installer job checks out the whole history to have them.
+
 **Follow every warp marker of a file that changes tempo**
 
 A warped clip was read as one straight line: the rate between its first marker and its farthest, set against the song's opening tempo. That is right for a stem exported at the song's tempo, which is nearly every stem, and wrong for a file whose tempo moves. Amsterdam's record is warped bar by bar onto a set that goes from 72 to 81; its markers average 76.6, so every part was rendered at 0.94 of its speed from bar 1 — six per cent slow from the top, about six seconds behind the click by the first chorus, and its last twenty seconds cut off the end. A stem made at one tempo in a song that changes tempo had the opposite fault: Live stretches it to follow the song, and the render played it straight on.

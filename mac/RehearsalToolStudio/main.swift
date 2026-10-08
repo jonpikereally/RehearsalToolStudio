@@ -919,6 +919,18 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         }.resume()
     }
 
+    /*
+     * Rehearsal Tool Studio ▸ See Changelog: what each update changed, newest
+     * first, as CHANGELOG.md on GitHub has it — written from the commits, so
+     * it holds what an update waiting to be installed brings as well as what
+     * this build already has.
+     */
+    let changelogPage = URL(string: "https://github.com/jonpikereally/RehearsalToolStudio/blob/main/CHANGELOG.md")!
+
+    @objc func showChangelog() {
+        NSWorkspace.shared.open(changelogPage)
+    }
+
     /// File ▸ Changes: what the studio has done, save by save.
     @objc func showChanges() {
         showChangesWindow()
@@ -944,6 +956,8 @@ final class Studio: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigat
         let updates = app.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "u")
         updates.target = self
         updatesItem = updates
+        let changelog = app.addItem(withTitle: "See Changelog…", action: #selector(showChangelog), keyEquivalent: "")
+        changelog.target = self
         app.addItem(NSMenuItem.separator())
         app.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
