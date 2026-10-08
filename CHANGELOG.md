@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Keep lyric timing to where the song is sung, not across the breaks**
+
+Whisper infers word times from attention, not from the waveform, and is at its worst across a stretch with no singing: the last word before an instrumental break was held through it, the first after was pulled back into it, words were invented in it ("Thank you."), and pasted lyrics with no heard word to take a time from were spread evenly over the whole gap. The clips made from those words started early, ran through the break, and merged sections that were really apart.
+
 **Say what each update changed, in its release and from the app menu**
 
 A release's notes said which build it was and pointed at CHANGELOG.md, whose newest entries are the newest commits — not necessarily this update's, and nothing at all about what had come in since the build installed. Now each release carries its own changelog: every commit since the release before it, subject and description as CHANGELOG.md tells them, written by the same script with --since. The installer job checks out the whole history to have them.
