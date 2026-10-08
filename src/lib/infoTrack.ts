@@ -1,5 +1,5 @@
 import type { AlsProject, AlsSong } from './alsParser';
-import type { MeterPoint } from '../types';
+import type { MeterPoint, TempoPoint } from '../types';
 import { barToSec, beatOfBar, type TimeSong } from './bars.ts';
 import type { ChordClip } from './chordTrack.ts';
 
@@ -134,8 +134,24 @@ export function songTiming(song: AlsSong, project: AlsProject): TimeSong {
     bpm: song.startBpm ?? song.bpm ?? project.tempo,
     ...meterOf(song, project),
     firstBarOffsetSec: 0,
-    tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
+    tempoMap: tempoMapOf(song, project),
   };
+}
+
+/**
+ * The song's tempo map as it is published: the full map, its first point at
+ * bar 1. The set's automation often has no point where a song starts — its
+ * tempo is whatever an earlier point left it at — so the song's own changes
+ * alone would begin at the first change, and a reader taking the map's
+ * first point as the song's tempo (as the band's player does) would play
+ * everything before it at the tempo after it. Undefined for a song that
+ * keeps one tempo.
+ */
+export function tempoMapOf(song: AlsSong, project: AlsProject): TempoPoint[] | undefined {
+  if (!song.tempoChanges.length) return undefined;
+  const changes = [...song.tempoChanges].sort((a, b) => a.bar - b.bar);
+  if (changes[0].bar <= 1) return changes;
+  return [{ bar: 1, bpm: song.startBpm ?? song.bpm ?? project.tempo }, ...changes];
 }
 
 /** `3:55`, from a song's bars through its tempo and meter maps. */

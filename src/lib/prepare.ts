@@ -4,7 +4,7 @@ import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
 import { normalisePath } from './paths.ts';
 import { MANIFEST_NAME, SONG_FILE_NAME, sameSong, folderBaseOf, signatureMapOf, songFileFor, type PreparedManifest, type PreparedPart, type PreparedSongInfo } from './preparedSet.ts';
-import { songBars, songTiming, songLengthSec } from './infoTrack.ts';
+import { songBars, songTiming, songLengthSec, tempoMapOf } from './infoTrack.ts';
 import type { SamplerNote, SamplerSample } from '../types';
 import { clipsFromMarks, clipsFromRig, laneList, roleForTrack, songIdFor, stemLabel } from './alsImport.ts';
 import { chordProFor } from './chordPro.ts';
@@ -1301,7 +1301,7 @@ export async function prepareSet(opts: PrepareOptions): Promise<PrepareResult> {
         firstBarOffsetSec: paddingSec,
         originalKey: song.key ?? undefined,
         notes: song.notes || undefined,
-        tempoMap: song.tempoChanges.length ? song.tempoChanges : undefined,
+        tempoMap: tempoMapOf(song, project),
         signatureMap: song.meterMap?.length ? signatureMapOf(song.meterMap) : undefined,
         markers: song.sections.length
           ? song.sections.map((s) => ({ bar: s.bar, name: s.text }))
