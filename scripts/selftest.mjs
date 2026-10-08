@@ -5992,5 +5992,112 @@ group("a song's lyric file");
   check('and a song with none has none', lyricFileFor('Clocks', files) === null);
 }
 
+/* ------------------------- a file warped through tempos ------------------------- */
+
+group('a file warped through several tempos');
+{
+  const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { warpPieces, WARP_CROSSFADE_SEC } = await import('../src/lib/warp.ts');
+
+  /*
+   * Amsterdam's tempo map, in the set's beats: 72 from the top, then 74, 76,
+   * 78 and 81, over 408 beats. Its record is warped onto that map, so the
+   * file runs at its own speed throughout — and was rendered six per cent
+   * slow from bar 1, the opening tempo against the average of its markers.
+   */
+  const changes = [[82, 74], [132, 76], [264, 78], [296, 81]];
+  const map = [[0, 72], ...changes];
+  const secAt = (beat) => {
+    let sec = 0;
+    for (let i = 0; i < map.length; i++) {
+      const [from, bpm] = map[i];
+      const to = Math.min(beat, map[i + 1]?.[0] ?? Infinity);
+      if (to > from) sec += ((to - from) * 60) / bpm;
+    }
+    return sec;
+  };
+  const followMarkers = [0, 82, 132, 264, 296, 408].map((b) => [secAt(b), b]);
+  const set = ({ automated, markers }) => `<Ableton Creator="Live 12">
+    <Tempo><Manual Value="72" /><AutomationTarget Id="9" /></Tempo>
+    ${automated ? `<AutomationEnvelope Id="1"><EnvelopeTarget><PointeeId Value="9" /></EnvelopeTarget>
+      <Automation><Events><FloatEvent Id="0" Time="-63072000" Value="72" />${changes.map(([b, v], i) => `<FloatEvent Id="${i + 1}" Time="${b}" Value="${v}" />`).join('')}</Events></Automation>
+    </AutomationEnvelope>` : ''}
+    <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+    <Locator Id="1"><Time Value="0" /><Name Value="Amsterdam" /></Locator>
+    <Locator Id="2"><Time Value="408" /><Name Value="AUTOSTOP" /></Locator>
+    <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Amsterdam" /></GroupTrack>
+    <AudioTrack Id="11"><TrackGroupId Value="10" /><EffectiveName Value="Ref Master" />
+      <AudioClip Id="1" Time="0"><CurrentStart Value="0" /><CurrentEnd Value="408" />
+        <Loop><LoopStart Value="0" /><LoopEnd Value="408" /><StartRelative Value="0" /></Loop>
+        <Disabled Value="false" /><Fade Value="false" /><IsWarped Value="true" />
+        <WarpMarkers>${markers.map(([sec, beat], i) => `<WarpMarker Id="${i}" SecTime="${sec}" BeatTime="${beat}" />`).join('')}</WarpMarkers>
+        <SampleRef><FileRef><RelativePath Value="Stems/Amsterdam.wav" /></FileRef><DefaultSampleRate Value="48000" /></SampleRef>
+      </AudioClip>
+    </AudioTrack>
+  </Ableton>`;
+  const clipsOf = (xml) => parseAlsXml(xml).songs[0].stems[0].clips;
+
+  {
+    const clips = clipsOf(set({ automated: true, markers: followMarkers }));
+    check('a record warped onto the set\'s own tempo map is one clip, played at its own speed',
+      clips.length === 1 && clips[0].speed === 1 && near(clips[0].sourceStartSec, 0, 1e-6) && clips[0].sourceEndSec === undefined,
+      JSON.stringify(clips.map((c) => [c.startBar, c.speed])));
+  }
+
+  {
+    // The same record in a set held at 72: Live slows each later stretch to the set's tempo.
+    const clips = clipsOf(set({ automated: false, markers: followMarkers }));
+    const speeds = clips.map((c) => c.speed);
+    const want = [1, 72 / 74, 72 / 76, 72 / 78, 72 / 81];
+    check('against one tempo, a record that changes tempo is cut where it changes',
+      clips.length === 5 && clips.map((c) => c.startBar).join() === [1, 21.5, 34, 67, 75].join(),
+      clips.map((c) => c.startBar).join());
+    check('each piece plays at the set\'s tempo over its own',
+      speeds.length === 5 && speeds.every((v, i) => near(v, want[i], 1e-9)), speeds.join());
+    check('each piece plays its own slice of the file, and the next takes up where it stopped',
+      clips.every((c, i) => i === 0 || near(clips[i - 1].sourceEndSec - WARP_CROSSFADE_SEC * clips[i - 1].speed, c.sourceStartSec, 1e-6)) &&
+        near(clips[0].sourceStartSec, 0, 1e-9) && near(clips[4].sourceEndSec, secAt(408), 1e-6),
+      clips.map((c) => `${c.sourceStartSec.toFixed(3)}-${c.sourceEndSec.toFixed(3)}`).join(' '));
+    check('pieces cross-fade at the seams, and keep the clip\'s own fades at its ends',
+      clips[0].fadeInSec === 0 && clips[4].fadeOutSec === 0 &&
+        clips.slice(1).every((c) => c.fadeInSec === WARP_CROSSFADE_SEC) && clips.slice(0, 4).every((c) => c.fadeOutSec === WARP_CROSSFADE_SEC) &&
+        clips.slice(0, 4).every((c, i) => c.endBar > clips[i + 1].startBar && c.endBar - clips[i + 1].startBar < 0.01),
+      clips.map((c) => `${c.startBar}-${c.endBar}`).join(' '));
+  }
+
+  {
+    // A stem made at 72 throughout — a hairline pair says so — in the set that speeds up: Live stretches it to follow.
+    const clips = clipsOf(set({ automated: true, markers: [[0, 0], [0.0208333333333, 0.025]] }));
+    const want = [1, 74 / 72, 76 / 72, 78 / 72, 81 / 72];
+    check('a stem at one tempo in a song that changes tempo follows the song',
+      clips.length === 5 && clips.every((c, i) => near(c.speed, want[i], 1e-6)), clips.map((c) => c.speed).join());
+  }
+
+  {
+    // The ordinary stem: the song's tempo, two markers, one tempo. Nothing new.
+    const plain = clipsOf(set({ automated: false, markers: [[0, 0], [340, 408]] }));
+    check('a stem at the song\'s own tempo is one clip, as it always was',
+      plain.length === 1 && plain[0].speed === 1 && plain[0].sourceEndSec === undefined, JSON.stringify(plain[0]));
+    // Markers a millisecond or two off the line are not a tempo change.
+    const jitter = [0, 50, 100, 200, 300, 408].map((b, i) => [(b * 60) / 72 + (i % 2 ? 0.002 : -0.001), b]);
+    const steady = clipsOf(set({ automated: false, markers: jitter }));
+    check('nor are markers a hair off the line', steady.length === 1, String(steady.length));
+  }
+
+  {
+    const line = (beat) => (beat * 60) / 120;
+    const pieces = warpPieces({
+      markers: [{ sec: 0, beat: 0 }, { sec: 8, beat: 16 }, { sec: 14, beat: 32 }],
+      fromBeat: 4, toBeat: 32,
+      clipBeatAt: (b) => b, secAt: line, tempoBeats: [],
+    });
+    check('a clip starting part way into its file starts its first piece there',
+      pieces.length === 2 && near(pieces[0].sourceStartSec, 2) && near(pieces[0].sourceEndSec, 8) && near(pieces[1].speed, 0.75),
+      JSON.stringify(pieces));
+    check('markers that give no line give no pieces',
+      warpPieces({ markers: [{ sec: 0, beat: 0 }], fromBeat: 0, toBeat: 8, clipBeatAt: (b) => b, secAt: line, tempoBeats: [] }) === null);
+  }
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);
 process.exit(failures ? 1 : 0);
