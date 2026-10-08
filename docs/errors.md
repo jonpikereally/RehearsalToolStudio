@@ -220,13 +220,13 @@ No audio track has a clip inside this song. Check the song in Live.
 
 **No words were heard**
 
-The track was listened to but no words came back. Choose a track with the lead vocal on it (Ref Vox), or tick "Isolate the voice first" for a track with music on it.
+The track was listened to but no words came back. Choose a track with the lead vocal on it (Ref Vox), or turn on "Isolate the voice first" for a track with music on it.
 
 ### RTS-LYR-06
 
 **Stopped before it was listened to**
 
-The run was stopped before this song. Tick it and run again.
+The run was stopped before this song. Select it and run again.
 
 ### RTS-LYR-07
 
@@ -270,7 +270,7 @@ The engine needs ffmpeg and could not find or fetch one. With the network on, qu
 
 **No lyrics found on that track**
 
-The track's audio was read but nothing was heard, or every part was too short. Choose the vocal track, or tick Isolate the voice first.
+The track's audio was read but nothing was heard, or every part was too short. Choose the vocal track, or turn on Isolate the voice first.
 
 ### RTS-LSE-06
 
