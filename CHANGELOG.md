@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Say "select" in the Lyrics tool, and offer Select all**
+
+The Lyrics tool asked for songs to be ticked and had an "Untick all" that did nothing with none ticked. It now says select throughout — "Select the 4 without lyrics", "Select songs to hear lyrics for" — and the second button is "Select all" while nothing is selected, picking every song with a track to listen to, and "Deselect all" once anything is. The lyric codes' help in the error list says the same.
+
 **Publish a song's tempo map whole, from bar 1**
 
 A song's tempo map was its own tempo changes, and a set's automation usually has no point where a song starts — its tempo is whatever an earlier point left it at. So a song that steps from 136 to 140 at bar 91 was published as [{ bar: 91, bpm: 140 }]. The band's player takes the map's first point as the song's tempo, as the contract says it may ("the full map, first entry included"), and played the first ninety bars at 140: every marker, chord and click before the change in the wrong place.
