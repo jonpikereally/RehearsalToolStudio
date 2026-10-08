@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Let a song's lyric file be chosen by hand**
+
+A song's lyric file was only ever the one the lyrics folder matched by title, so a file named something unrelated, or a wrong match, could not be fixed. Each song now has a menu beside it: the file matched by title (as before, and the default), none at all — just listen — or any lyric file in the folder. The choice is kept per song for the session and is what the listening reads.
+
 **Lay the Lyrics tool out in steps, and skip a lyric sheet's title and artist**
 
 The Lyrics tool was one stack of controls with the clip and voice options sitting between the song list and the buttons that use them. It is now three numbered steps: set up (the lyrics folder, the size of clip, isolating the voice), songs (what is selected, the list), and listen then write.

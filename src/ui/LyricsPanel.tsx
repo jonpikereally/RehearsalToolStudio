@@ -104,6 +104,8 @@ export default function LyricsPanel({
   const songs = project.songs.filter((s) => listenableTracks(s).length || lyricClipCount(s));
   const [picked, setPicked] = useState<string[]>([]);
   const [trackFor, setTrackFor] = useState<Record<string, string>>({});
+  /** A lyric file chosen by hand for a song: its path, or NONE for no file at all. Absent, the folder's match by title. */
+  const [fileFor, setFileFor] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [open, setOpen] = useState<string | null>(null);
   const [fineness, setFineness] = useState<LyricFineness>(() => {
@@ -167,7 +169,13 @@ export default function LyricsPanel({
       if ((err as Error)?.name !== 'AbortError') setFolderError(coded('RTS-LYR-07', err));
     }
   };
-  const fileOf = (song: AlsSong) => (lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null);
+  const NONE = '\u0000none';
+  const fileOf = (song: AlsSong) => {
+    if (!lyricsFolder) return null;
+    const chosen = fileFor[song.title];
+    if (chosen === NONE) return null;
+    return (chosen && lyricFiles.find((f) => f.path === chosen)) || lyricFileFor(song.title, lyricFiles);
+  };
 
   // Every song there is a track to listen to on.
   const selectable = songs.filter((s) => listenableTracks(s).length).map((s) => s.title);
@@ -423,10 +431,22 @@ export default function LyricsPanel({
               ) : (
                 <span className="badge warn">no lyrics</span>
               )}
-              {file && (
-                <span className="badge" title={`Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard`}>
-                  file: {file.name}
-                </span>
+              {lyricsFolder && lyricFiles.length > 0 && (
+                <select
+                  className="jump-select"
+                  value={fileFor[song.title] && (fileFor[song.title] === NONE || lyricFiles.some((f) => f.path === fileFor[song.title])) ? fileFor[song.title] : ''}
+                  disabled={busy}
+                  onChange={(e) => setFileFor((prev) => ({ ...prev, [song.title]: e.target.value }))}
+                  title={file ? `Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard` : 'The lyric file to take its words from'}
+                >
+                  <option value="">{file && !fileFor[song.title] ? `Lyrics: ${file.name} (matched)` : 'Lyrics: matched by title'}</option>
+                  <option value={NONE}>Lyrics: none, just listen</option>
+                  {lyricFiles.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.path.replace(/^\//, '')}
+                    </option>
+                  ))}
+                </select>
               )}
               {tracks.length ? (
                 <select
