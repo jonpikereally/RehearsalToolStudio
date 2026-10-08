@@ -7,6 +7,18 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Let a song's lyric file be chosen by hand**
+
+A song's lyric file was only ever the one the lyrics folder matched by title, so a file named something unrelated, or a wrong match, could not be fixed. Each song now has a menu beside it: the file matched by title (as before, and the default), none at all — just listen — or any lyric file in the folder. The choice is kept per song for the session and is what the listening reads.
+
+**Lay the Lyrics tool out in steps, and skip a lyric sheet's title and artist**
+
+The Lyrics tool was one stack of controls with the clip and voice options sitting between the song list and the buttons that use them. It is now three numbered steps: set up (the lyrics folder, the size of clip, isolating the voice), songs (what is selected, the list), and listen then write.
+
+**Never listen to the tempo track for lyrics**
+
+A track named "Tempo Track" holds the clips that set the set's tempo; they have no voice, yet it was offered among the tracks to listen to for a song, and was a source for the engine to transcribe. The set reader no longer lists it as one of a song's audio tracks, the Lyrics tool's choice of track skips it, and the engine leaves it out of the sources it describes — including from the combined source of same-named tracks.
+
 **Keep lyric timing to where the song is sung, not across the breaks**
 
 Whisper infers word times from attention, not from the waveform, and is at its worst across a stretch with no singing: the last word before an instrumental break was held through it, the first after was pulled back into it, words were invented in it ("Thank you."), and pasted lyrics with no heard word to take a time from were spread evenly over the whole gap. The clips made from those words started early, ran through the break, and merged sections that were really apart.

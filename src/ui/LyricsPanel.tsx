@@ -70,7 +70,8 @@ export function listenableTracks(song: AlsSong): Listenable[] {
   const all: Listenable[] =
     song.audioTracks ??
     song.stems.filter((st) => st.trackId).map((st) => ({ trackId: st.trackId!, name: st.name, reference: st.reference, group: null }));
-  return [...all.filter((t) => own.has(t.trackId)), ...all.filter((t) => !own.has(t.trackId))];
+  const heard = all.filter((t) => !/^tempo track$/i.test(t.name.trim()));
+  return [...heard.filter((t) => own.has(t.trackId)), ...heard.filter((t) => !own.has(t.trackId))];
 }
 
 export function vocalTrackFor(song: AlsSong) {
@@ -103,6 +104,8 @@ export default function LyricsPanel({
   const songs = project.songs.filter((s) => listenableTracks(s).length || lyricClipCount(s));
   const [picked, setPicked] = useState<string[]>([]);
   const [trackFor, setTrackFor] = useState<Record<string, string>>({});
+  /** A lyric file chosen by hand for a song: its path, or NONE for no file at all. Absent, the folder's match by title. */
+  const [fileFor, setFileFor] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [open, setOpen] = useState<string | null>(null);
   const [fineness, setFineness] = useState<LyricFineness>(() => {
@@ -166,7 +169,13 @@ export default function LyricsPanel({
       if ((err as Error)?.name !== 'AbortError') setFolderError(coded('RTS-LYR-07', err));
     }
   };
-  const fileOf = (song: AlsSong) => (lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null);
+  const NONE = '\u0000none';
+  const fileOf = (song: AlsSong) => {
+    if (!lyricsFolder) return null;
+    const chosen = fileFor[song.title];
+    if (chosen === NONE) return null;
+    return (chosen && lyricFiles.find((f) => f.path === chosen)) || lyricFileFor(song.title, lyricFiles);
+  };
 
   // Every song there is a track to listen to on.
   const selectable = songs.filter((s) => listenableTracks(s).length).map((s) => s.title);
@@ -235,7 +244,7 @@ export default function LyricsPanel({
         if (file && lyricsFolder) {
           listening(`Reading ${file.name}…`);
           try {
-            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path));
+            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path), song.title);
           } catch (err) {
             fileError = coded('RTS-LYR-07', err);
           }
@@ -334,12 +343,8 @@ export default function LyricsPanel({
 
   return (
     <div hidden={hidden} className="lyrics-panel">
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-        {without.length
-          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Select the songs to hear lyrics for.`
-          : `Every song has lyrics on a +LYRICS track. Select any to hear them again.`}
-      </div>
-
+      <section className="lyric-step">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">1</span> Set up</h3>
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className="control-label">Lyrics folder</span>
         {lyricsFolder ? (
@@ -361,6 +366,29 @@ export default function LyricsPanel({
         )}
       </div>
       {folderError && <ErrorNotice code="RTS-LYR-07" text={folderError} />}
+
+      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="control-label">Clips</span>
+        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
+          <button key={f} className={fineness === f ? 'chip on' : 'chip'} aria-pressed={fineness === f} disabled={busy} onClick={() => chooseFineness(f)}>
+            {FINENESS_LABEL[f]}
+          </button>
+        ))}
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 0 }}>
+          <input type="checkbox" checked={isolate} disabled={busy} onChange={(e) => setIsolate(e.target.checked)} />
+          <span style={{ fontSize: 14 }}>Isolate the voice first (slower; for a track with music on it)</span>
+        </label>
+      </div>
+
+      </section>
+
+      <section className="lyric-step">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">2</span> Songs</h3>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        {without.length
+          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Select the songs to hear lyrics for.`
+          : `Every song has lyrics on a +LYRICS track. Select any to hear them again.`}
+      </div>
 
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="chip" disabled={busy || !without.length} onClick={() => setPicked(without)}>
@@ -403,10 +431,22 @@ export default function LyricsPanel({
               ) : (
                 <span className="badge warn">no lyrics</span>
               )}
-              {file && (
-                <span className="badge" title={`Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard`}>
-                  file: {file.name}
-                </span>
+              {lyricsFolder && lyricFiles.length > 0 && (
+                <select
+                  className="jump-select"
+                  value={fileFor[song.title] && (fileFor[song.title] === NONE || lyricFiles.some((f) => f.path === fileFor[song.title])) ? fileFor[song.title] : ''}
+                  disabled={busy}
+                  onChange={(e) => setFileFor((prev) => ({ ...prev, [song.title]: e.target.value }))}
+                  title={file ? `Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard` : 'The lyric file to take its words from'}
+                >
+                  <option value="">{file && !fileFor[song.title] ? `Lyrics: ${file.name} (matched)` : 'Lyrics: matched by title'}</option>
+                  <option value={NONE}>Lyrics: none, just listen</option>
+                  {lyricFiles.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.path.replace(/^\//, '')}
+                    </option>
+                  ))}
+                </select>
               )}
               {tracks.length ? (
                 <select
@@ -467,18 +507,10 @@ export default function LyricsPanel({
         })}
       </div>
 
-      <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {(['line', 'section', 'word'] as LyricFineness[]).map((f) => (
-          <button key={f} className={fineness === f ? 'chip on' : 'chip'} aria-pressed={fineness === f} disabled={busy} onClick={() => chooseFineness(f)}>
-            {FINENESS_LABEL[f]}
-          </button>
-        ))}
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 8 }}>
-          <input type="checkbox" checked={isolate} disabled={busy} onChange={(e) => setIsolate(e.target.checked)} />
-          <span style={{ fontSize: 14 }}>Isolate the voice first (slower; for a track with music on it)</span>
-        </label>
-      </div>
+      </section>
 
+      <section className="lyric-step lyric-actions">
+        <h3 className="lyric-step-title"><span className="lyric-step-num">3</span> Listen, then write</h3>
       <div className="btn-row">
         {running ? (
           <button className="btn" onClick={() => (stop.current = true)}>
@@ -497,6 +529,8 @@ export default function LyricsPanel({
         Listening runs on this Mac, a minute or so per song. The clips go on a +LYRICS track in a copy of the set named
         “… (lyrics).als”. Save the set in Live first, so it is read as it stands.
       </div>
+
+      </section>
 
       {note && <div className="notice">{note}</div>}
       {writing && <div className="notice">Writing the set…</div>}
