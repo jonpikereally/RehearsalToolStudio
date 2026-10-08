@@ -41,6 +41,8 @@ from fastapi.responses import FileResponse, Response
 from mido import MetaMessage, Message, MidiFile, MidiTrack
 from pydantic import BaseModel
 
+import timing
+
 APP_DIR = Path(__file__).resolve().parent
 # Where the log and the remembered paths live: beside the code, as they always
 # have — or wherever LYRICS_STUDIO_DATA says, which the packaged app sets, since
@@ -264,9 +266,15 @@ def _norm(word: str) -> str:
     return re.sub(r"[^\w']", "", word.lower())
 
 
-def align_lyrics(whisper_segments: list[dict], lyrics_text: str) -> list[dict]:
+def align_lyrics(whisper_segments: list[dict], lyrics_text: str,
+                 runs: list[tuple[float, float]] | None = None) -> list[dict]:
     """Return new segments built from the user's lyric lines, with timing
-    transferred from Whisper's recognized words via sequence alignment."""
+    transferred from Whisper's recognized words via sequence alignment.
+
+    `runs` is where the audio is voiced, when known: words with no heard word
+    to take a time from are laid along the singing between their neighbours,
+    not spread across an instrumental break."""
+    runs = runs or []
     w_words = [w for s in whisper_segments for w in s.get("words", [])]
     if not w_words:
         raise HTTPException(400, "Transcription has no word timestamps to align to.")
@@ -293,9 +301,9 @@ def align_lyrics(whisper_segments: list[dict], lyrics_text: str) -> list[dict]:
             # spread the user words evenly across the whisper block's time span
             t0, t1 = w_words[a0]["start"], w_words[a1 - 1]["end"]
             n = b1 - b0
-            for k in range(n):
-                u_words[b0 + k]["start"] = t0 + (t1 - t0) * k / n
-                u_words[b0 + k]["end"] = t0 + (t1 - t0) * (k + 1) / n
+            for k, (a, b) in enumerate(timing.spread_over_voice(t0, t1, n, runs)):
+                u_words[b0 + k]["start"] = a
+                u_words[b0 + k]["end"] = b
         # "insert" (extra user words) handled by interpolation below;
         # "delete" (whisper words absent from lyrics) is simply ignored.
 
@@ -310,10 +318,9 @@ def align_lyrics(whisper_segments: list[dict], lyrics_text: str) -> list[dict]:
         prev_end = u_words[i - 1]["end"] if i > 0 else 0.0
         next_start = u_words[j]["start"] if j < n else prev_end + 2.0 * (j - i)
         span = max(next_start - prev_end, 0.1 * (j - i))
-        for k in range(i, j):
-            w2 = u_words[k]
-            w2["start"] = prev_end + span * (k - i) / (j - i)
-            w2["end"] = prev_end + span * (k - i + 1) / (j - i)
+        for k, (a, b) in enumerate(timing.spread_over_voice(prev_end, prev_end + span, j - i, runs)):
+            u_words[i + k]["start"] = a
+            u_words[i + k]["end"] = b
 
     # enforce monotonic timing
     t = 0.0
@@ -472,6 +479,19 @@ def align(req: AlignRequest):
     return {"segments": segments, "duration": max(s["end"] for s in segments)}
 
 
+def voiced_runs_of(audio_path: str) -> list[tuple[float, float]]:
+    """Where in this audio something is sounding — see timing.voiced_runs.
+    Empty if the audio can't be read, which leaves timing as Whisper gave it."""
+    import librosa
+
+    try:
+        y, sr = librosa.load(audio_path, mono=True)
+        env = librosa.feature.rms(y=y, hop_length=HOP)[0]
+        return timing.voiced_runs([float(v) for v in env], sr / HOP)
+    except Exception:
+        return []
+
+
 def measure_onset_lag(audio_path: str, starts: list[float],
                       max_lag: float = 0.45, step: float = 0.01) -> float:
     """How far Whisper's word starts sit from the audio's actual onsets.
@@ -560,10 +580,15 @@ def transcribe_file(audio_path: str, language: str, lyrics: str, isolate: bool,
         for s in result["segments"]
         if s["text"].strip()
     ]
+    # Where the singing actually is. Whisper writes words into breaks with no
+    # singing and holds words through them; the audio says which is which.
+    runs = voiced_runs_of(transcribe_path)
+    segments = timing.drop_unvoiced(segments, runs)
+
     aligned = False
     if lyrics.strip() and segments:
         try:
-            segments = align_lyrics(segments, lyrics)
+            segments = align_lyrics(segments, lyrics, runs)
             aligned = True
         except HTTPException:
             pass  # fall back to the raw transcription
@@ -572,6 +597,9 @@ def transcribe_file(audio_path: str, language: str, lyrics: str, isolate: bool,
     starts = [w["start"] for s in segments for w in s.get("words", [])]
     lag = measure_onset_lag(transcribe_path, starts or [s["start"] for s in segments])
     segments = shift_segments(segments, lag)
+    # ...then hold every word to the singing it overlaps, so none begins in a
+    # break or runs on through the next.
+    segments = timing.fit_to_voice(segments, runs)
 
     duration = max((s["end"] for s in segments), default=0)
     return {
@@ -581,6 +609,7 @@ def transcribe_file(audio_path: str, language: str, lyrics: str, isolate: bool,
         "segments": segments,
         "aligned": aligned,
         "lag": lag,
+        "voiced": runs,
     }
 
 
@@ -598,6 +627,7 @@ def transcribe(
             shutil.copyfileobj(file.file, f)
         bpm = detect_bpm(audio_path)
         out = transcribe_file(audio_path, language, lyrics, isolate, tmp)
+    out.pop("voiced", None)
     out["bpm"] = bpm
     return out
 
@@ -622,6 +652,7 @@ def transcribe_start(
         try:
             bpm = detect_bpm(audio_path)
             out = transcribe_file(audio_path, language, lyrics, isolate, tmp)
+            out.pop("voiced", None)
             out["bpm"] = bpm
             return out
         finally:
@@ -1850,6 +1881,7 @@ def als_transcribe(req: AlsTranscribeRequest):
     tmap = tempo_map(ls)
     als_dir = Path(req.als_path).parent
     segments: list[dict] = []
+    voiced: list[tuple[float, float]] = []   # where it is sung, in arrangement seconds
     songs: list[dict] = []          # one entry per region on the track
     text_parts: list[str] = []
     language = ""
@@ -1940,6 +1972,8 @@ def als_transcribe(req: AlsTranscribeRequest):
             def to_arrangement(t: float, base=f_start, fn=to_arrangement_sec) -> float:
                 return fn(base + t)
 
+            voiced.extend((to_arrangement(a), to_arrangement(b)) for a, b in out.get("voiced", []))
+
             # Beats beside the seconds, through the set's tempo map, so a
             # reader placing clips on the ruler needn't carry the map itself.
             def at(t: float) -> dict:
@@ -1986,7 +2020,8 @@ def als_transcribe(req: AlsTranscribeRequest):
         # The file's own lines, each word placed where the nearest heard word
         # was — arrangement seconds still, so the beats come the same way.
         try:
-            placed = align_lyrics(segments, req.lyrics)
+            voiced.sort()
+            placed = timing.fit_to_voice(align_lyrics(segments, req.lyrics, voiced), voiced)
         except HTTPException:
             placed = []
         if placed:
