@@ -209,12 +209,12 @@ export const ERROR_CODES: Record<string, ErrorEntry> = {
   'RTS-LYR-05': {
     area: 'LYR',
     title: 'No words were heard',
-    help: 'The track was listened to but no words came back. Choose a track with the lead vocal on it (Ref Vox), or tick "Isolate the voice first" for a track with music on it.',
+    help: 'The track was listened to but no words came back. Choose a track with the lead vocal on it (Ref Vox), or turn on "Isolate the voice first" for a track with music on it.',
   },
   'RTS-LYR-06': {
     area: 'LYR',
     title: 'Stopped before it was listened to',
-    help: 'The run was stopped before this song. Tick it and run again.',
+    help: 'The run was stopped before this song. Select it and run again.',
   },
   'RTS-LYR-07': {
     area: 'LYR',
@@ -249,7 +249,7 @@ export const ERROR_CODES: Record<string, ErrorEntry> = {
   'RTS-LSE-05': {
     area: 'LSE',
     title: 'No lyrics found on that track',
-    help: "The track's audio was read but nothing was heard, or every part was too short. Choose the vocal track, or tick Isolate the voice first.",
+    help: "The track's audio was read but nothing was heard, or every part was too short. Choose the vocal track, or turn on Isolate the voice first.",
   },
   'RTS-LSE-06': {
     area: 'LSE',

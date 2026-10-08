@@ -15,7 +15,7 @@ import ErrorNotice from './ErrorNotice';
  *
  * Three things, in the order they are done. Which songs already have words:
  * clips on a `+LYRICS` track inside the song's stretch of the set. Words for
- * the songs ticked, heard from one of each song's own tracks — Ref Vox where
+ * the songs selected, heard from one of each song's own tracks — Ref Vox where
  * there is one. And those words written as MIDI clips on a `+LYRICS` track,
  * every song's at once, in a copy of the set beside it.
  *
@@ -168,6 +168,8 @@ export default function LyricsPanel({
   };
   const fileOf = (song: AlsSong) => (lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null);
 
+  // Every song there is a track to listen to on.
+  const selectable = songs.filter((s) => listenableTracks(s).length).map((s) => s.title);
   const without = songs.filter((s) => !lyricClipCount(s) && listenableTracks(s).length).map((s) => s.title);
   const trackOf = (song: AlsSong) =>
     listenableTracks(song).find((st) => st.trackId === trackFor[song.title]) ?? vocalTrackFor(song);
@@ -334,8 +336,8 @@ export default function LyricsPanel({
     <div hidden={hidden} className="lyrics-panel">
       <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
         {without.length
-          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Tick the songs to hear lyrics for.`
-          : `Every song has lyrics on a +LYRICS track. Tick any to hear them again.`}
+          ? `${songs.length - without.length} of ${songs.length} songs have lyrics on a +LYRICS track. Select the songs to hear lyrics for.`
+          : `Every song has lyrics on a +LYRICS track. Select any to hear them again.`}
       </div>
 
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -362,11 +364,18 @@ export default function LyricsPanel({
 
       <div className="controls flush" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="chip" disabled={busy || !without.length} onClick={() => setPicked(without)}>
-          Tick the {without.length} without lyrics
+          Select the {without.length} without lyrics
         </button>
-        <button className="chip" disabled={busy || !picked.length} onClick={() => setPicked([])}>
-          Untick all
-        </button>
+        {/* Nothing selected, it selects everything; anything selected, it clears. */}
+        {picked.length ? (
+          <button className="chip" disabled={busy} onClick={() => setPicked([])}>
+            Deselect all
+          </button>
+        ) : (
+          <button className="chip" disabled={busy || !selectable.length} onClick={() => setPicked(selectable)}>
+            Select all
+          </button>
+        )}
       </div>
 
       <div className="lyric-songs" role="list">
@@ -477,7 +486,7 @@ export default function LyricsPanel({
           </button>
         ) : (
           <button className="btn primary" disabled={busy || !picked.length} onClick={() => void detect()}>
-            {picked.length ? `Hear lyrics for ${picked.length} song${picked.length === 1 ? '' : 's'}` : 'Tick songs to hear lyrics for'}
+            {picked.length ? `Hear lyrics for ${picked.length} song${picked.length === 1 ? '' : 's'}` : 'Select songs to hear lyrics for'}
           </button>
         )}
         <button className="btn primary" disabled={busy || !heard.length} onClick={() => void write()}>
