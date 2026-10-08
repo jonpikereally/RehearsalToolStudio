@@ -219,6 +219,38 @@ button {
   display: none;
 }
 
+.lyric-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lyric-step:last-of-type {
+  border-bottom: 0;
+}
+
+.lyric-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lyric-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border);
+  font-size: 12px;
+}
+
 .lyric-songs {
   display: flex;
   flex-direction: column;

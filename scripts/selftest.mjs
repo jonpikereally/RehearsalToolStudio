@@ -6103,9 +6103,14 @@ group('a file warped through several tempos');
 {
   const { spawnSync } = await import('node:child_process');
   const { fileURLToPath } = await import('node:url');
-  const py = spawnSync('python3', [fileURLToPath(new URL('../lyrics-studio/test_timing.py', import.meta.url))], { encoding: 'utf8' });
-  if (py.error) console.log('  (skipped: python3 not available for the lyric timing checks)');
-  else check('lyric timing keeps words to the singing, not the breaks', py.status === 0, (py.stdout + py.stderr).trim().split('\n').pop());
+  for (const [file, name] of [
+    ['test_timing.py', 'lyric timing keeps words to the singing, not the breaks'],
+    ['test_lyrics_text.py', 'a lyric sheet’s title and artist are not read as lyrics'],
+  ]) {
+    const py = spawnSync('python3', [fileURLToPath(new URL(`../lyrics-studio/${file}`, import.meta.url))], { encoding: 'utf8' });
+    if (py.error) console.log(`  (skipped: python3 not available for ${file})`);
+    else check(name, py.status === 0, (py.stdout + py.stderr).trim().split('\n').pop());
+  }
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S).`);

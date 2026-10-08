@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-08
 
+**Lay the Lyrics tool out in steps, and skip a lyric sheet's title and artist**
+
+The Lyrics tool was one stack of controls with the clip and voice options sitting between the song list and the buttons that use them. It is now three numbered steps: set up (the lyrics folder, the size of clip, isolating the voice), songs (what is selected, the list), and listen then write.
+
 **Never listen to the tempo track for lyrics**
 
 A track named "Tempo Track" holds the clips that set the set's tempo; they have no voice, yet it was offered among the tracks to listen to for a song, and was a source for the engine to transcribe. The set reader no longer lists it as one of a song's audio tracks, the Lyrics tool's choice of track skips it, and the engine leaves it out of the sources it describes — including from the combined source of same-named tracks.

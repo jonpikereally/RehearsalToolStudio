@@ -102,7 +102,7 @@ cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/slate-helper.mjs "$
 cp scripts/packaged-launch.sh "$RES/launch.sh" && chmod 755 "$RES/launch.sh"
 # Lyrics Studio: the program, none of what running it leaves behind, and uv to run it.
 mkdir -p "$RES/lyrics-studio"
-for f in server.py timing.py index.html template.xml audiotrack.xml midiclip-12.xml build_audiotrack.py; do
+for f in server.py timing.py lyrics_text.py index.html template.xml audiotrack.xml midiclip-12.xml build_audiotrack.py; do
   cp "lyrics-studio/$f" "$RES/lyrics-studio/"
 done
 UV_BIN="$(command -v uv || true)"
