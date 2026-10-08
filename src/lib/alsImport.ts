@@ -7,6 +7,7 @@ import type {
 import { isAudio, parseFileName, parseNameMeta } from './scan.ts';
 import { canonicalAlsPath, parseRigLocator } from './alsPatch.ts';
 import { deriveChordLanes } from './nashville.ts';
+import { tempoMapOf } from './infoTrack.ts';
 
 /**
  * Turning a parsed Ableton set into library songs.
@@ -390,7 +391,7 @@ export function songsFromProject(
       // only what is left when nothing else says.
       bpm: alsSong.startBpm ?? alsSong.bpm ?? prev?.bpm ?? project.tempo,
       tempoUnset: false,
-      tempoMap: alsSong.tempoChanges.length ? alsSong.tempoChanges : undefined,
+      tempoMap: tempoMapOf(alsSong, project),
       timeSigNum: alsSong.timeSigNum ?? project.timeSigNum,
       timeSigDen: alsSong.timeSigDen ?? project.timeSigDen,
       meterMap: alsSong.meterMap?.length ? alsSong.meterMap : undefined,
