@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-10-17
+
+**Read the setlist again on request, with Refresh setlist**
+
+The running order is read once: at the scan, from AbleSet's saved setlists and its log, and again when a prepare dialog opens, from AbleSet itself or its log. When either caught it wrong — AbleSet had not yet written down a reorder, or a setlist was mid-save — the only way to check again was to close the dialog, press Rescan and open it again.
+
 ## 2026-10-08
 
 **Keep lyric timing to where the song is sung, not across the breaks**

@@ -11,7 +11,7 @@ import SortBar, { useSort } from './SortBar';
 import type { Song } from '../types';
 
 export default function SetlistView({ setlistId }: { setlistId: string }) {
-  const { library, updateSetlist, deleteSetlist, currentSet } = useStore();
+  const { library, updateSetlist, deleteSetlist, currentSet, rescan, scanning } = useStore();
   const setlist = library.setlists.find((s) => s.id === setlistId);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
@@ -94,8 +94,19 @@ export default function SetlistView({ setlistId }: { setlistId: string }) {
 
       {fromSet && canEditLibrary && (
         <div className="notice">
-          This running order comes from the Ableton set, and is read again every time you rescan —
-          move a song in the arrangement and it moves here. That's also why it can't be edited here.
+          This running order comes from the Ableton set — AbleSet's setlist when it keeps one — and is
+          read again every time you rescan. That's also why it can't be edited here.
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            {/* When the order here is not the one AbleSet shows: read it all again. */}
+            <button
+              className="btn"
+              onClick={() => void rescan().catch(() => undefined)}
+              disabled={scanning}
+              title="Read the setlist again — from AbleSet if it has this set open, else its saved setlists"
+            >
+              {scanning ? 'Reading the setlist…' : 'Refresh setlist'}
+            </button>
+          </div>
         </div>
       )}
 
