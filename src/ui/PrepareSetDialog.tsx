@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import type { AudioStanding } from '../lib/audioKey';
 import { useLiveOrder } from '../lib/useLiveOrder';
+import RunningOrderNote from './RunningOrderNote';
 import { scopeToSetlist } from '../lib/ableset';
 import { parseAls, type AlsProject } from '../lib/alsParser';
 import { describeParts, overallProgress, type PrepareProgress, type PrepareResult } from '../lib/prepare';
@@ -132,7 +133,8 @@ export default function PrepareSetDialog({
   const alsName = setPath?.split('/').pop()?.replace(/\.als$/i, '') ?? null;
   // The order the manifest lists songs in: the setlist this was opened from,
   // else the set's running order — AbleSet's, as it has it right now.
-  const liveOrder = useLiveOrder(project, order ? null : setPath);
+  const live = useLiveOrder(project, order ? null : setPath);
+  const liveOrder = live.order;
   const songOrder = order ?? liveOrder?.titles ?? undefined;
 
   /*
@@ -538,11 +540,7 @@ export default function PrepareSetDialog({
               Not on AbleSet’s setlist, so left out: {leftOut.join(', ')}.
             </div>
           )}
-          {liveOrder?.note && (
-            <div className={liveOrder.missing ? 'notice' : 'hint'} style={{ marginBottom: 6 }}>
-              {liveOrder.note}
-            </div>
-          )}
+          <RunningOrderNote live={live} disabled={busy} />
           {only === 'submixes' && submixStanding && (
             <div className="hint" style={{ marginBottom: 6 }}>
               {(() => {

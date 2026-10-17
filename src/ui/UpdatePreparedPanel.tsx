@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLiveOrder } from '../lib/useLiveOrder';
+import RunningOrderNote from './RunningOrderNote';
 import type { AlsProject } from '../lib/alsParser';
 import * as local from '../lib/localSource';
 import { useStore } from '../lib/store';
@@ -31,7 +32,8 @@ export default function UpdatePreparedPanel({
   titles: string[];
 }) {
   const { publishFolderName, pickPublishFolder, publishFolder } = useStore();
-  const liveOrder = useLiveOrder(project, alsPath);
+  const live = useLiveOrder(project, alsPath);
+  const liveOrder = live.order;
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [result, setResult] = useState<UpdateResult | null>(null);
@@ -108,6 +110,8 @@ export default function UpdatePreparedPanel({
         named: its folder is called after those, so its audio is out of date too and only a proper
         prepare will fix it. Everything else here is free.
       </div>
+
+      <RunningOrderNote live={live} disabled={busy} />
 
       {progress && <div className="notice">{progress}</div>}
       {error && <ErrorNotice code="RTS-UPD-01" text={error} />}
