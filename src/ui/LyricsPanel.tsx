@@ -3,10 +3,10 @@ import { keepOnlyAdded } from '../lib/alsEdit';
 import { inflateAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { addChordTrack, type ChordClip } from '../lib/chordTrack';
 import { FINENESS_LABEL, lyricClipsFrom, type LyricFineness } from '../lib/lyricClips';
-import { lyricFileFor, lyricFilesIn, type LyricFileEntry } from '../lib/lyricFiles';
+import { LYRIC_FILE_KINDS, lyricFileFor, lyricFilesIn, type LyricFileEntry } from '../lib/lyricFiles';
 import { engineStartedBy, ensureLyricsStudio, isFolderRefusal, lyricFileText, restartLyricsStudio, transcribeTrack, type TranscribedSegment } from '../lib/lyricsStudio';
 import * as local from '../lib/localSource';
-import { remember } from '../lib/remember';
+import { forget, remember } from '../lib/remember';
 import { coded } from '../lib/errorCodes';
 import ErrorNotice from './ErrorNotice';
 
@@ -26,7 +26,9 @@ import ErrorNotice from './ErrorNotice';
  *
  * A song with a file of its own in the lyrics folder — found by its title —
  * gets that file's words: the engine listens for where each is sung and the
- * clips carry the words as written, rather than as heard.
+ * clips carry the words as written, rather than as heard. Where the title
+ * finds the wrong file, or none, the song's file can be chosen in the Finder
+ * instead, from anywhere, and that choice is kept for the set.
  */
 
 type Row =
@@ -83,6 +85,20 @@ export function vocalTrackFor(song: AlsSong) {
     stems[0] ??
     null
   );
+}
+
+/** A song's lyric file, wherever it was found: `abs` is where it is on this Mac, once known. */
+type LyricFile = { name: string; path: string; abs?: string; chosen?: boolean };
+
+/** The lyric files chosen in the Finder for a set's songs, by title: their paths on this Mac. */
+const chosenKey = (setPath: string) => `ls.settools.lyricFiles:${setPath}`;
+function chosenFilesFor(setPath: string): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(chosenKey(setPath)) ?? '{}') as unknown;
+    return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
 }
 
 function barLabel(bar: number): string {
@@ -166,7 +182,32 @@ export default function LyricsPanel({
       if ((err as Error)?.name !== 'AbortError') setFolderError(coded('RTS-LYR-07', err));
     }
   };
-  const fileOf = (song: AlsSong) => (lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null);
+  /** Files chosen in the Finder, song by song, over what the title finds in the folder. */
+  const [chosenFiles, setChosenFiles] = useState<Record<string, string>>(() => chosenFilesFor(setPath));
+  useEffect(() => setChosenFiles(chosenFilesFor(setPath)), [setPath]);
+  const keepChosen = (next: Record<string, string>) => {
+    setChosenFiles(next);
+    if (Object.keys(next).length) remember(chosenKey(setPath), next);
+    else forget(chosenKey(setPath));
+  };
+  const chooseLyricFile = async (song: AlsSong) => {
+    setFolderError(null);
+    try {
+      const picked = await local.pickFilePath({ description: `the lyric file for “${song.title}”`, extensions: LYRIC_FILE_KINDS });
+      keepChosen({ ...chosenFiles, [song.title]: `${picked.dir}/${picked.name}` });
+    } catch (err) {
+      if (!/abort/i.test(err instanceof Error ? `${err.name} ${err.message}` : String(err))) setFolderError(coded('RTS-LYR-08', err));
+    }
+  };
+  const unchooseLyricFile = (song: AlsSong) => {
+    const { [song.title]: _gone, ...rest } = chosenFiles;
+    keepChosen(rest);
+  };
+  const fileOf = (song: AlsSong): LyricFile | null => {
+    const abs = chosenFiles[song.title];
+    if (abs) return { name: abs.split('/').pop() ?? abs, path: abs, abs, chosen: true };
+    return lyricsFolder ? lyricFileFor(song.title, lyricFiles) : null;
+  };
 
   // Every song there is a track to listen to on.
   const selectable = songs.filter((s) => listenableTracks(s).length).map((s) => s.title);
@@ -232,12 +273,20 @@ export default function LyricsPanel({
         const file = fileOf(song);
         let lyrics = '';
         let fileError: string | undefined;
-        if (file && lyricsFolder) {
+        if (file && (file.abs || lyricsFolder)) {
           listening(`Reading ${file.name}…`);
           try {
-            lyrics = await lyricFileText(url, await local.absolutePath(lyricsFolder.handle, '', file.path));
+            const at = file.abs ?? (await local.absolutePath(lyricsFolder!.handle, '', file.path));
+            try {
+              lyrics = await lyricFileText(url, at);
+            } catch (err) {
+              // A file chosen from anywhere is as likely as a set to be out of an older engine's reach.
+              if (!isFolderRefusal(err)) throw err;
+              url = await restartLyricsStudio(url, (n) => listening(n));
+              lyrics = await lyricFileText(url, at);
+            }
           } catch (err) {
-            fileError = coded('RTS-LYR-07', err);
+            fileError = coded(file.chosen ? 'RTS-LYR-08' : 'RTS-LYR-07', err);
           }
         }
         listening(`Listening to “${track.name}”${lyrics ? ` for the words in ${file!.name}` : ''}…`);
@@ -348,7 +397,7 @@ export default function LyricsPanel({
           </span>
         ) : (
           <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            none — choose one and each song's lyric file is found by its title, its words used as written
+            none — choose one and each song's lyric file is found by its title, its words used as written; or choose a song's file below
           </span>
         )}
         <button className="chip" disabled={busy} onClick={() => void chooseLyricsFolder()}>
@@ -404,9 +453,36 @@ export default function LyricsPanel({
                 <span className="badge warn">no lyrics</span>
               )}
               {file && (
-                <span className="badge" title={`Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard`}>
+                <span
+                  className="badge"
+                  title={
+                    file.chosen
+                      ? `Its words are taken from ${file.path}, chosen in the Finder, and placed where they are heard`
+                      : `Its words are taken from ${file.path.replace(/^\//, '')} in the lyrics folder, and placed where they are heard`
+                  }
+                >
                   file: {file.name}
+                  {file.chosen && ' (chosen)'}
                 </span>
+              )}
+              {file?.chosen ? (
+                <button
+                  className="chip"
+                  disabled={busy}
+                  onClick={() => unchooseLyricFile(song)}
+                  title={lyricsFolder ? 'Go back to the file the lyrics folder has for this title, if any' : 'Stop using this file'}
+                >
+                  Clear file
+                </button>
+              ) : (
+                <button
+                  className="chip"
+                  disabled={busy}
+                  onClick={() => void chooseLyricFile(song)}
+                  title="Choose this song's lyric file in the Finder, when the title finds the wrong one or none"
+                >
+                  {file ? 'Other file…' : 'Choose file…'}
+                </button>
               )}
               {tracks.length ? (
                 <select

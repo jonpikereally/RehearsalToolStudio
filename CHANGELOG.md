@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-10-17
 
+**Choose a song's lyric file in the Finder, in the Lyrics tool**
+
+A song's lyric file was found only by its title, in the lyrics folder. A file named for a working title, or one kept somewhere else, was never found, and a title that matched the wrong file left no way round it but renaming files.
+
 **Read the setlist again on request, with Refresh setlist**
 
 The running order is read once: at the scan, from AbleSet's saved setlists and its log, and again when a prepare dialog opens, from AbleSet itself or its log. When either caught it wrong — AbleSet had not yet written down a reorder, or a setlist was mid-save — the only way to check again was to close the dialog, press Rescan and open it again.
