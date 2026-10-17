@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AlsProject } from './alsParser';
 import { liveRunningOrder, runningOrderTitles, type RunningOrder } from './ableset.ts';
 import { useStore } from './store';
 import { setlistIdFor } from './alsImport.ts';
+import type { Library } from '../types';
 
 /**
  * The running order to write, asked for at the moment of preparing.
@@ -13,11 +14,16 @@ import { setlistIdFor } from './alsImport.ts';
  * setlist — which itself follows AbleSet's saved file — when the log has
  * nothing newer for this set.
  */
-export function useLiveOrder(project: AlsProject | null, alsPath: string | null): RunningOrder | null {
-  const { library } = useStore();
+export function useLiveOrder(project: AlsProject | null, alsPath: string | null): LiveOrder {
+  const { library, rescan } = useStore();
   const [live, setLive] = useState<RunningOrder | null>(null);
   /** Whether AbleSet has been asked yet, so "none found" is never said before it has. */
   const [asked, setAsked] = useState(false);
+  /** Bumped by refresh, to ask AbleSet again. */
+  const [round, setRound] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  /** When it was last read again, so a refresh that finds the same order still shows it was done. */
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   useEffect(() => {
     setLive(null);
     setAsked(false);
@@ -36,7 +42,36 @@ export function useLiveOrder(project: AlsProject | null, alsPath: string | null)
       on = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, alsPath]);
+  }, [project, alsPath, round]);
+
+  /*
+   * Read the order again, when the one shown is not the one AbleSet has:
+   * the saved setlists and the set by a rescan, so the library's setlist is
+   * right too, and then AbleSet itself, against what that scan found.
+   */
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await rescan();
+    } finally {
+      setRound((r) => r + 1);
+      setRefreshing(false);
+      setRefreshedAt(Date.now());
+    }
+  }, [rescan]);
+
+  return { order: orderFor(live, asked, alsPath, library), refresh, refreshing, refreshedAt };
+}
+
+/** The running order, and a way to read it again. */
+export interface LiveOrder {
+  order: RunningOrder | null;
+  refresh: () => Promise<void>;
+  refreshing: boolean;
+  refreshedAt: number | null;
+}
+
+function orderFor(live: RunningOrder | null, asked: boolean, alsPath: string | null, library: Library): RunningOrder | null {
   if (live) return live;
   if (!alsPath) return null;
   const setlist = library.setlists.find((sl) => sl.id === setlistIdFor(alsPath));
@@ -54,7 +89,7 @@ export function useLiveOrder(project: AlsProject | null, alsPath: string | null)
     missing: asked,
     note: asked
       ? "No AbleSet order was found for this set, so the songs go in the arrangement's order. To use AbleSet's, " +
-        'have AbleSet open on this set (from this same folder) while preparing, or save the setlist in AbleSet and Rescan.'
+        'have AbleSet open on this set (from this same folder) while preparing, or save the setlist in AbleSet and press Refresh setlist.'
       : '',
   };
 }
