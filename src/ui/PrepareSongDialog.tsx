@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { getShiftedBuffer, primeShiftedRender, shiftLanes } from '../lib/pitchService';
 import { holdAwake } from '../lib/keepAwake';
 import { useLiveOrder } from '../lib/useLiveOrder';
+import RunningOrderNote from './RunningOrderNote';
 import { scopeToSetlist } from '../lib/ableset';
 import { parseAls, type AlsProject, type AlsSong } from '../lib/alsParser';
 import { describeParts, overallProgress, partFileName, partsFor, prepareSet, songFolderName, soundsInSong, submixPartsFor, type PrepareProgress, type PrepareResult, type SongPlan } from '../lib/prepare';
@@ -74,7 +75,8 @@ const PrepareBar = ({ progress }: { progress: PrepareProgress }) => {
 export default function PrepareSongDialog({ song, onClose }: { song: Song; onClose: () => void }) {
   const { publishFolderName, pickPublishFolder, publishFolder, settings, outputSet, library } = useStore();
   const [project, setProject] = useState<AlsProject | null>(null);
-  const liveOrder = useLiveOrder(project, song.setPath ?? null);
+  const live = useLiveOrder(project, song.setPath ?? null);
+  const liveOrder = live.order;
   const [alsSong, setAlsSong] = useState<AlsSong | null>(null);
   const [choice, setChoice] = useState<Record<string, Choice>>({});
   const [combinedName, setCombinedName] = useState('band');
@@ -461,6 +463,8 @@ export default function PrepareSongDialog({ song, onClose }: { song: Song; onClo
             </p>
           </>
         )}
+
+        <RunningOrderNote live={live} disabled={busy} />
 
         {progress && (
           <>
