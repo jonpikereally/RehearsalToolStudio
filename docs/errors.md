@@ -234,6 +234,12 @@ The run was stopped before this song. Select it and run again.
 
 The lyrics folder could not be listed, or a song's lyric file in it could not be read; the song is listened to without it. If the message carries an RTS-LSE code, look that up. Check the folder is still there and synced, and choose it again in Set tools ▸ Lyrics.
 
+### RTS-LYR-08
+
+**A lyric file chosen in the Finder could not be used**
+
+The file chosen for a song in Set tools ▸ Lyrics could not be picked or read; the song is listened to without it. Check it is one of the kinds the Lyrics tool reads (.txt, .docx, .pdf, .pages…, saved as a single file), that it is still where it was, and choose it again — or Clear file to go back to the lyrics folder. If the message carries an RTS-LSE code, look that up.
+
 ## Lyrics engine
 
 ### RTS-LSE-00
