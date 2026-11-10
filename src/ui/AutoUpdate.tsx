@@ -34,8 +34,8 @@ import { coded } from '../lib/errorCodes';
  * is named and the band's folder chosen.
  */
 
-/** What set a run going: a save Live made, or the studio opening. */
-type Why = 'save' | 'launch';
+/** What set a run going: a save Live made, AbleSet's setlist saved, or the studio opening. */
+type Why = 'save' | 'setlist' | 'launch';
 
 type Phase =
   | { kind: 'saved'; at: number }
@@ -57,10 +57,11 @@ export const AUTO_JOBS: { key: 'stems' | 'submixes' | 'info'; label: string; hin
 const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 /** What the bar calls the moment a run answers: a save, or the studio opening. */
-const since = (p: { at: number; why: Why }) => (p.why === 'save' ? `after the save at ${clock(p.at)}` : 'on opening');
+const since = (p: { at: number; why: Why }) =>
+  p.why === 'save' ? `after the save at ${clock(p.at)}` : p.why === 'setlist' ? `after AbleSet's setlist changed at ${clock(p.at)}` : 'on opening';
 
 export default function AutoUpdate() {
-  const { currentSet, outputSet, setSaved, dismissSetSaved, settings, saveSettings, publishFolder, library } = useStore();
+  const { currentSet, outputSet, setSaved, setlistChanged, dismissSetSaved, settings, saveSettings, publishFolder, library } = useStore();
   const [phase, setPhase] = useState<Phase | null>(null);
   const [dialog, setDialog] = useState(false);
   /** The save being acted on, so a newer one is not answered twice and an older run's news is dropped. */
@@ -118,7 +119,7 @@ export default function AutoUpdate() {
         if (!found.manifest) {
           // Nothing prepared under this name is news after a save and not on
           // opening: the studio opens on plenty of sets nobody has prepared.
-          if (why === 'launch') return;
+          if (why !== 'save') return;
           note({ kind: 'held', session: setName, set: folderName, text: `Left alone: nothing has been prepared into “${folderName}” yet.` });
           if (current()) setPhase({ kind: 'unprepared', at });
           return;
@@ -153,7 +154,7 @@ export default function AutoUpdate() {
               groups: songGroups(['Running order now', songOrder]),
             });
           }
-          if (current()) setPhase(why === 'launch' ? null : { kind: 'nothing', at, held });
+          if (current()) setPhase(why !== 'save' ? null : { kind: 'nothing', at, held });
           return;
         }
         /*
@@ -280,6 +281,20 @@ export default function AutoUpdate() {
     catchUp(at, 'save', currentSet);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSaved, currentSet, auto.stems, auto.submixes, auto.info, paused, phase?.kind]);
+
+  /*
+   * AbleSet's setlist saved beside the set: the store has read the folder
+   * again, so the library's running order is AbleSet's new one, and the
+   * prepared set follows it — the order in the band's set.json, and any song
+   * just put on the setlist, by whatever jobs are switched on. Paused means
+   * paused: the library follows, the band's folder waits for a save.
+   */
+  useEffect(() => {
+    if (!setlistChanged || !currentSet || setlistChanged.path !== currentSet || paused) return;
+    if (acting.current === setlistChanged.at || prepareRunning()) return;
+    catchUp(setlistChanged.at, 'setlist', currentSet);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setlistChanged, currentSet, paused]);
 
   /*
    * The same check on opening, without waiting for a save.

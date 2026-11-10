@@ -251,6 +251,8 @@ interface StoreValue {
    */
   setSaved: { path: string; at: number } | null;
   dismissSetSaved: () => void;
+  /** AbleSet's saved setlist for the open set changed, and the folder was read again. */
+  setlistChanged: { path: string; at: number } | null;
   /**
    * The watch on the open set, for saying so: whether Live is running, and
    * whether looking is paused for a scan or a prepare. Null when no set is
@@ -1002,6 +1004,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    */
   const [setSaved, setSetSaved] = useState<{ path: string; at: number } | null>(null);
   const [watching, setWatching] = useState<{ live: boolean; paused: boolean } | null>(null);
+  const [setlistChanged, setSetlistChanged] = useState<{ path: string; at: number } | null>(null);
   const rescanRef = useRef(rescan);
   rescanRef.current = rescan;
   const scanningRef = useRef(false);
@@ -1009,6 +1012,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSetSaved(null);
     setWatching(null);
+    setSetlistChanged(null);
     if (!currentSet || !canReadLibrary) return;
     const fileName = currentSet.split('/').pop() ?? currentSet;
     let on = true;
@@ -1023,6 +1027,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       said = now;
       if (on) setWatching({ live, paused });
     };
+    /*
+     * AbleSet's setlists beside the set, looked at with it. Reordering the
+     * show in AbleSet and saving the setlist changes nothing in the .als, so
+     * a watch on the set alone never noticed: the order stayed what the last
+     * scan read until somebody pressed Refresh setlist. A change here, held
+     * still for a look like a save, reads the folder again — the running
+     * order and which songs are in the show with it — and is announced for
+     * whoever keeps the prepared set's order current.
+     */
+    let setlistSeen: string | null = null;
+    let setlistPending: string | null = null;
+    const lookAtSetlists = async () => {
+      let stamp: string;
+      try {
+        stamp = await source.abletStamp(currentSet);
+      } catch {
+        return; // an older launcher, or mid-write; the next look says
+      }
+      if (!on) return;
+      if (setlistSeen === null || stamp === setlistSeen) {
+        setlistSeen = stamp;
+        setlistPending = null;
+        return;
+      }
+      if (setlistPending !== stamp) {
+        setlistPending = stamp;
+        return;
+      }
+      setlistSeen = stamp;
+      setlistPending = null;
+      await rescanRef.current();
+      if (!on) return;
+      const at = Date.now();
+      note({ at, kind: 'saved', session: fileName, text: "AbleSet's setlist changed, and the running order was read again." });
+      setSetlistChanged({ path: currentSet, at });
+    };
     const look = async () => {
       if (!on) return;
       const paused = scanningRef.current || prepareRunning();
@@ -1036,6 +1076,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         return; // mid-write, or gone; the next look says
       }
+      if (!on) return;
+      await lookAtSetlists();
       if (!on) return;
       if (seen === null) {
         seen = rev;
@@ -1148,6 +1190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sessionPath,
       setSaved,
       dismissSetSaved: () => setSetSaved(null),
+      setlistChanged,
       watching,
       pullNow,
       publishFolderName,
@@ -1162,7 +1205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       library, settings, syncState, syncError, scanning,
       scanProgress, lastScan, saveSettings, updateSong, updateSetlist, createSetlist, deleteSetlist,
-      rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, setSaved, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
+      rescan, openDropped, outputSet, chooseOutput, openSession, sessionPath, setSaved, setlistChanged, watching, pullNow, localStatus, localFolderName, currentSet, sets, chooseSet,
       publishFolderName, pickPublishFolder, adoptPublishFolder, publishFolder, resourceFolders, forgetResourceFolder, pickResourcesFolder,
     ],
   );

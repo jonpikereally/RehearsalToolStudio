@@ -3623,6 +3623,23 @@ group('the file API');
   check('stat answers name, size and date', st.name === 'Yellow.als' && st.size === 15);
   check('a leading slash is tolerated', (await ask('exists', { dir: songs, path: '/Band/Yellow/Yellow.als' })).exists);
 
+  {
+    // AbleSet's setlists beside a set, stamped so the set's watch sees a save in AbleSet.
+    const show = join(songs, 'Show');
+    await mkdir(join(show, 'AbleSet', 'Setlists'), { recursive: true });
+    await writeFile(join(show, 'Show.als'), 'x');
+    const stamp = async () => ask('ableset-stamp', { dir: songs, path: '/Show/Show.als' });
+    const none = await stamp();
+    check('a set whose AbleSet folder holds no setlist has no stamp', none.found === false && none.stamp === '', JSON.stringify(none));
+    await writeFile(join(show, 'AbleSet', 'Setlists', 'Friday.json'), '[]');
+    await writeFile(join(show, 'AbleSet', 'Setlists', 'notes.txt'), 'not a setlist');
+    const one = await stamp();
+    check('a setlist saved in AbleSet is in the stamp, and nothing else is', one.found && one.stamp.startsWith('Friday.json|2|') && !one.stamp.includes('notes'), JSON.stringify(one));
+    await writeFile(join(show, 'AbleSet', 'Setlists', 'Friday.json'), '[{"time":0}]');
+    check('saved again, the stamp changes', (await stamp()).stamp !== one.stamp);
+    check('a set outside the folder is not stamped', (await call('ableset-stamp', { dir: songs, path: '../Elsewhere/Secret.als' })).status >= 400);
+  }
+
   // A set or a folder dropped on the app: granted as a pick, no dialog asked.
   asked = null;
   const yellow = join(songs, 'Band', 'Yellow');

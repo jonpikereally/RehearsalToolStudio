@@ -36,7 +36,6 @@ export const ERROR_AREAS: Record<string, string> = {
   PSG: 'Prepare a song',
   UPD: 'Update the band',
   AUTO: 'Auto-update on save',
-  BND: 'The band',
   PLY: 'The player',
   BNC: 'Print a mix',
   TC: 'Timecode',
@@ -405,16 +404,6 @@ export const ERROR_CODES: Record<string, ErrorEntry> = {
     area: 'AUTO',
     title: 'The auto-update was stopped',
     help: 'You stopped it. The message says whether anything had been written over; Undo puts it back, and the next save writes the rest.',
-  },
-  'RTS-BND-01': {
-    area: 'BND',
-    title: "The band's settings could not be read",
-    help: "Reading the band's mixes or rig files from their folder failed. Check the band's folder in Settings.",
-  },
-  'RTS-BND-02': {
-    area: 'BND',
-    title: "The band's settings could not be saved",
-    help: "Writing to the band's folder failed. Check it is still there and Dropbox is running.",
   },
   'RTS-PLY-01': {
     area: 'PLY',

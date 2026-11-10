@@ -335,6 +335,14 @@ export async function abletLive(folder: FolderHandle, root: string, path: string
   return call('ableset-live', { dir: open(folder).dir, path: below(root, path) });
 }
 
+/**
+ * A fingerprint of AbleSet's saved setlists beside the set at `path` — name,
+ * size and date of each — which changes whenever one is saved in AbleSet.
+ */
+export async function abletStamp(folder: FolderHandle, root: string, path: string): Promise<{ found: boolean; stamp: string }> {
+  return call('ableset-stamp', { dir: open(folder).dir, path: below(root, path) });
+}
+
 /** Whether a file is actually there, without reading it. */
 /** Show a file or folder in the Finder, selected. */
 export async function reveal(folder: FolderHandle, root: string, path: string): Promise<void> {

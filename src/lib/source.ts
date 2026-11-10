@@ -103,6 +103,15 @@ export async function abletLive(path: string): Promise<local.AbleSetLive> {
   return local.abletLive(config.folder!, config.root, path);
 }
 
+/**
+ * AbleSet's saved setlists beside the set at `path`, as one string that
+ * changes when any of them does; empty when the set has none.
+ */
+export async function abletStamp(path: string): Promise<string> {
+  if (!localReady()) return '';
+  return (await local.abletStamp(config.folder!, config.root, path)).stamp;
+}
+
 /** Where a file of the folder is on this Mac, for another app that reads it itself. */
 export async function absolutePath(path: string): Promise<string> {
   if (!localReady()) throw new Error('No folder is chosen to read from.');
