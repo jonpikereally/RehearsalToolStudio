@@ -89,7 +89,8 @@ function orderFor(live: RunningOrder | null, asked: boolean, alsPath: string | n
     missing: asked,
     note: asked
       ? "No AbleSet order was found for this set, so the songs go in the arrangement's order. To use AbleSet's, " +
-        'have AbleSet open on this set (from this same folder) while preparing, or save the setlist in AbleSet and press Refresh setlist.'
+        'have AbleSet open on this set (from this same folder) while preparing, or save the setlist in AbleSet — it is read from the ' +
+        'AbleSet folder beside the set as soon as it is saved.'
       : '',
   };
 }

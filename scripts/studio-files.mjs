@@ -767,6 +767,35 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
     },
 
     /**
+     * What AbleSet has saved beside the set at `path`: one line per setlist
+     * file in `AbleSet/Setlists/` next to the .als, name, size and date. The
+     * set's watch compares it look to look, so a setlist saved, reordered or
+     * added in AbleSet is read without anybody pressing Refresh. A shallow
+     * look — a readdir and a stat a file — cheap enough every few seconds.
+     */
+    async 'ableset-stamp'({ dir, path }) {
+      const full = inside(dir, path, { file: true });
+      const lines = [];
+      for (const name of ['AbleSet', 'Ableset', 'ableset']) {
+        const setlists = join(dirname(full), name, 'Setlists');
+        let names;
+        try {
+          names = await readdir(setlists);
+        } catch {
+          continue;
+        }
+        for (const n of names.sort()) {
+          if (n.startsWith('.') || extname(n).toLowerCase() !== '.json') continue;
+          const st = await stat(join(setlists, n)).catch(() => null);
+          if (st?.isFile()) lines.push(`${n}|${st.size}|${modified(st)}`);
+        }
+        // One folder, whatever its case: on a Mac all three names are the same one.
+        break;
+      }
+      return { found: lines.length > 0, stamp: lines.join('\n') };
+    },
+
+    /**
      * A line from the page into the launch log: an error it caught, said
      * beside the launcher's own lines where somebody can read it. Bounded,
      * so a page in a loop cannot fill a disk.

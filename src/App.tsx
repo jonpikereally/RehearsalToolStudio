@@ -17,7 +17,6 @@ import { prepareRunning } from './lib/prepareState';
 import type { OutputSet } from './lib/locatePrepared';
 import SetToolsView from './ui/SetToolsView';
 import ChangesView from './ui/ChangesView';
-import BandView from './ui/BandView';
 import AutoUpdate from './ui/AutoUpdate';
 import SyncBar from './ui/SyncBar';
 import ErrorNotice from './ui/ErrorNotice';
@@ -254,13 +253,8 @@ export default function App() {
    * tools without a set when the chooser was skipped for the tools that need
    * none.
    */
-  /*
-   * The pages that stand outside the set: Settings, the log, and the band —
-   * who the set is prepared for, which is worth setting up before there is a
-   * set open at all.
-   */
-  const aside =
-    section === 'settings' || section === 'changes' || section === 'band' || (section === 'tools' && toolsAlone());
+  /* The pages that stand outside the set: Settings and the log. */
+  const aside = section === 'settings' || section === 'changes' || (section === 'tools' && toolsAlone());
 
   /*
    * Lyrics Studio lives in the Set tools' Lyrics tool now; the tab it once
@@ -268,6 +262,8 @@ export default function App() {
    */
   useEffect(() => {
     if (section === 'lyrics') navigate('/tools', { tool: 'lyrics' });
+    // The band's tab is gone; its old address goes to the songs.
+    if (section === 'band') navigate('/');
   }, [section]);
   const [toolsOpened, setToolsOpened] = useState(false);
   /*
@@ -316,8 +312,6 @@ export default function App() {
     // Query first, path second: a set's setlist is named after a file path and
     // can't sit in a path segment. Links made before that still work.
     body = <SetlistView setlistId={route.query.get('id') ?? route.path[1]} />;
-  } else if (section === 'band') {
-    body = <BandView />;
   } else if (section === 'changes') {
     body = <ChangesView />;
   } else if (section === 'tools') {
@@ -392,7 +386,6 @@ export default function App() {
         <TabButton on={section === 'library'} to="/" glyph="♪" label="Songs" />
         <TabButton on={section.startsWith('setlist')} to="/setlists" glyph="≡" label="Setlists" />
         <TabButton on={section === 'tools'} to="/tools" glyph="⚒" label="Set tools" />
-        <TabButton on={section === 'band'} to="/band" glyph="⚇" label="The band" />
         <TabButton on={section === 'settings'} to="/settings" glyph="⚙" label="Settings" />
       </nav>
       {currentSet && section !== 'song' && (

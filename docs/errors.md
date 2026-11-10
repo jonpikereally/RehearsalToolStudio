@@ -468,20 +468,6 @@ Putting back the songs the last auto-update wrote over failed. Their earlier ver
 
 You stopped it. The message says whether anything had been written over; Undo puts it back, and the next save writes the rest.
 
-## The band
-
-### RTS-BND-01
-
-**The band's settings could not be read**
-
-Reading the band's mixes or rig files from their folder failed. Check the band's folder in Settings.
-
-### RTS-BND-02
-
-**The band's settings could not be saved**
-
-Writing to the band's folder failed. Check it is still there and Dropbox is running.
-
 ## The player
 
 ### RTS-PLY-01
