@@ -331,6 +331,10 @@ export interface AbleSetLive {
   entries?: { time: number; lastKnownName: string; off?: true }[];
   /** The newest order AbleSet's log has, skips and all, whatever else answered. */
   logged?: { at: string | null; setlistName: string; entries: { time: number; lastKnownName: string; off?: true }[] } | null;
+  /** The newest order the log has of each setlist, by name. */
+  setlists?: { at: string | null; setlistName: string; entries: { time: number; lastKnownName: string; off?: true }[] }[];
+  /** The setlist AbleSet has loaded: as it says while running, else the last its log names. */
+  loaded?: { at: string | null; name: string; from: 'ableset' | 'log' } | null;
 }
 
 export async function abletLive(folder: FolderHandle, root: string, path: string): Promise<AbleSetLive> {

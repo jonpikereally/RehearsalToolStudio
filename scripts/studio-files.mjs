@@ -168,27 +168,53 @@ export function withSkipsFrom(live, logged) {
 }
 
 export function liveSetlistFromLog(text) {
-  let found = null;
+  return setlistsFromLog(text).newest;
+}
+
+/**
+ * Everything a log says about setlists: the newest order of each, by name,
+ * and which one AbleSet was last working on.
+ *
+ * A set can keep several setlists — a Friday one, a festival one — and the
+ * one that was saved last is not the one AbleSet has loaded: saving the
+ * project rewrites them all. What AbleSet last asked its own server about,
+ * by name, is: any request under /api/setlist that names a setlist.
+ */
+export function setlistsFromLog(text) {
+  const byName = new Map();
+  let newest = null;
+  let current = null;
   for (const line of text.split('\n')) {
-    if (!line.includes('/api/setlist/setCueMeta')) continue;
+    if (!line.includes('/api/setlist')) continue;
+    let entry;
     try {
-      const entry = JSON.parse(line);
-      const map = entry?.body?.metaMap;
-      if (!Array.isArray(map) || !map.length) continue;
-      const entries = map
-        .filter((m) => m && typeof m.time === 'number')
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((m) => ({
-          ...(isOffInAbleSet(m) ? { off: true } : {}),
-          time: m.time,
-          lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : '',
-        }));
-      if (entries.length) found = { at: entry.timestamp ?? null, setlistName: entry.body.setlistName ?? '', entries, raw: map };
+      entry = JSON.parse(line);
     } catch {
-      /* a line that is not JSON is not the one */
+      continue; // a line that is not JSON is not the one
     }
+    const path = typeof entry?.path === 'string' ? entry.path : '';
+    if (!path.startsWith('/api/setlist')) continue;
+    const at = entry.timestamp ?? null;
+    const body = entry.body && typeof entry.body === 'object' ? entry.body : {};
+    const named = [body.setlistName, body.setlist, body.name].find((n) => typeof n === 'string' && n.trim());
+    if (named && (!current || Date.parse(at ?? 0) >= Date.parse(current.at ?? 0))) current = { at, name: named };
+    if (!path.startsWith('/api/setlist/setCueMeta')) continue;
+    const map = body.metaMap;
+    if (!Array.isArray(map) || !map.length) continue;
+    const entries = map
+      .filter((m) => m && typeof m.time === 'number')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((m) => ({
+        ...(isOffInAbleSet(m) ? { off: true } : {}),
+        time: m.time,
+        lastKnownName: typeof m.lastKnownName === 'string' ? m.lastKnownName : '',
+      }));
+    if (!entries.length) continue;
+    const found = { at, setlistName: body.setlistName ?? '', entries, raw: map };
+    newest = found;
+    byName.set(found.setlistName.toLowerCase(), found);
   }
-  return found;
+  return { newest, byName, current };
 }
 
 /**
@@ -732,8 +758,11 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           .then(() => writeFile(join(dir, 'ableset-setlist.json'), JSON.stringify(raw, null, 2).slice(0, 2_000_000)))
           .catch(() => {});
       };
-      // The newest order AbleSet happened to write down, across launches.
+      // The newest order AbleSet happened to write down, across launches;
+      // the newest of each setlist; and the setlist it was last working on.
       let best = null;
+      let current = null;
+      const byName = new Map();
       for (const name of ['ableset', 'AbleSet']) {
         const logs = join(support, name, 'logs');
         let names;
@@ -747,9 +776,11 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
         // The newest few launches: a setlist changed today is in today's log,
         // but a launch that has written none leaves the last one standing.
         for (const { n } of dated.slice(0, 5)) {
-          const found = liveSetlistFromLog(await readFile(join(logs, n), 'utf8').catch(() => ''));
-          if (!found) continue;
-          if (!best || Date.parse(found.at ?? 0) > Date.parse(best.at ?? 0)) best = found;
+          const read = setlistsFromLog(await readFile(join(logs, n), 'utf8').catch(() => ''));
+          const later = (a, b) => !b || Date.parse(a.at ?? 0) > Date.parse(b.at ?? 0);
+          if (read.newest && later(read.newest, best)) best = read.newest;
+          if (read.current && later(read.current, current)) current = read.current;
+          for (const [key, found] of read.byName) if (later(found, byName.get(key))) byName.set(key, found);
         }
       }
       /*
@@ -758,19 +789,24 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
        * the log — so a saved file read on its own puts every skipped song
        * back in the show.
        */
-      const logged = best ? { at: best.at, setlistName: best.setlistName, entries: best.entries } : null;
+      const bare = (f) => (f ? { at: f.at, setlistName: f.setlistName, entries: f.entries } : null);
+      const logged = bare(best);
+      const setlists = [...byName.values()].slice(0, 50).map(bare);
       const live = await liveSetlistFromApi();
+      // AbleSet itself, when it answers, names the setlist it has loaded right now.
+      const loaded = live?.setlistName ? { at: live.at, name: live.setlistName, from: 'ableset' } : current ? { ...current, from: 'log' } : null;
       if (live) {
         const { raw, ...rest } = live;
-        keep({ ableset: raw, log: best?.raw ?? null });
-        return { found: true, ...withSkipsFrom(rest, best), from: 'ableset', projectFile, applies, logged };
+        keep({ ableset: raw, log: best?.raw ?? null, loaded });
+        const sameLog = (live.setlistName && byName.get(live.setlistName.toLowerCase())) || best;
+        return { found: true, ...withSkipsFrom(rest, sameLog), from: 'ableset', projectFile, applies, logged, setlists, loaded };
       }
       if (best) {
         const { raw, ...rest } = best;
-        keep({ ableset: null, log: raw });
-        return { found: true, ...rest, from: 'log', projectFile, applies, logged };
+        keep({ ableset: null, log: raw, loaded });
+        return { found: true, ...rest, from: 'log', projectFile, applies, logged, setlists, loaded };
       }
-      return { found: false, projectFile, applies, logged };
+      return { found: false, projectFile, applies, logged, setlists, loaded };
     },
 
     /**

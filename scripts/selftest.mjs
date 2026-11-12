@@ -5095,6 +5095,32 @@ group('running order from AbleSet');
     check('and not when the log skips nothing', skipsFromLog({ name, entries: real }, { ...logged(name), entries: [{ time: 1, lastKnownName: 'x' }] }) === null);
   }
 
+  {
+    // Several setlists beside one set: the one AbleSet has loaded, not the newest saved.
+    const { setlistFilesFor } = await import('../src/lib/ableset.ts');
+    const { setlistsFromLog } = await import('./studio-files.mjs');
+    const files = [
+      { path: '/Band/Show/AbleSet/Setlists/Festival.json', name: 'Festival.json', size: 1, modified: 30 },
+      { path: '/Band/Show/AbleSet/Setlists/YBWM - Friday.json', name: 'YBWM - Friday.json', size: 1, modified: 20 },
+      { path: '/Band/Show/AbleSet/Setlists/Rehearsal.json', name: 'Rehearsal.json', size: 1, modified: 10 },
+    ];
+    const chosen = setlistFilesFor(files, '/Band/Show/Show.als', 'ybwm - friday');
+    check('the setlist AbleSet has loaded is read first, though another was saved since',
+      chosen.loaded && chosen.files.map((f) => f.name).join() === 'YBWM - Friday.json,Festival.json,Rehearsal.json', JSON.stringify(chosen));
+    const none = setlistFilesFor(files, '/Band/Show/Show.als', 'Somewhere Else');
+    check('without one of its name, the newest saved, as before', !none.loaded && none.files[0].name === 'Festival.json');
+
+    const req = (ts, path, body) => JSON.stringify({ level: 'debug', message: 'POST Request', method: 'POST', path, timestamp: ts, body });
+    const read = setlistsFromLog([
+      req('2026-11-19T19:00:00Z', '/api/setlist/setCueMeta', { setlistName: 'YBWM - Friday', metaMap: [{ time: 4, lastKnownName: 'Mine', order: 0, skipped: true }] }),
+      req('2026-11-19T19:05:00Z', '/api/setlist/setCueMeta', { setlistName: 'Festival', metaMap: [{ time: 8, lastKnownName: 'Red', order: 0 }] }),
+      req('2026-11-19T19:10:00Z', '/api/setlist/load', { name: 'YBWM - Friday' }),
+    ].join('\n'));
+    check('the log says which setlist AbleSet last loaded', read.current?.name === 'YBWM - Friday', JSON.stringify(read.current));
+    check('and keeps each setlist\'s own newest order, skips and all',
+      read.byName.get('ybwm - friday')?.entries[0].off === true && read.byName.get('festival')?.entries[0].lastKnownName === 'Red' && read.newest.setlistName === 'Festival');
+  }
+
   const als = '/Band/Show/Show.als';
   const setlist = setlistFromProject(als, project, () => true, order, 'from AbleSet');
   check('the set\'s own setlist takes that order', setlist.songIds[0] === songIdFor(als, 'Fix You') && setlist.songIds.length === 4 && setlist.notes === 'from AbleSet');
