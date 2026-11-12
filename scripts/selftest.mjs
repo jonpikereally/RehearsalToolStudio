@@ -5029,6 +5029,43 @@ group('running order from AbleSet');
       scopeToSetlist(project, lib({ fromAbleSet: true, included: [] }), at).project.songs.length === 5);
   }
 
+  {
+    // AbleSet remembers a locator's whole name; the song has only its title.
+    const named = { ...project, songs: [
+      { ...song('Follow Night', 1), raw: 'Follow Night #rock' },
+      { ...song('Clocks', 33), raw: 'Clocks {D} [3:20] +PAUSE' },
+      { ...song('Fix You', 65), raw: '. Fix You' },
+      song('Left Out', 97),
+    ] };
+    // Every song moved since AbleSet saved: only the names can say which is which.
+    const moved = matchAbleSet(named, [
+      { time: 900, name: 'Clocks {D} [3:20] +PAUSE' },
+      { time: 901, name: '. Fix You' },
+      { time: 902, name: 'Follow Night #rock' },
+    ]);
+    check('a moved song is found by its name, tags, flags and stop dot aside',
+      moved.included.join(' | ') === 'Clocks | Fix You | Follow Night' && moved.order[3] === 'Left Out', JSON.stringify(moved));
+
+    // Two songs swapped in the arrangement: each beat AbleSet remembers is now the other's.
+    const swapped = matchAbleSet(named, [
+      { time: 32, name: 'Follow Night #rock' },
+      { time: 0, name: 'Clocks {D} [3:20] +PAUSE' },
+    ]);
+    check('songs that swapped places are not taken for each other',
+      swapped.order.slice(0, 2).join(' | ') === 'Follow Night | Clocks' && swapped.included.length === 2, JSON.stringify(swapped));
+    check('a locator renamed where it stands is still found by its place',
+      matchAbleSet(named, [{ time: 64, name: 'Fix You (acoustic)' }]).included.join() === 'Fix You');
+  }
+  {
+    // However the file wraps them, and in AbleSet's own order when the cues carry one.
+    const wrapped = parseAbleSetSetlist({ name: 'Friday', songs: [
+      { id: 'b', time: 64, cue: { name: 'Yellow' }, order: 1 },
+      { id: 'a', time: 512, lastKnownName: 'Fix You', order: 0, skipped: true },
+    ] });
+    check('a wrapped setlist file is read, in its order, with its skips',
+      wrapped?.map((e) => `${e.name}${e.off ? ' (off)' : ''}`).join(' | ') === 'Fix You (off) | Yellow', JSON.stringify(wrapped));
+  }
+
   const als = '/Band/Show/Show.als';
   const setlist = setlistFromProject(als, project, () => true, order, 'from AbleSet');
   check('the set\'s own setlist takes that order', setlist.songIds[0] === songIdFor(als, 'Fix You') && setlist.songIds.length === 4 && setlist.notes === 'from AbleSet');
