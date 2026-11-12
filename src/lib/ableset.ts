@@ -4,6 +4,7 @@ import type { FileEntry } from './files';
 import type { Library, SongId } from '../types';
 import { setlistIdFor } from './alsImport.ts';
 import { abletLive } from './source.ts';
+import type { AbleSetLive } from './localSource';
 
 /**
  * The running order, from AbleSet.
@@ -51,6 +52,38 @@ export function abletSetlistFiles(files: FileEntry[], alsPath: string): FileEntr
   return files
     .filter((f) => f.path.toLowerCase().startsWith(under) && f.name.toLowerCase().endsWith('.json'))
     .sort((a, b) => b.modified - a.modified || a.name.localeCompare(b.name));
+}
+
+/**
+ * The setlist files beside a set, the one AbleSet has loaded first.
+ *
+ * A set can keep several setlists, and the newest saved is not the one being
+ * played: saving the project in AbleSet rewrites every one of them. AbleSet
+ * says which it has loaded, while it runs, and its log says which it was last
+ * working on; that one goes first, by name. Without either, newest first.
+ */
+export function setlistFilesFor(files: FileEntry[], alsPath: string, loaded?: string | null): { files: FileEntry[]; loaded: boolean } {
+  const all = abletSetlistFiles(files, alsPath);
+  const want = loaded?.trim().toLowerCase();
+  const at = want ? all.findIndex((f) => f.name.replace(/\.json$/i, '').trim().toLowerCase() === want) : -1;
+  if (at < 0) return { files: all, loaded: false };
+  return { files: [all[at], ...all.slice(0, at), ...all.slice(at + 1)], loaded: true };
+}
+
+/** AbleSet's answer for the set at `path`, or null when it could not be asked. */
+export async function askAbleSet(alsPath: string): Promise<AbleSetLive | null> {
+  try {
+    return await abletLive(alsPath);
+  } catch {
+    return null;
+  }
+}
+
+/** What the log last said of the setlist so named, else of whichever setlist it last touched. */
+function loggedFor(live: AbleSetLive, name?: string | null): LoggedSetlist | null {
+  const want = name?.trim().toLowerCase();
+  const named = want ? live.setlists?.find((l) => l.setlistName.trim().toLowerCase() === want) : undefined;
+  return named ?? live.logged ?? null;
 }
 
 /**
@@ -244,18 +277,29 @@ export async function liveRunningOrder(
   savedAt: number | null,
   /** The saved setlist the scan read, by its file's name, to take its skips from the log. */
   saved?: { name: string; entries: AbleSetEntry[] },
+  /** AbleSet's answer, when the caller has already asked. */
+  answer?: AbleSetLive | null,
 ): Promise<RunningOrder | null> {
-  let live;
-  try {
-    live = await abletLive(alsPath);
-  } catch {
-    return null;
-  }
+  const live = answer === undefined ? await askAbleSet(alsPath) : answer;
+  if (!live) return null;
   // The log's skips are tied to this set by the setlist's name, not by what AbleSet opened last.
-  const fromSaved = () => (saved ? savedWithSkips(project, saved, live.logged ?? null) : null);
+  const fromSaved = () => (saved ? savedWithSkips(project, saved, loggedFor(live, saved.name)) : null);
   if (!live.applies) return fromSaved();
-  if (!live.found || !live.entries?.length) return fromSaved();
-  const at = live.at ? Date.parse(live.at) : NaN;
+  /*
+   * What the log wrote down is of whichever setlist it last touched; the
+   * one AbleSet has loaded is the one wanted, when the log has it.
+   */
+  let found = live.found ? { at: live.at ?? null, setlistName: live.setlistName ?? '', entries: live.entries ?? [] } : null;
+  if (live.from === 'log' && live.loaded?.name) {
+    const of = loggedFor(live, live.loaded.name);
+    if (of && of.setlistName.trim().toLowerCase() === live.loaded.name.trim().toLowerCase()) found = of;
+  }
+  if (!found?.entries.length) return fromSaved();
+  // A saved setlist that is not the one AbleSet's log is about is not overruled by it.
+  if (live.from === 'log' && saved && found.setlistName && found.setlistName.trim().toLowerCase() !== saved.name.trim().toLowerCase()) {
+    return fromSaved();
+  }
+  const at = found.at ? Date.parse(found.at) : NaN;
   /*
    * Asked of AbleSet itself, this is the order on its screen right now, and
    * it wins over any saved setlist however old the file. Read back out of
@@ -264,9 +308,9 @@ export async function liveRunningOrder(
    */
   const asked = live.from === 'ableset';
   if (!asked && savedAt !== null && !Number.isNaN(at) && at <= savedAt) return fromSaved();
-  const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName, ...(e.off ? { off: true as const } : {}) }));
+  const entries = found.entries.map((e) => ({ time: e.time, name: e.lastKnownName, ...(e.off ? { off: true as const } : {}) }));
   const when = asked || Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  const setlist = live.setlistName ? ` (setlist “${live.setlistName}”)` : '';
+  const setlist = found.setlistName ? ` (setlist “${found.setlistName}”)` : '';
   const matched = matchAbleSet(project, entries);
   return {
     titles: matched.order,
