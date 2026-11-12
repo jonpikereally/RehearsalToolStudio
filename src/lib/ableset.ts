@@ -1,5 +1,5 @@
 import type { AlsProject } from './alsParser';
-import { songKey } from './alsParser.ts';
+import { parseLocatorName, songKey } from './alsParser.ts';
 import type { FileEntry } from './files';
 import type { Library, SongId } from '../types';
 import { setlistIdFor } from './alsImport.ts';
@@ -53,21 +53,65 @@ export function abletSetlistFiles(files: FileEntry[], alsPath: string): FileEntr
     .sort((a, b) => b.modified - a.modified || a.name.localeCompare(b.name));
 }
 
-/** What a setlist file holds, or null when it isn't one. */
-export function parseAbleSetSetlist(raw: unknown): AbleSetEntry[] | null {
-  if (!Array.isArray(raw)) return null;
-  const out: AbleSetEntry[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') return null;
-    const { time, lastKnownName } = item as { time?: unknown; lastKnownName?: unknown };
-    if (typeof time !== 'number') return null;
-    out.push({
-      time,
-      name: typeof lastKnownName === 'string' ? lastKnownName : '',
-      ...(isOff(item as Record<string, unknown>) ? { off: true as const } : {}),
-    });
+/**
+ * What a setlist file holds, or null when it isn't one.
+ *
+ * Read as liberally as AbleSet's live answer is (see cuesIn in
+ * studio-files.mjs): its shape is not documented, and a file this refused
+ * to read was a set with no setlist at all — every song in the show, the
+ * ones AbleSet leaves out included. So any list of cues with a position,
+ * bare or wrapped, in their `order` when they carry one, named by whichever
+ * of AbleSet's names for a locator is there.
+ */
+export function parseAbleSetSetlist(raw: unknown, depth = 0): AbleSetEntry[] | null {
+  if (!raw || typeof raw !== 'object' || depth > 4) return null;
+  if (Array.isArray(raw)) {
+    const cues = raw.filter(
+      (m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof (m as { time?: unknown }).time === 'number',
+    );
+    if (cues.length) {
+      const order = (m: Record<string, unknown>) => (typeof m.order === 'number' ? m.order : 0);
+      return cues
+        .map((m, i) => ({ m, i }))
+        .sort((a, b) => order(a.m) - order(b.m) || a.i - b.i)
+        .map(({ m }) => ({
+          time: m.time as number,
+          name: nameOf(m),
+          ...(isOff(m) ? { off: true as const } : {}),
+        }));
+    }
+    for (const item of raw) {
+      const found = parseAbleSetSetlist(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
   }
-  return out;
+  const doc = raw as Record<string, unknown>;
+  for (const key of ['songs', 'cues', 'items', 'entries', 'metaMap', 'setlist', 'data', 'value']) {
+    const found = parseAbleSetSetlist(doc[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The locator's name as AbleSet carries it on a cue, in whichever field it is. */
+function nameOf(m: Record<string, unknown>): string {
+  const sub = (k: string) => (m[k] && typeof m[k] === 'object' ? (m[k] as Record<string, unknown>) : {});
+  const found = [m.lastKnownName, sub('cue').name, sub('meta').raw, sub('meta').name, m.name].find(
+    (n): n is string => typeof n === 'string' && !!n,
+  );
+  return found ?? '';
+}
+
+/**
+ * A locator's name as the song it names: AbleSet's notation taken off —
+ * `#tags`, `+PAUSE` and its kin, `[3:20]`, `{D}`, a stop dot — and then
+ * flattened as titles are. AbleSet remembers the locator's whole name, the
+ * studio's song has only the title, and the two have to meet.
+ */
+export function locatorKey(name: string): string {
+  const bare = name.trim().replace(/^\.\s*/, '');
+  return songKey(parseLocatorName(bare).title);
 }
 
 /**
@@ -97,29 +141,52 @@ export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { or
     song,
     index,
     beat: (song.startBar - 1) * beatsPerBar,
-    key: songKey(song.title),
+    key: locatorKey(song.raw || song.title) || songKey(song.title),
+    title: songKey(song.title),
   }));
+  const keyOf = (entry: AbleSetEntry) => locatorKey(entry.name);
+  const sameName = (s: (typeof songs)[number], key: string) => !!key && (s.key === key || s.title === key);
+  const atBeat = (s: (typeof songs)[number], entry: AbleSetEntry) => Math.abs(s.beat - entry.time) < 1e-3;
+
+  /*
+   * Which song each entry is, in three passes, surest first. A locator still
+   * where AbleSet last saw it, under the same name, is certain. Then the name
+   * alone: a song moved in the arrangement keeps its name, and the beat
+   * AbleSet remembers is now somebody else's — matched by the beat first,
+   * two songs that swapped places came out as each other. Then the beat
+   * alone, for a locator renamed where it stands.
+   */
+  const match = new Array<number | undefined>(entries.length).fill(undefined);
   const placed = new Set<number>();
+  const pass = (fits: (s: (typeof songs)[number], entry: AbleSetEntry, key: string) => boolean) => {
+    entries.forEach((entry, i) => {
+      if (match[i] !== undefined) return;
+      const key = keyOf(entry);
+      const found = songs.find((s) => !placed.has(s.index) && fits(s, entry, key));
+      if (!found) return;
+      match[i] = found.index;
+      placed.add(found.index);
+    });
+  };
+  pass((s, entry, key) => atBeat(s, entry) && sameName(s, key));
+  pass((s, _entry, key) => sameName(s, key));
+  pass((s, entry) => atBeat(s, entry));
+
   const order: string[] = [];
   // Listed but switched off in AbleSet: placed, so not matched again, but not in the show.
   const off = new Set<string>();
-  const take = (index: number, entry?: AbleSetEntry) => {
-    placed.add(index);
-    if (entry?.off) off.add(songs[index].song.title);
-    if (!order.includes(songs[index].song.title)) order.push(songs[index].song.title);
-  };
-  for (const entry of entries) {
-    const byBeat = songs.find((s) => !placed.has(s.index) && Math.abs(s.beat - entry.time) < 1e-3);
-    if (byBeat) {
-      take(byBeat.index, entry);
-      continue;
-    }
-    const key = songKey(entry.name);
-    const byName = key ? songs.find((s) => !placed.has(s.index) && s.key === key) : undefined;
-    if (byName) take(byName.index, entry);
-  }
-  const included = order.filter((t) => !off.has(t));
-  for (const s of songs) if (!placed.has(s.index)) take(s.index);
+  const on = new Set<string>();
+  entries.forEach((entry, i) => {
+    const index = match[i];
+    if (index === undefined) return;
+    const title = songs[index].song.title;
+    if (entry.off) off.add(title);
+    else on.add(title);
+    if (!order.includes(title)) order.push(title);
+  });
+  // A title listed twice, once on and once off, is in the show.
+  const included = order.filter((t) => on.has(t) || !off.has(t));
+  for (const s of songs) if (!placed.has(s.index) && !order.includes(s.song.title)) order.push(s.song.title);
   return { order, included };
 }
 

@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-11-12
+
+**Know a song on AbleSet's setlist by its name, notation and all**
+
+AbleSet remembers each song on a setlist by where its locator was and the locator's whole name. When the locator had moved since, the studio fell back to the name — but compared it with the tags, flags and notes still on it, so "Follow Night #rock" or "Clocks {D} +PAUSE" never met the song called Follow Night or Clocks. The song was taken as left off the setlist and marked out of the show. The name is now read the way the song's own title was, AbleSet's notation and a stop dot taken off.
+
 ## 2026-11-10
 
 **Write the changelog again from the whole history**
