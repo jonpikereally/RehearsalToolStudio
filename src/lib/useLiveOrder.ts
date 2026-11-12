@@ -3,6 +3,7 @@ import type { AlsProject } from './alsParser';
 import { liveRunningOrder, runningOrderTitles, type RunningOrder } from './ableset.ts';
 import { useStore } from './store';
 import { setlistIdFor } from './alsImport.ts';
+import { chosenSetlistFor } from './chosenSetlist';
 import type { Library } from '../types';
 
 /**
@@ -28,6 +29,11 @@ export function useLiveOrder(project: AlsProject | null, alsPath: string | null)
     setLive(null);
     setAsked(false);
     if (!project || !alsPath) return;
+    // A setlist chosen by hand is the show; AbleSet is not asked over it.
+    if (chosenSetlistFor(alsPath)) {
+      setAsked(true);
+      return;
+    }
     let on = true;
     // The library's setlist was built at the last scan, from the saved file
     // and the log as they were then; only a log line newer than that scan

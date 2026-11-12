@@ -168,7 +168,15 @@ export function orderFromAbleSet(project: AlsProject, entries: AbleSetEntry[]): 
  * scopeToSetlist). `order` still runs through every song, the unnamed last,
  * for a caller that wants the whole set in order.
  */
-export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { order: string[]; included: string[] } {
+export function matchAbleSet(
+  project: AlsProject,
+  entries: AbleSetEntry[],
+): {
+  order: string[];
+  included: string[];
+  /** Entry by entry, the title of the set's song it is, or null when it is none of them. */
+  matched: (string | null)[];
+} {
   const beatsPerBar = project.timeSigNum * (4 / project.timeSigDen);
   const songs = project.songs.map((song, index) => ({
     song,
@@ -220,7 +228,8 @@ export function matchAbleSet(project: AlsProject, entries: AbleSetEntry[]): { or
   // A title listed twice, once on and once off, is in the show.
   const included = order.filter((t) => on.has(t) || !off.has(t));
   for (const s of songs) if (!placed.has(s.index) && !order.includes(s.song.title)) order.push(s.song.title);
-  return { order, included };
+  const matched = match.map((index) => (index === undefined ? null : songs[index].song.title));
+  return { order, included, matched };
 }
 
 /**

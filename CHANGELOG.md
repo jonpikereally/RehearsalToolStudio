@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-11-12
 
+**Load an AbleSet setlist by hand, on the Setlists page**
+
+Finding AbleSet's setlist on its own reads a format AbleSet does not document — which file it has loaded, which songs it skips — and for the band's sets it still came out wrong. So the Setlists page now has Load AbleSet setlist…: pick one of the .json files from the AbleSet/Setlists folder beside the set, and before anything changes it is laid out against the set — the order, each song in the show or skipped, any line that names none of the set's songs, and the set's songs it leaves out.
+
 **Read the setlist AbleSet has loaded, not the one saved last**
 
 A set can keep several setlists beside it, and the studio read whichever file was saved most recently. That is not the one being played: saving the project in AbleSet writes every setlist again, so the newest file was as often as not some other show's.
