@@ -152,6 +152,20 @@ None are programmed in the player for these songs and there are no rig files fro
 
 Writing the patch-change MIDI clips into a copy of the set failed. The message says why; check the set's folder can be written.
 
+## Setlists
+
+### RTS-SLS-01
+
+**The file is not an AbleSet setlist**
+
+Load setlist reads the .json files AbleSet keeps in the AbleSet/Setlists folder beside the set: a list of songs, each with a time and a name. Choose one of those, not AbleSet's settings or another app's file.
+
+### RTS-SLS-02
+
+**The AbleSet setlist could not be loaded**
+
+Reading the chosen file, or the open set to match it against, failed. Check the file and the set are still there, then load it again; rescan if the set has moved.
+
 ## Set tools ▸ Slates
 
 ### RTS-SLT-01

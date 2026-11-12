@@ -6,6 +6,7 @@ import { isFromSet, setlistIdFor } from '../lib/alsImport';
 import { canEditLibrary } from '../lib/appMode';
 import { usePreparedStanding } from '../lib/usePreparedStanding';
 import { AUTO_JOBS } from './AutoUpdate';
+import AbleSetSetlistPanel from './AbleSetSetlistPanel';
 
 export default function SetlistsView() {
   const { library, createSetlist, currentSet, settings, saveSettings, publishFolderName, setSaved } = useStore();
@@ -124,6 +125,8 @@ export default function SetlistsView() {
           ))}
         </div>
       )}
+      {/* AbleSet's setlist, loaded by hand when the one found on its own is wrong. */}
+      {currentSet && inSetCount > 0 && <AbleSetSetlistPanel setPath={currentSet} />}
       {preparing && <PrepareSetDialog onClose={() => setPreparing(false)} />}
 
       {setlists.map((setlist) => (

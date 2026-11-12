@@ -5080,6 +5080,13 @@ group('running order from AbleSet');
     check('every song on it is in the show, and only those', read.included.length === 26 && !read.included.includes('Cruel Summer') && read.order[0] === 'You Belong With Me',
       JSON.stringify(read.included));
 
+    {
+      // What the Setlists page shows of a loaded file, line by line.
+      const odd = [...real.slice(0, 3), { time: 77777, name: 'Shake It Off {A}' }];
+      const { matched } = matchAbleSet(show, odd);
+      check('each line of a loaded setlist says which song it is, or that it is none of them',
+        matched.join(' | ') === 'You Belong With Me | Opalite | Mine | ', JSON.stringify(matched));
+    }
     // Its skips are only in AbleSet's log, under the setlist's name.
     const name = 'YBWM - Taylor Swift Ableton Set 2026.11.19';
     const logged = (setlistName) => ({ at: '2026-11-19T20:00:00Z', setlistName, entries: [

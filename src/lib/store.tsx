@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { emptyLibrary, type Library, type Setlist, type Song } from '../types';
 import { mergeScan, isProjectScaffolding, newestSetPerFolder, parseFileName, syncSetlists, type ScanResult } from './scan';
 import { parseAls, type AlsProject } from './alsParser';
-import { askAbleSet, liveRunningOrder, matchAbleSet, parseAbleSetSetlist, setlistFilesFor, type AbleSetEntry } from './ableset';
+import { abletSetlistFiles, askAbleSet, liveRunningOrder, matchAbleSet, parseAbleSetSetlist, setlistFilesFor, type AbleSetEntry } from './ableset';
+import { chosenSetlistFor } from './chosenSetlist';
 import { findPrints, isPrint, isPreparedSet, type FoundPrint } from './prints';
 import { applyManifest, isManifestName } from './preparedSet';
 import { versionsOf } from './versions';
@@ -755,39 +756,72 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let included: string[] | undefined;
           let savedAt: number | null = null;
           let saved: { name: string; entries: AbleSetEntry[] } | undefined;
-          // Asked once: which setlist AbleSet has loaded decides which file is read.
-          const answer = await askAbleSet(file.path);
-          const loadedName = answer?.loaded?.name ?? null;
-          const { files: setlists, loaded: isLoaded } = setlistFilesFor(files, file.path, loadedName);
-          for (const candidate of setlists) {
-            try {
-              const doc = await source.readJson<unknown>(candidate.path);
-              const entries = doc ? parseAbleSetSetlist(doc.data) : null;
-              if (!entries?.length) continue;
-              ({ order, included } = matchAbleSet(project, entries));
-              savedAt = candidate.modified;
-              const label = candidate.name.replace(/\.json$/i, '');
-              saved = { name: label, entries };
-              const loadedHere = isLoaded && candidate === setlists[0];
-              orderNote =
-                `Running order from AbleSet's setlist “${label}”` +
-                (setlists.length > 1
-                  ? loadedHere
-                    ? `, the one AbleSet ${answer?.loaded?.from === 'ableset' ? 'has loaded' : 'last had loaded'} of ${setlists.length}`
-                    : `, the newest saved of ${setlists.length}${loadedName ? ` — AbleSet's “${loadedName}” is not among them` : ''}`
-                  : '') +
-                '.';
-              break;
-            } catch (err) {
-              console.warn('[rehearsal-tool-studio] could not read', candidate.path, err);
+          /*
+           * A setlist chosen by hand on the Setlists page is the show, and
+           * nothing AbleSet's log or its other setlists say overrules it. A
+           * file of its name beside the set is read afresh, so saving it
+           * again in AbleSet still comes through; without one, the setlist
+           * is as it was when it was chosen.
+           */
+          const chosen = chosenSetlistFor(file.path);
+          if (chosen) {
+            let entries = chosen.entries;
+            let fresh = false;
+            const same = abletSetlistFiles(files, file.path).find(
+              (f) => f.name.replace(/\.json$/i, '').trim().toLowerCase() === chosen.name.trim().toLowerCase(),
+            );
+            if (same) {
+              try {
+                const doc = await source.readJson<unknown>(same.path);
+                const read = doc ? parseAbleSetSetlist(doc.data) : null;
+                if (read?.length) {
+                  entries = read;
+                  fresh = true;
+                }
+              } catch (err) {
+                console.warn('[rehearsal-tool-studio] could not read', same.path, err);
+              }
             }
-          }
-          // Newer still: the order AbleSet is showing right now, saved or not.
-          const live = await liveRunningOrder(project, file.path, savedAt, saved, answer);
-          if (live) {
-            order = live.titles;
-            orderNote = live.note;
-            included = live.included;
+            ({ order, included } = matchAbleSet(project, entries));
+            orderNote =
+              `Running order from the AbleSet setlist “${chosen.name}”, chosen on the Setlists page` +
+              (fresh ? '' : `, as it was when chosen on ${new Date(chosen.at).toLocaleDateString([], { day: 'numeric', month: 'short' })}`) +
+              '.';
+          } else {
+            // Asked once: which setlist AbleSet has loaded decides which file is read.
+            const answer = await askAbleSet(file.path);
+            const loadedName = answer?.loaded?.name ?? null;
+            const { files: setlists, loaded: isLoaded } = setlistFilesFor(files, file.path, loadedName);
+            for (const candidate of setlists) {
+              try {
+                const doc = await source.readJson<unknown>(candidate.path);
+                const entries = doc ? parseAbleSetSetlist(doc.data) : null;
+                if (!entries?.length) continue;
+                ({ order, included } = matchAbleSet(project, entries));
+                savedAt = candidate.modified;
+                const label = candidate.name.replace(/\.json$/i, '');
+                saved = { name: label, entries };
+                const loadedHere = isLoaded && candidate === setlists[0];
+                orderNote =
+                  `Running order from AbleSet's setlist “${label}”` +
+                  (setlists.length > 1
+                    ? loadedHere
+                      ? `, the one AbleSet ${answer?.loaded?.from === 'ableset' ? 'has loaded' : 'last had loaded'} of ${setlists.length}`
+                      : `, the newest saved of ${setlists.length}${loadedName ? ` — AbleSet's “${loadedName}” is not among them` : ''}`
+                    : '') +
+                  '.';
+                break;
+              } catch (err) {
+                console.warn('[rehearsal-tool-studio] could not read', candidate.path, err);
+              }
+            }
+            // Newer still: the order AbleSet is showing right now, saved or not.
+            const live = await liveRunningOrder(project, file.path, savedAt, saved, answer);
+            if (live) {
+              order = live.titles;
+              orderNote = live.note;
+              included = live.included;
+            }
           }
           /*
            * A song AbleSet's setlist leaves out is not in the show: it is
