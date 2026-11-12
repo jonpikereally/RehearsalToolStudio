@@ -752,18 +752,25 @@ export function fileApi({ stateFile = STATE_FILE, pick = nativePick } = {}) {
           if (!best || Date.parse(found.at ?? 0) > Date.parse(best.at ?? 0)) best = found;
         }
       }
+      /*
+       * The newest order the log has, skips and all, whichever answer wins:
+       * a setlist AbleSet saved has no skips in it — they are only ever in
+       * the log — so a saved file read on its own puts every skipped song
+       * back in the show.
+       */
+      const logged = best ? { at: best.at, setlistName: best.setlistName, entries: best.entries } : null;
       const live = await liveSetlistFromApi();
       if (live) {
         const { raw, ...rest } = live;
         keep({ ableset: raw, log: best?.raw ?? null });
-        return { found: true, ...withSkipsFrom(rest, best), from: 'ableset', projectFile, applies };
+        return { found: true, ...withSkipsFrom(rest, best), from: 'ableset', projectFile, applies, logged };
       }
       if (best) {
         const { raw, ...rest } = best;
         keep({ ableset: null, log: raw });
-        return { found: true, ...rest, from: 'log', projectFile, applies };
+        return { found: true, ...rest, from: 'log', projectFile, applies, logged };
       }
-      return { found: false, projectFile };
+      return { found: false, projectFile, applies, logged };
     },
 
     /**

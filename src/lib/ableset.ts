@@ -242,6 +242,8 @@ export async function liveRunningOrder(
   project: AlsProject,
   alsPath: string,
   savedAt: number | null,
+  /** The saved setlist the scan read, by its file's name, to take its skips from the log. */
+  saved?: { name: string; entries: AbleSetEntry[] },
 ): Promise<RunningOrder | null> {
   let live;
   try {
@@ -249,7 +251,10 @@ export async function liveRunningOrder(
   } catch {
     return null;
   }
-  if (!live.found || !live.applies || !live.entries?.length) return null;
+  // The log's skips are tied to this set by the setlist's name, not by what AbleSet opened last.
+  const fromSaved = () => (saved ? savedWithSkips(project, saved, live.logged ?? null) : null);
+  if (!live.applies) return fromSaved();
+  if (!live.found || !live.entries?.length) return fromSaved();
   const at = live.at ? Date.parse(live.at) : NaN;
   /*
    * Asked of AbleSet itself, this is the order on its screen right now, and
@@ -258,7 +263,7 @@ export async function liveRunningOrder(
    * not always make it do — so a setlist saved since is the better answer.
    */
   const asked = live.from === 'ableset';
-  if (!asked && savedAt !== null && !Number.isNaN(at) && at <= savedAt) return null;
+  if (!asked && savedAt !== null && !Number.isNaN(at) && at <= savedAt) return fromSaved();
   const entries = live.entries.map((e) => ({ time: e.time, name: e.lastKnownName, ...(e.off ? { off: true as const } : {}) }));
   const when = asked || Number.isNaN(at) ? '' : ` as of ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const setlist = live.setlistName ? ` (setlist “${live.setlistName}”)` : '';
@@ -270,4 +275,54 @@ export async function liveRunningOrder(
       ? `Running order as AbleSet has it open right now${setlist}, saved or not.`
       : `Running order as AbleSet last wrote it down${when}, not yet saved${setlist}.`,
   };
+}
+
+/** What AbleSet's log last said of a setlist: its order, and which songs it skips. */
+export interface LoggedSetlist {
+  at: string | null;
+  setlistName: string;
+  entries: { time: number; lastKnownName: string; off?: true }[];
+}
+
+/**
+ * A saved setlist's songs, with the ones skipped in AbleSet marked so.
+ *
+ * AbleSet's saved file is only the order — ids, beats and names — and says
+ * nothing of the songs skipped on it; those are only in its log. Read alone,
+ * a saved file put every skipped song back in the show. The log's skips are
+ * taken only from the same setlist, by name, and matched to the file's
+ * songs by beat or by name. Null when the log has none to give.
+ */
+export function savedWithSkips(
+  project: AlsProject,
+  saved: { name: string; entries: AbleSetEntry[] },
+  logged: LoggedSetlist | null,
+): RunningOrder | null {
+  const entries = skipsFromLog(saved, logged);
+  if (!entries) return null;
+  const matched = matchAbleSet(project, entries);
+  const skipped = entries.filter((e) => e.off).length;
+  return {
+    titles: matched.order,
+    included: matched.included,
+    note: `Running order from AbleSet's setlist “${saved.name}”, with the ${skipped === 1 ? 'song' : `${skipped} songs`} skipped in AbleSet left out.`,
+  };
+}
+
+/** The saved entries marked off where the log's newest order of the same setlist skips them; null when it skips none. */
+export function skipsFromLog(saved: { name: string; entries: AbleSetEntry[] }, logged: LoggedSetlist | null): AbleSetEntry[] | null {
+  if (!logged?.entries.length) return null;
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (!logged.setlistName || !same(logged.setlistName, saved.name)) return null;
+  const off = logged.entries.filter((e) => e.off);
+  if (!off.length) return null;
+  const skippedHere = (e: AbleSetEntry) =>
+    off.some((o) => Math.abs(o.time - e.time) < 1e-3) || off.some((o) => !!o.lastKnownName && same(o.lastKnownName, e.name));
+  let any = false;
+  const out = saved.entries.map((e) => {
+    if (e.off || !skippedHere(e)) return e;
+    any = true;
+    return { ...e, off: true as const };
+  });
+  return any ? out : null;
 }

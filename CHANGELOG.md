@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-11-12
 
+**Leave out of the show the songs skipped in AbleSet, from a saved setlist too**
+
+AbleSet's saved setlist, as one of the band's own sets shows, is a bare list of the songs in order — id, beat and name — and nothing more. Which songs are skipped on it is only in AbleSet's log. So whenever the saved file was the answer — AbleSet closed, or the file newer than anything the log said — every skipped song was put back in the show.
+
 **Know a song on AbleSet's setlist by its name, notation and all**
 
 AbleSet remembers each song on a setlist by where its locator was and the locator's whole name. When the locator had moved since, the studio fell back to the name — but compared it with the tags, flags and notes still on it, so "Follow Night #rock" or "Clocks {D} +PAUSE" never met the song called Follow Night or Clocks. The song was taken as left off the setlist and marked out of the show. The name is now read the way the song's own title was, AbleSet's notation and a stop dot taken off.

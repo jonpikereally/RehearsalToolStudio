@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { emptyLibrary, type Library, type Setlist, type Song } from '../types';
 import { mergeScan, isProjectScaffolding, newestSetPerFolder, parseFileName, syncSetlists, type ScanResult } from './scan';
 import { parseAls, type AlsProject } from './alsParser';
-import { abletSetlistFiles, liveRunningOrder, matchAbleSet, parseAbleSetSetlist } from './ableset';
+import { abletSetlistFiles, liveRunningOrder, matchAbleSet, parseAbleSetSetlist, type AbleSetEntry } from './ableset';
 import { findPrints, isPrint, isPreparedSet, type FoundPrint } from './prints';
 import { applyManifest, isManifestName } from './preparedSet';
 import { versionsOf } from './versions';
@@ -754,6 +754,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let orderNote: string | undefined;
           let included: string[] | undefined;
           let savedAt: number | null = null;
+          let saved: { name: string; entries: AbleSetEntry[] } | undefined;
           const setlists = abletSetlistFiles(files, file.path);
           for (const candidate of setlists) {
             try {
@@ -763,6 +764,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ({ order, included } = matchAbleSet(project, entries));
               savedAt = candidate.modified;
               const label = candidate.name.replace(/\.json$/i, '');
+              saved = { name: label, entries };
               orderNote =
                 `Running order from AbleSet's setlist “${label}”` +
                 (setlists.length > 1 ? `, the newest of ${setlists.length}` : '') +
@@ -773,7 +775,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           }
           // Newer still: the order AbleSet is showing right now, saved or not.
-          const live = await liveRunningOrder(project, file.path, savedAt);
+          const live = await liveRunningOrder(project, file.path, savedAt, saved);
           if (live) {
             order = live.titles;
             orderNote = live.note;
