@@ -5066,6 +5066,35 @@ group('running order from AbleSet');
       wrapped?.map((e) => `${e.name}${e.off ? ' (off)' : ''}`).join(' | ') === 'Fix You (off) | Yellow', JSON.stringify(wrapped));
   }
 
+  {
+    // A setlist file as AbleSet really saves it: a bare list, in play order, with no skips in it.
+    const { readFileSync } = await import('node:fs');
+    const { parseLocatorName } = await import('../src/lib/alsParser.ts');
+    const { savedWithSkips, skipsFromLog } = await import('../src/lib/ableset.ts');
+    const real = parseAbleSetSetlist(JSON.parse(readFileSync(new URL('./fixtures/ableset-setlist.json', import.meta.url), 'utf8')));
+    check('AbleSet\'s own saved setlist is read, in its order', real?.length === 26 && real[0].name === 'You Belong With Me {E}' && !real.some((e) => e.off),
+      JSON.stringify(real?.slice(0, 2)));
+    const at = (raw, beat) => ({ ...song(parseLocatorName(raw).title, beat / 4 + 1), raw });
+    const show = { ...project, songs: [...real.map((e) => at(e.name, e.time)), at('Cruel Summer {A}', 20000), at('22 {G}', 20400)].sort((a, b) => a.startBar - b.startBar) };
+    const read = matchAbleSet(show, real);
+    check('every song on it is in the show, and only those', read.included.length === 26 && !read.included.includes('Cruel Summer') && read.order[0] === 'You Belong With Me',
+      JSON.stringify(read.included));
+
+    // Its skips are only in AbleSet's log, under the setlist's name.
+    const name = 'YBWM - Taylor Swift Ableton Set 2026.11.19';
+    const logged = (setlistName) => ({ at: '2026-11-19T20:00:00Z', setlistName, entries: [
+      { time: 15940, lastKnownName: 'You Belong With Me {E}' },
+      { time: 99999, lastKnownName: 'Mine {F}', off: true },
+      { time: 12356, lastKnownName: 'Red {D}', off: true },
+    ] });
+    const withSkips = savedWithSkips(show, { name, entries: real }, logged(name));
+    check('a song skipped in AbleSet is out of the show, though its saved file does not say so',
+      withSkips?.included.length === 24 && !withSkips.included.includes('Mine') && !withSkips.included.includes('Red') && withSkips.titles.includes('Red'),
+      JSON.stringify(withSkips?.included));
+    check('but not from another setlist\'s log', skipsFromLog({ name, entries: real }, logged('Friday')) === null);
+    check('and not when the log skips nothing', skipsFromLog({ name, entries: real }, { ...logged(name), entries: [{ time: 1, lastKnownName: 'x' }] }) === null);
+  }
+
   const als = '/Band/Show/Show.als';
   const setlist = setlistFromProject(als, project, () => true, order, 'from AbleSet');
   check('the set\'s own setlist takes that order', setlist.songIds[0] === songIdFor(als, 'Fix You') && setlist.songIds.length === 4 && setlist.notes === 'from AbleSet');

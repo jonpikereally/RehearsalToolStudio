@@ -329,6 +329,8 @@ export interface AbleSetLive {
   from?: 'ableset' | 'log';
   /** `off`: listed by AbleSet but switched off — disabled or skipped — so not in the show. */
   entries?: { time: number; lastKnownName: string; off?: true }[];
+  /** The newest order AbleSet's log has, skips and all, whatever else answered. */
+  logged?: { at: string | null; setlistName: string; entries: { time: number; lastKnownName: string; off?: true }[] } | null;
 }
 
 export async function abletLive(folder: FolderHandle, root: string, path: string): Promise<AbleSetLive> {
