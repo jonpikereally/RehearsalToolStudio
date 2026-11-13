@@ -1854,6 +1854,11 @@ export function parseAlsXml(xml: string): AlsProject {
           direct: true,
           path: sounding.path,
           regions: audibleRegions(mine, trackIsMuted(t), loc.beat, endBeat, relBar),
+          // Muted further along — the REF group, a muted bus, an output of None — as an in-song reference is.
+          ...(() => {
+            const by = trackIsMuted(t) ? null : silencedBy(t);
+            return by ? { silencedBy: by } : {};
+          })(),
           clips,
         });
       }
