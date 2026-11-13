@@ -7,6 +7,10 @@ ids: they change when a commit is amended, and the log would go stale in the wri
 
 ## 2026-11-13
 
+**Check a set-wide reference for what silences it, as an in-song one is**
+
+The references a song now takes from a REF group at the top of the set were made without asking whether anything further along silences them, so the set check took every one as live — though on the band's own set the REF group's output is None — and would have said the record plays at the gig for every song. They are now followed out the same way as a reference inside a song: up through the REF group, into a bus they are routed to, and across any send to a return that sounds.
+
 **Find the record in a set however its track is named or filed**
 
 A reference is the one track a prepare keeps when it is switched off, since the record is muted in a live set and is still what the band play against. But a reference was only a track or folder with "ref" or "reference" as a word on its own, so REF_VOX, _REF, REFS, RefMaster or References were none: muted, they were taken as silent and never written, and the website had no record to play.
