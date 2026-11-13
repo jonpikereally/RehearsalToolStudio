@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-11-13
+
+**Find the record in a set however its track is named or filed**
+
+A reference is the one track a prepare keeps when it is switched off, since the record is muted in a live set and is still what the band play against. But a reference was only a track or folder with "ref" or "reference" as a word on its own, so REF_VOX, _REF, REFS, RefMaster or References were none: muted, they were taken as silent and never written, and the website had no record to play.
+
 ## 2026-11-12
 
 **Load an AbleSet setlist by hand, on the Setlists page**

@@ -729,6 +729,24 @@ export function decodeXml(text: string): string {
 }
 
 /**
+ * Whether a track or folder name marks the record: "Ref", "REF", "Reference".
+ *
+ * Read as people actually type it in Live, not only as a word on its own —
+ * "REF_VOX", "_REF", "REFS", "References", "RefVox", "B-REF". A name the old
+ * test missed was not a reference at all, and a reference is the one track a
+ * prepare keeps when it is muted: missed, the muted record was taken as
+ * silent and never written. Not "Refrain" or "Reflection", which are words.
+ */
+export function hasRefWord(name: string): boolean {
+  const spaced = name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_\-.:/|]+/g, ' ')
+    .replace(/(\d)([a-z])/gi, '$1 $2')
+    .replace(/([a-z])(\d)/gi, '$1 $2');
+  return /\b(refs?|references?)\b/i.test(spaced);
+}
+
+/**
  * A song's name as a group track and a locator would both spell it.
  *
  * The two are typed separately and drift: "Forever & Always" against
@@ -1434,8 +1452,20 @@ export function parseAlsXml(xml: string): AlsProject {
 
   /* --------------------------- per-song assembly -------------------------- */
 
+  /*
+   * A REF group at the top of the set, not inside any song's, holds the
+   * record of every song along the timeline — one Ref Master track with a
+   * clip per song, say. It is not a song: taken for one, the song it was
+   * matched to by place had the band's parts swapped for the record's, and
+   * every other song had no record at all. Each song takes its stretch of
+   * it instead, as it does of the click and the cues. A song really called
+   * "Reference" keeps its group.
+   */
+  const songTitleKeys = new Set(songLocators.map((l) => songKey(parseLocatorName(l.name).title)));
+  const isSetRefGroup = (t: Track) =>
+    t.kind === 'GroupTrack' && t.groupId === '-1' && hasRefWord(t.name) && !songTitleKeys.has(songKey(t.name));
   const songGroups = tracks.filter(
-    (t) => t.kind === 'GroupTrack' && t.groupId === '-1' && !t.name.startsWith('*'),
+    (t) => t.kind === 'GroupTrack' && t.groupId === '-1' && !t.name.startsWith('*') && !isSetRefGroup(t),
   );
   const byId = new Map(tracks.map((t) => [t.id, t]));
   /*
@@ -1493,7 +1523,7 @@ export function parseAlsXml(xml: string): AlsProject {
    * Deliberately not the app's isReferenceName, which counts "master" too —
    * here that would brand the band's own master mix a reference.
    */
-  const REF_RE = /\bref(erence)?\b/i;
+  const REF_RE = { test: hasRefWord };
 
   const rootOf = (t: Track): Track | undefined => {
     let cur: Track | undefined = t;
@@ -1783,6 +1813,52 @@ export function parseAlsXml(xml: string): AlsProject {
      * steps aside for it, so there is one click channel either way.
      */
     // Members of the click and cue groups the studio cannot make sound.
+    /*
+     * The set's own REF group: each of its tracks with a clip inside this
+     * song is one of the song's references, named as its track is, with
+     * only the clips inside the song. Muted or switched off as the record
+     * always is in a live set, it is written all the same (soundsInSong).
+     */
+    for (const refGroup of tracks.filter(isSetRefGroup)) {
+      for (const t of tracks.filter((x) => x.kind === 'AudioTrack' && rootOf(x) === refGroup)) {
+        const mine = clipsOfTrack(t).filter((c) => c.endBeat > loc.beat && c.startBeat < endBeat);
+        if (!mine.length) continue;
+        let gain = t.gain;
+        for (let c = byId.get(t.groupId), i = 0; c && i < 8; i++) {
+          gain *= c.gain;
+          c = byId.get(c.groupId);
+        }
+        const clips: AlsClip[] = mine.flatMap((c) =>
+          placeClip(c).map((placed) => ({
+            path: c.path,
+            ...placed,
+            disabled: c.disabled,
+            warped: c.warpBps !== null,
+            semitones: c.semitones,
+            gain: c.gain,
+            absPath: c.absPath ?? undefined,
+            ...(c.frozen ? { frozen: true as const } : {}),
+          })),
+        );
+        const sounding = mine.find((c) => !c.disabled) ?? mine[0];
+        if (!sounding?.path) continue;
+        stems.push({
+          name: t.name,
+          trackId: t.id,
+          reference: true,
+          frozen: false,
+          gain,
+          pan: Math.max(-1, Math.min(1, t.pan)),
+          devices: [],
+          sends: [],
+          direct: true,
+          path: sounding.path,
+          regions: audibleRegions(mine, trackIsMuted(t), loc.beat, endBeat, relBar),
+          clips,
+        });
+      }
+    }
+
     const setPartCaveats = new Set<string>();
     for (const [label, match] of [
       ['Click', /^click/i],

@@ -3196,6 +3196,7 @@ group('preparing part of a set');
 group('reference tracks');
 {
   const { parseAlsXml } = await import('../src/lib/alsParser.ts');
+  const { soundsInSong: soundsInSongOk } = await import('../src/lib/prepare.ts');
   const { partFileName } = await import('../src/lib/prepare.ts');
 
   /*
@@ -3238,6 +3239,79 @@ group('reference tracks');
   check("the band's own part is not", of('Bass')?.reference === false);
   // "master" alone is the band's master mix, not the record to play against.
   check("nor is the band's master", of('Master')?.reference === false);
+
+  {
+    // Named as people type it, and muted as the record is in a live set: still the record.
+    const { soundsInSong } = await import('../src/lib/prepare.ts');
+    const muted = (id, group, name, from = 0, to = 32) => track(id, group, name)
+      .replace('<Manual Value="true" />', '<Manual Value="false" />')
+      .replace('<CurrentStart Value="0" /><CurrentEnd Value="32" />', `<CurrentStart Value="${from}" /><CurrentEnd Value="${to}" />`);
+    const oneSong = parseAlsXml(`<Ableton Creator="Live 12">
+      <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+      <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+      <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+      <Locator Id="2"><Time Value="32" /><Name Value="AUTOSTOP" /></Locator>
+      <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+      ${track(11, 10, 'Bass')}
+      ${muted(12, 10, 'REF_VOX')}
+      ${muted(13, 10, 'RefMaster')}
+      ${muted(14, 10, 'Drums')}
+    </Ableton>`).songs[0];
+    const got = (name) => oneSong.stems.find((x) => x.name === name);
+    check('a muted REF_VOX is the record, and is prepared', got('REF_VOX')?.reference === true && soundsInSong(got('REF_VOX')));
+    check('so is a muted RefMaster', got('RefMaster')?.reference === true && soundsInSong(got('RefMaster')));
+    check("while the band's own muted part is still left out", got('Drums')?.reference === false && !soundsInSong(got('Drums')));
+    check('a REF_VOX part is labelled once, not twice', partFileName('Yellow', 'REF_VOX', true) === 'Yellow [ref_vox].mp3' || !/ref.*ref/.test(partFileName('Yellow', 'REF_VOX', true)),
+      partFileName('Yellow', 'REF_VOX', true));
+  }
+  {
+    /*
+     * The other shape: one REF group at the top of the set, its tracks
+     * holding the record of every song along the timeline.
+     */
+    const at = (id, group, name, from, to) => track(id, group, name)
+      .replace('<Manual Value="true" />', '<Manual Value="false" />')
+      .replace('<CurrentStart Value="0" /><CurrentEnd Value="32" />', `<CurrentStart Value="${from}" /><CurrentEnd Value="${to}" />`)
+      .replace(`Samples/${name}.wav`, `Samples/${name} ${from}.wav`);
+    const set = parseAlsXml(`<Ableton Creator="Live 12">
+      <Tempo><Manual Value="120" /><AutomationTarget Id="9" /></Tempo>
+      <RemoteableTimeSignature><Numerator Value="4" /><Denominator Value="4" /></RemoteableTimeSignature>
+      <Locator Id="1"><Time Value="0" /><Name Value="Yellow" /></Locator>
+      <Locator Id="2"><Time Value="32" /><Name Value="Clocks" /></Locator>
+      <Locator Id="3"><Time Value="64" /><Name Value="AUTOSTOP" /></Locator>
+      <GroupTrack Id="10"><TrackGroupId Value="-1" /><EffectiveName Value="Yellow" /></GroupTrack>
+      ${track(11, 10, 'Bass')}
+      <GroupTrack Id="30"><TrackGroupId Value="-1" /><EffectiveName Value="Clocks" /></GroupTrack>
+      <AudioTrack Id="31"><TrackGroupId Value="30" /><EffectiveName Value="Keys" />
+        <Speaker><LomId Value="0" /><Manual Value="true" /></Speaker>
+        <AudioClip Id="1"><CurrentStart Value="32" /><CurrentEnd Value="64" />
+          <LoopStart Value="0" /><LoopEnd Value="32" /><StartRelative Value="0" />
+          <Disabled Value="false" /><Fade Value="false" />
+          <SampleRef><FileRef><RelativePath Value="Samples/Keys.wav" /></FileRef>
+          <DefaultSampleRate Value="44100" /></SampleRef>
+        </AudioClip>
+      </AudioTrack>
+      <GroupTrack Id="40"><TrackGroupId Value="-1" /><EffectiveName Value="REF" /></GroupTrack>
+      ${at(41, 40, 'Ref Master', 0, 32).replace('</AudioTrack>', '')}
+        <AudioClip Id="2"><CurrentStart Value="32" /><CurrentEnd Value="64" />
+          <LoopStart Value="0" /><LoopEnd Value="32" /><StartRelative Value="0" />
+          <Disabled Value="false" /><Fade Value="false" />
+          <SampleRef><FileRef><RelativePath Value="Samples/Clocks ref.wav" /></FileRef>
+          <DefaultSampleRate Value="44100" /></SampleRef>
+        </AudioClip>
+      </AudioTrack>
+    </Ableton>`);
+    const [yellow, clocks] = set.songs;
+    const refOf = (song) => song.stems.find((x) => x.name === 'Ref Master');
+    check('a REF group at the top of the set gives each song its record',
+      refOf(yellow)?.reference === true && refOf(clocks)?.reference === true && soundsInSongOk(refOf(yellow)) && soundsInSongOk(refOf(clocks)),
+      JSON.stringify(set.songs.map((x) => x.stems.map((st) => st.name))));
+    check('only the stretch inside each song',
+      refOf(yellow)?.clips.length === 1 && refOf(clocks)?.clips.length === 1 && refOf(clocks)?.path === 'Samples/Clocks ref.wav',
+      JSON.stringify(set.songs.map((x) => refOf(x)?.clips.map((c) => c.path))));
+    check("and is not taken for a song, its parts left with the band's",
+      yellow.stems.some((x) => x.name === 'Bass') && clocks.stems.some((x) => x.name === 'Keys') && set.songs.length === 2);
+  }
 
   // The label is the only carrier into the prepared folder, so it must say it.
   check('an unmarked reference part is labelled ref',

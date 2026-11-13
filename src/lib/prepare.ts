@@ -1,4 +1,5 @@
 import type { AlsClip, AlsProject, AlsSong } from './alsParser';
+import { hasRefWord } from './alsParser.ts';
 import { needsRender, renderTrack, sliceBuffer, type ClipPlacement } from './arrangement.ts';
 import { encodeMp3, measurePadding, DEFAULT_BITRATE } from './mp3.ts';
 import { RESOURCES_FOLDER, setsFolder } from './prints.ts';
@@ -555,7 +556,7 @@ function stemFacts(song: AlsSong, part: PlannedPart, sizeBytes: number, bitrate:
  */
 export function partFileName(songTitle: string, partName: string, reference = false): string {
   const label = safeName(stemLabel(partName)).toLowerCase();
-  const marked = reference && !/\bref(erence)?\b/.test(label) ? `ref ${label}` : label;
+  const marked = reference && !hasRefWord(label) ? `ref ${label}` : label;
   return `${safeName(songTitle)} [${marked}].mp3`;
 }
 
@@ -578,7 +579,7 @@ export function partFileName(songTitle: string, partName: string, reference = fa
 export function partInfoFor(songTitle: string, partName: string, reference: boolean): PreparedPart {
   const file = partFileName(songTitle, partName, reference);
   const label = file.slice(file.lastIndexOf('[') + 1, file.lastIndexOf(']'));
-  const name = reference ? label.replace(/\bref(erence)?\b/i, ' ').replace(/\s+/g, ' ').trim() : label;
+  const name = reference ? label.replace(/(^|[\s_\-.])ref(erence)?s?(?=$|[\s_\-.])/i, ' ').replace(/[\s_]+/g, ' ').trim() : label;
   const role = roleForTrack(partName);
   const record = reference && role === 'mix';
   return {
