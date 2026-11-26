@@ -43,12 +43,10 @@ NODE_BIN="$(command -v node || true)"
 [ -n "$NODE_BIN" ] || { echo "node not found — it is what gets bundled" >&2; exit 1; }
 NODE_BIN="$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$NODE_BIN")"
 
-# The Node that ships is this machine's. A universal binary runs on either kind
-# of Mac; a single-architecture one runs only on its own kind, which is worth
-# knowing before the app is handed to an Intel Mac.
+# The Node that ships is this machine's, cut down to Apple silicon below.
 ARCHS="$(lipo -archs "$NODE_BIN" 2>/dev/null || echo unknown)"
 echo "bundling node $(node -v) ($ARCHS) from $NODE_BIN"
-case "$ARCHS" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "  note: single-architecture — it will only run on $ARCHS Macs" ;; esac
+case "$ARCHS" in *arm64*) ;; *) echo "node has no Apple silicon (arm64) build: $ARCHS" >&2; exit 1 ;; esac
 
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/rts-package.XXXXXX")"
@@ -66,17 +64,8 @@ compile_window() {
   "$SWIFTC" -O -sdk "$SDK" -target "$1-apple-macos12.0" -module-cache-path "$BUILD/cache-$1" \
     -o "$2" mac/RehearsalToolStudio/main.swift -framework Cocoa -framework WebKit
 }
-compile_window "$(uname -m)" "$BUILD/$NAME"
-# And for the other kind of Mac when the tools can, so the window is as
-# universal as the Node beside it; when they can't, the app is this Mac's kind.
-OTHER=x86_64; [ "$(uname -m)" = x86_64 ] && OTHER=arm64
-if compile_window "$OTHER" "$BUILD/$NAME-$OTHER" 2>/dev/null; then
-  lipo -create "$BUILD/$NAME" "$BUILD/$NAME-$OTHER" -output "$BUILD/$NAME-universal"
-  mv "$BUILD/$NAME-universal" "$BUILD/$NAME"
-  rm -f "$BUILD/$NAME-$OTHER"
-else
-  echo "  note: the window compiled for $(uname -m) only"
-fi
+# Apple silicon only: every Mac it goes to is one.
+compile_window arm64 "$BUILD/$NAME"
 
 # A modern .icns can simply carry a PNG — ic09 is the 512-point slot.
 make_icns() {
@@ -95,7 +84,13 @@ RES="$APP/Contents/Resources"
 mkdir -p "$APP/Contents/MacOS" "$RES/scripts"
 mv "$BUILD/$NAME" "$APP/Contents/MacOS/$NAME"
 make_icns "$RES/app.icns"
-cp "$NODE_BIN" "$RES/node" && chmod 755 "$RES/node"
+# Keep only Node's Apple silicon half (a Homebrew Node is often universal).
+if lipo -archs "$NODE_BIN" | grep -q x86_64; then
+  lipo -thin arm64 "$NODE_BIN" -output "$RES/node"
+else
+  cp "$NODE_BIN" "$RES/node"
+fi
+chmod 755 "$RES/node"
 cp -R "$BUILD/dist" "$RES/dist"
 # The servers, laid out as they are here, so serve-studio finds ../dist unchanged.
 cp scripts/serve-studio.mjs scripts/studio-files.mjs scripts/slate-helper.mjs "$RES/scripts/"
