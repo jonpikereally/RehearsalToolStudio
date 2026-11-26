@@ -13,9 +13,9 @@
 # of it lives in the app.
 #
 # The Mac it is built on is what gets bundled: its Node, its uv. A Homebrew
-# Node is usually universal and the window is compiled for both kinds of Mac
-# when the tools can, so the installer says which Macs it will run on and
-# refuses the others with a plain message rather than an app that won't open.
+# Node is cut down to Apple silicon and the window is compiled for it alone,
+# so the installer refuses an Intel Mac with a plain message rather than an
+# app that won't open.
 # Lyrics Studio wants Apple silicon regardless — Whisper on MLX is that only.
 #
 # Nothing here carries a Developer ID, so a copy that arrives through a

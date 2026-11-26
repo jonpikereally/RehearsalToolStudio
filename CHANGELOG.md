@@ -5,6 +5,12 @@ Written by `node scripts/changelog.mjs` from the commits themselves — so a cha
 logged by describing it in its commit message, not by editing this file. No commit
 ids: they change when a commit is amended, and the log would go stale in the writing.
 
+## 2026-11-26
+
+**Package the studio for Apple silicon only**
+
+Every Mac it goes to is Apple silicon, so the window is compiled for arm64 alone and the bundled Node is cut down to its arm64 half. A Node with no arm64 build now stops the packaging instead of producing an Intel-only app.
+
 ## 2026-11-13
 
 **Check a set-wide reference for what silences it, as an in-song one is**
